@@ -1,6 +1,8 @@
 #include <forge/LuaState.h>
 #include <forge/Logger.h>
 #include <forge/Transform.h>
+#include <forge/CombatComponent.h>
+#include <forge/AttackData.h>
 
 #include <glm/glm.hpp>
 #include <fstream>
@@ -37,6 +39,7 @@ bool LuaState::loadScript(const std::string& path) {
 void LuaState::registerBindings() {
   registerMathTypes();
   registerTransform();
+  registerCombat();
 
   // Expose the logger to Lua so scripts can log properly
   // usage in lua: Log.info("hello from script")
@@ -87,6 +90,40 @@ void LuaState::registerTransform() {
                                 "setEulerAngles", &Transform::setEulerAngles,
                                 "getPosition", &Transform::getPosition
                                 );  
+}
+
+void LuaState::registerCombat() {
+  // AttackData - constructible from Lua as a table
+  m_lua.new_usertype<AttackData>("AttackData",
+                                 sol::constructors<AttackData()>(),
+                                 "name", &AttackData::name,
+                                 "damage", &AttackData::damage,
+                                 "poiseDamage", &AttackData::poiseDamage,
+                                 "staminaCost", &AttackData::staminaCost,
+                                 "startupTime", &AttackData::startupTime,
+                                 "activeTime", &AttackData::activeTime,
+                                 "recoveryTime", &AttackData::recoveryTime,
+                                 "range", &AttackData::range,
+                                 "angle", &AttackData::angle,
+                                 "damageType", &AttackData::damageType
+                                 );
+
+  // CombatComponent - Created by C++, accessed by Lua
+  m_lua.new_usertype<CombatComponent>("CombatComponent",
+                                      sol::no_constructor,
+                                      "getHp",  &CombatComponent::getHp,
+                                      "getMaxHp", &CombatComponent::getMaxHp,
+                                      "getStamina", &CombatComponent::getStamina,
+                                      "getPoise", &CombatComponent::getPoise,
+                                      "getStateName", &CombatComponent::getStateName,
+                                      "isAlive", &CombatComponent::isAlive,
+                                      "isVulnerable", &CombatComponent::isVulnerable,
+                                      "isAttacking", &CombatComponent::isAttacking,
+                                      "isGuarding", &CombatComponent::isGuarding,
+                                      "tryAttack", &CombatComponent::tryAttack,
+                                      "tryGuard", &CombatComponent::tryGuard,
+                                      "releaseGuard", &CombatComponent::releaseGuard
+                                      );
 }
 
 }

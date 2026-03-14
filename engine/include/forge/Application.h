@@ -1,4 +1,7 @@
 #pragma once
+#include <forge/CombatComponent.h>
+#include <forge/AttackData.h>
+
 #include <memory>
 #include <string>
 struct GLFWwindow;
@@ -11,7 +14,7 @@ namespace forge {
   class LuaState;
   class PhysicsWorld;
   class RigidBodyComponent;
-
+  class CombatSystem;
 }
 
 namespace forge {
@@ -55,6 +58,18 @@ namespace forge {
     float m_totalTime = 0.0f; // For rotation animation
 
     std::unique_ptr<PhysicsWorld> m_physicsWorld;
+    
+    std::unique_ptr<CombatSystem>m_combatSystem;
+    std::unique_ptr<CombatComponent> m_playerCombat;
+    std::unique_ptr<CombatComponent>m_enemyCombat;
+
+    struct InputState {
+      bool attackLight = false;
+      bool attackHeavy = false;
+      bool guard = false;
+    };
+    InputState m_prevInput; // Track previous frame to detect key-down
+
     std::unique_ptr<LuaState>m_lua;
     std::string m_scriptPath;
   };

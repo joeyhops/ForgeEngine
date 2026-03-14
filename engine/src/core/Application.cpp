@@ -7,6 +7,8 @@
 #include <forge/LuaState.h>
 #include <forge/PhysicsWorld.h>
 #include <forge/RigidBodyComponent.h>
+#include <forge/CombatSystem.h>
+#include <forge/CombatComponent.h>
 
 #include <glm/glm.hpp>
 #include <GL/glew.h>
@@ -105,9 +107,44 @@ Application::Application(int width, int height, const char* title)
     0.0f // mass=0 -> static
   );
 
+  m_lua = std::make_unique<LuaState>();
+
+  // Combat system
+  m_combatSystem = std::make_unique<CombatSystem>();
+
+  // Player combat component
+  m_playerCombat = std::make_unique<CombatComponent>(
+    "Player", 400.0f, 100.0f, 60.0f); // HP, Stam, Poise
+
+  // Wire death/hit callbacks to lua
+  m_playerCombat->onDeath = [this]() {
+    m_lua->callFunction("onPlayerDeath");
+  };
+  m_playerCombat->onHit = [this](const HitEvent& hit){
+    m_lua->callFunction("onPlayerHit", hit.damage, hit.damageType);
+  };
+
+  // Enemy combat component (dummy cube)
+  m_enemyCombat = std::make_unique<CombatComponent>(
+    "Dummy", 200.0f, 999.0f, 30.0f);
+
+  m_enemyCombat->onDeath = [this](){
+    LOG_INFO("Enemy Defeated!");
+  };
+
+  //register both with the combat system
+  m_combatSystem->registerCombatant(m_playerCombat.get());
+  m_combatSystem->registerCombatant(m_enemyCombat.get());
+
+  // Expose combat to Lua
+  m_lua->get()["playerCombat"] = m_playerCombat.get();
+  m_lua->get()["enemyCombat"] = m_enemyCombat.get();
+
+  // Load attack defs first, then combat script
+  m_lua->loadScript("../../../../game/scripts/combat/attacks.lua");
+  m_lua->loadScript("../../../../game/scripts/combat/player_combat.lua");
   // Lua
   m_scriptPath = "../../../../game/scripts/cube_controller.lua";
-  m_lua = std::make_unique<LuaState>();
   m_lua->get()["transform"] = m_cubeTransform.get();
   m_lua->loadScript(m_scriptPath);
 
@@ -137,6 +174,9 @@ void Application::shutdown() {
   m_cubeTransform.reset();
   m_floorMesh.reset();
   m_floorTransform.reset();
+  m_combatSystem.reset();
+  m_playerCombat.reset();
+  m_enemyCombat.reset();
   m_shader.reset();
   m_camera.reset();
 
@@ -154,7 +194,6 @@ void Application::update(float dt) {
     m_running = false;
 
   if (glfwGetKey(m_window, GLFW_KEY_F5) == GLFW_PRESS) {
-    LOG_INFO("Hot reloading script...");
     m_lua->loadScript(m_scriptPath);
   }
 
@@ -166,11 +205,37 @@ void Application::update(float dt) {
   m_cubeBody->syncTransform();
   // Floor is static, no sync
 
+  // World data for hit detection
+  glm::vec3 playerPos = { 0.0f, 0.0f, 2.0f };
+  glm::vec3 enemyPos = { 0.0f, 0.0f, -1.0f }; //Enemy in front of player
+  glm::vec3 playerFwd = { 0.0f, 0.0f,-1.0f };
+
+  m_playerCombat->setWorldData(playerPos, playerFwd);
+  m_enemyCombat->setWorldData(enemyPos, {0,0,1});
+
+  // Input -> Lua
+  InputState input;
+  bool jPressed = glfwGetKey(m_window, GLFW_KEY_J) == GLFW_PRESS;
+  bool kPressed = glfwGetKey(m_window, GLFW_KEY_K) == GLFW_PRESS;
+  bool lPressed = glfwGetKey(m_window, GLFW_KEY_L) == GLFW_PRESS;
+
+  input.attackLight = jPressed && !m_prevInput.attackLight;
+  input.attackHeavy = kPressed && !m_prevInput.attackHeavy;
+  input.guard = lPressed;
+
+  m_prevInput = { jPressed, kPressed, lPressed };
+
+  auto inputTable = m_lua->get().create_table();
+  inputTable["attackLight"] = input.attackLight;
+  inputTable["attackHeavy"] = input.attackHeavy;
+  inputTable["guard"] = input.guard;
   // Lua Note:
   // Lua script can still read transform position/rotation
   // but physics owns the cubes movement. script drives logic,
   // physics drives position.
-  m_lua->callFunction("onUpdate", dt, m_totalTime);
+  m_lua->callFunction("onCombatUpdate", dt, inputTable);
+
+  m_combatSystem->update(dt);
 }
 
 void Application::render() {

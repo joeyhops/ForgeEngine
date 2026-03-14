@@ -41,6 +41,7 @@ private:
   void registerBindings(); // Registers all C++ types/functions with Lua
   void registerMathTypes(); // glm::vec3 etc.
   void registerTransform(); // transform class
+  void registerCombat();  // Register combat funcs
 
   sol::state m_lua;
 };

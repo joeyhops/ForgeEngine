@@ -9,6 +9,8 @@ add_library(forge_engine STATIC
   src/scripting/LuaState.cpp
   src/physics/PhysicsWorld.cpp
   src/physics/RigidBodyComponent.cpp
+  src/combat/CombatComponent.cpp
+  src/combat/CombatSystem.cpp
 )
 
 target_include_directories(forge_engine PUBLIC
