@@ -1,0 +1,54 @@
+#pragma once
+#include <forge/Transform.h>
+#include <glm/glm.hpp>
+#include <memory>
+
+class btRigidBody;
+class btCollisionShape;
+class btDefaultMotionState;
+
+namespace forge {
+class PhysicsWorld;
+
+// shape of collision volume
+enum class CollisionShape {
+  Box, // half-extents define the size
+  Sphere, // Radius defines the size
+  Capsule, // radius + height - used for characters
+  Plane, // Infinite static floor/wall
+};
+
+class RigidBodyComponent {
+public:
+  // mass = 0 == static (immovable) -- floors, walls
+  // mass > 0 == dynamic -- affected by gravity and forces
+  RigidBodyComponent(PhysicsWorld& world,
+                     Transform& transform,
+                     CollisionShape shape,
+                     const glm::vec3& shapeSize, // box: half-extents, sphere: (radius,0,0), capsule: (radius, height, 0)
+                     float mass = 1.0f);
+  ~RigidBodyComponent();
+
+  RigidBodyComponent(const RigidBodyComponent&) = delete;
+  RigidBodyComponent& operator=(const RigidBodyComponent&) = delete;
+
+  // call after PhysicsWorld::step() -> syncs bullet transform -> engine transform
+  void syncTransform();
+
+  void applyImpulse(const glm::vec3& impulse);
+
+  void setAngularForce(const glm::vec3& factor);
+
+  btRigidBody* getBulletBody() { return m_body.get(); }
+
+private:
+  PhysicsWorld& m_world;
+  Transform& m_transform;
+
+  // Bullet owned butwe manage lifetime via unique_ptr + custom deleter
+  std::unique_ptr<btCollisionShape> m_shape;
+  std::unique_ptr<btDefaultMotionState> m_motionState;
+  std::unique_ptr<btRigidBody> m_body;
+};
+
+}
