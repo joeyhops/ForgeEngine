@@ -42,6 +42,7 @@ private:
   void registerMathTypes(); // glm::vec3 etc.
   void registerTransform(); // transform class
   void registerCombat();  // Register combat funcs
+  void registerEvents(); // Register events
 
   sol::state m_lua;
 };

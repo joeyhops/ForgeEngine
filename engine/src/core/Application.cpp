@@ -1,3 +1,5 @@
+#include "forge/EventBus.h"
+#include "forge/Events.h"
 #include <forge/Application.h>
 #include <forge/Logger.h>
 #include <forge/Shader.h>
@@ -128,13 +130,30 @@ Application::Application(int width, int height, const char* title)
   m_enemyCombat = std::make_unique<CombatComponent>(
     "Dummy", 200.0f, 999.0f, 30.0f);
 
-  m_enemyCombat->onDeath = [this](){
-    LOG_INFO("Enemy Defeated!");
-  };
-
   //register both with the combat system
   m_combatSystem->registerCombatant(m_playerCombat.get());
   m_combatSystem->registerCombatant(m_enemyCombat.get());
+
+  m_enemyCombat->onDeath = [this]() {
+    LOG_INFO("Enemy Defated!");
+
+    m_flags.set(forge::Flags::BOSS_DUMMY_DEAD, true);
+
+    EventBus::publish(EntityDiedEvent{
+      .entityName = "Dummy",
+      .position = m_enemyCombat->getWorldPos()
+    });
+  };
+
+  EventBus::subscribe<FlagChangeEvent>([](const FlagChangeEvent& e) {
+    LOG_INFO("[Event] Flag {} changed -> {}", e.flagId, e.newValue);
+  });
+
+  EventBus::subscribe<ScriptEvent>([](const ScriptEvent& e) {
+    LOG_INFO("[Event] Script event: '{}' data='{}'", e.name, e.data);
+  });
+
+  m_lua->get()["Flags"] = &m_flags;
 
   // Expose combat to Lua
   m_lua->get()["playerCombat"] = m_playerCombat.get();
@@ -143,10 +162,14 @@ Application::Application(int width, int height, const char* title)
   // Load attack defs first, then combat script
   m_lua->loadScript("../../../../game/scripts/combat/attacks.lua");
   m_lua->loadScript("../../../../game/scripts/combat/player_combat.lua");
+  m_lua->loadScript("../../../../game/scripts/events/flags.lua");
+  m_lua->loadScript("../../../../game/scripts/events/demo_quest.lua");
   // Lua
   m_scriptPath = "../../../../game/scripts/cube_controller.lua";
   m_lua->get()["transform"] = m_cubeTransform.get();
   m_lua->loadScript(m_scriptPath);
+
+  m_flags.loadFromFile("save.json");
 
   m_running = true;
 }
@@ -166,6 +189,8 @@ void Application::init() {
 }
 
 void Application::shutdown() {
+  m_flags.saveToFile("save.json");
+
   m_lua.reset();
   m_cubeBody.reset();
   m_floorBody.reset();
@@ -206,9 +231,10 @@ void Application::update(float dt) {
   // Floor is static, no sync
 
   // World data for hit detection
-  glm::vec3 playerPos = { 0.0f, 0.0f, 2.0f };
-  glm::vec3 enemyPos = { 0.0f, 0.0f, -1.0f }; //Enemy in front of player
+  glm::vec3 playerPos = { 0.0f, 0.0f, 0.0f };
   glm::vec3 playerFwd = { 0.0f, 0.0f,-1.0f };
+  glm::vec3 enemyPos = { 0.0f, 0.0f, -1.5f }; //Enemy in front of player
+  glm::vec3 enemyFwd = { 0.0f, 0.0f,  1.0f }; //Enemy in front of player
 
   m_playerCombat->setWorldData(playerPos, playerFwd);
   m_enemyCombat->setWorldData(enemyPos, {0,0,1});
@@ -236,6 +262,14 @@ void Application::update(float dt) {
   m_lua->callFunction("onCombatUpdate", dt, inputTable);
 
   m_combatSystem->update(dt);
+
+  m_lua->callFunction("onQuestUpdate", dt);
+
+  static bool bwasPressed = false;
+  bool bPressed = glfwGetKey(m_window, GLFW_KEY_B) == GLFW_PRESS;
+  if (bPressed && !bwasPressed)
+    m_lua->callFunction("onBonfireReset");
+  bwasPressed = bPressed;
 }
 
 void Application::render() {

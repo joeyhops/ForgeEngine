@@ -11,6 +11,8 @@ add_library(forge_engine STATIC
   src/physics/RigidBodyComponent.cpp
   src/combat/CombatComponent.cpp
   src/combat/CombatSystem.cpp
+  src/events/EventBus.cpp
+  src/events/FlagManager.cpp
 )
 
 target_include_directories(forge_engine PUBLIC
@@ -26,6 +28,7 @@ find_package(glm CONFIG REQUIRED)
 find_package(Lua REQUIRED)
 find_package(sol2 CONFIG REQUIRED)
 find_package(Bullet CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 find_package(spdlog CONFIG REQUIRED)
 
@@ -37,5 +40,6 @@ target_link_libraries(forge_engine PUBLIC
   ${LUA_LIBRARIES}
   sol2::sol2
   ${BULLET_LIBRARIES}
+  nlohmann_json::nlohmann_json
   spdlog::spdlog 
 )

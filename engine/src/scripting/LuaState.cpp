@@ -1,3 +1,6 @@
+#include "forge/EventBus.h"
+#include "forge/Events.h"
+#include "forge/FlagManager.h"
 #include <forge/LuaState.h>
 #include <forge/Logger.h>
 #include <forge/Transform.h>
@@ -40,6 +43,7 @@ void LuaState::registerBindings() {
   registerMathTypes();
   registerTransform();
   registerCombat();
+  registerEvents();
 
   // Expose the logger to Lua so scripts can log properly
   // usage in lua: Log.info("hello from script")
@@ -124,6 +128,25 @@ void LuaState::registerCombat() {
                                       "tryGuard", &CombatComponent::tryGuard,
                                       "releaseGuard", &CombatComponent::releaseGuard
                                       );
+}
+
+void LuaState::registerEvents() {
+  // FlagManager - Exposed as global Flags table in Lua
+  m_lua.new_usertype<FlagManager>("FlagManager",
+                                  sol::no_constructor,
+                                  "set", &FlagManager::set,
+                                  "get", &FlagManager::get,
+                                  "toggle", &FlagManager::toggle
+                                  );
+
+  // Event bus publishing from Lua
+  // Lua usage: Events.publish("bonefireLit", "highwall")
+  auto eventsTable = m_lua.create_named_table("Events");
+  eventsTable.set_function("publish",
+                            [](const std::string& name, const std::string& data) {
+                              EventBus::publish(ScriptEvent{ .name = name, .data = data });
+                            }
+                           );
 }
 
 }

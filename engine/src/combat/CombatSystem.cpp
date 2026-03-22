@@ -54,7 +54,14 @@ bool CombatSystem::checkHit(const CombatComponent& attacker,
   // 1. range check
   glm::vec3 toDefender = defender.getWorldPos() - attacker.getWorldPos();
   float distance = glm::length(toDefender);
-  if (distance > atk.range) return false;
+
+  LOG_TRACE("[CombatSystem] checkHit: {} vs {} dist={:.2f} range={:.2f}",
+            attacker.getName(), defender.getName(), distance, atk.range);
+
+  if (distance > atk.range) {
+    LOG_TRACE("[CombatSystem] -> MISS (Out of range)");
+    return false;
+  }
 
   // 2. Angle check (cone in front of attacker)
   // Normalize both vectors for dot product
@@ -65,6 +72,9 @@ bool CombatSystem::checkHit(const CombatComponent& attacker,
   float dot = glm::dot(forward, direction);
   float halfAngle = glm::radians(atk.angle * 0.5f);
   float cosHalf = glm::cos(halfAngle);
+
+  LOG_TRACE("[CombatSystem] -> dot={:.2f} cosHalf={:.2f} inCone={}",
+            dot, cosHalf, dot >= cosHalf ? "YES" : "NO");
 
   // dot >= cosHalf means the defender is inside the cone
   return dot >= cosHalf;

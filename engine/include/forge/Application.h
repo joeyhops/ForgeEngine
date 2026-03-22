@@ -1,6 +1,8 @@
 #pragma once
 #include <forge/CombatComponent.h>
 #include <forge/AttackData.h>
+#include <forge/FlagManager.h>
+#include <forge/FlagIds.h>
 
 #include <memory>
 #include <string>
@@ -72,6 +74,8 @@ namespace forge {
 
     std::unique_ptr<LuaState>m_lua;
     std::string m_scriptPath;
+
+    FlagManager m_flags;
   };
 
 }
