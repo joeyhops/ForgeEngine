@@ -6,7 +6,13 @@
 
 namespace forge {
 // Helpers to convert from GLM -> bullet vectors
-static btVector3 toBt(const glm::vec3& v) { return btVector3(v.x, v.y, v.z); }
+static btVector3 toBt(const glm::vec3& v) {
+  return btVector3(
+    static_cast<btScalar>(v.x),
+    static_cast<btScalar>(v.y),
+    static_cast<btScalar>(v.z)
+  ); 
+}
 static glm::vec3 toGlm(const btVector3& v) { return glm::vec3(v.x(), v.y(), v.z()); }
 
 PhysicsWorld::PhysicsWorld() {

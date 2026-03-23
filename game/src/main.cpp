@@ -1,15 +1,15 @@
-#include <forge/Application.h>
+#include "ForgeGame.h"
 #include <forge/Logger.h>
 #include <iostream>
 
 int main() {
   forge::Logger::init();
   try {
-    forge::Application app(1280, 720, "Forge Engine v0.1");
-    app.run();
+    ForgeGame game;
+    game.run();
   }
   catch (const std::exception& e) {
-    LOG_CRITICAL("Unhandled exception: {}", e.what());
+    LOG_CRITICAL("Fatal: {}", e.what());
     return -1;
   }
 

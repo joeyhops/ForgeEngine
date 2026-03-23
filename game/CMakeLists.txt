@@ -1,4 +1,7 @@
-add_executable(game src/main.cpp)
+add_executable(game
+  src/main.cpp
+  src/ForgeGame.cpp
+)
 
 target_link_libraries(game PRIVATE forge_engine)
 

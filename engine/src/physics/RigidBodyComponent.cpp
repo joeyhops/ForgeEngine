@@ -1,3 +1,4 @@
+#include <LinearMath/btQuaternion.h>
 #include <forge/RigidBodyComponent.h>
 #include <forge/PhysicsWorld.h>
 #include <forge/Logger.h>
@@ -8,8 +9,21 @@
 
 namespace forge {
 // conversion helpers
-static btVector3 toBt(const glm::vec3& v) { return {v.x, v.y, v.z}; }
-static btQuaternion toBt(const glm::quat& q) { return {q.x, q.y, q.z, q.w }; }
+static btVector3 toBt(const glm::vec3& v) {
+  return btVector3(
+    static_cast<btScalar>(v.x),
+    static_cast<btScalar>(v.y),
+    static_cast<btScalar>(v.z)
+  ); 
+}
+static btQuaternion toBt(const glm::quat& q) {
+  return btQuaternion(
+    static_cast<btScalar>(q.x),
+    static_cast<btScalar>(q.y),
+    static_cast<btScalar>(q.z),
+    static_cast<btScalar>(q.w)
+  ); 
+}
 static glm::vec3 toGlm(const btVector3& v) { return { v.x(), v.y(), v.z() }; }
 static glm::quat toGlm(const btQuaternion& q) { return { q.w(), q.x(), q.y(), q.z() }; }
 

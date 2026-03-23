@@ -1,8 +1,13 @@
 #pragma once
 #include <cstdint>
 
-namespace forge::Flags {
-
+// All Flag IDs for this game
+// Ranges:
+//    10000-19999: World / environment
+//    20000-29999: Boss kills
+//    30000-39999: NPC Quest Lines
+//    40000-49999: Player progression
+namespace GameFlags {
 // World
 constexpr uint32_t BONFIRE_HIGHWALL_LIT = 10000;
 constexpr uint32_t GATE_HIGHWALL_OPEN = 10001;

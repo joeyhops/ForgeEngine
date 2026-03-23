@@ -1,89 +1,71 @@
 #pragma once
-#include <forge/CombatComponent.h>
-#include <forge/AttackData.h>
-#include <forge/FlagManager.h>
-#include <forge/FlagIds.h>
-
 #include <memory>
-#include <string>
 struct GLFWwindow;
 
 namespace forge {
-  class Shader;
-  class Animator;
-  class Mesh;
-  class Camera;
-  class Transform;
-  class LuaState;
-  class PhysicsWorld;
-  class RigidBodyComponent;
-  class CombatSystem;
-  class AIComponent;
-}
 
-namespace forge {
+class PhysicsWorld;
+class LuaState;
+class CombatSystem;
+class FlagManager;
 
-  class Application {
-  public:
-    Application(int width, int height, const char* title);
-    ~Application();
+class Application {
 
-    // Should only ever be one Application
-    Application(const Application&) = delete;
-    Application& operator=(const Application&) = delete;
+public:
+  Application(int width, int height, const char* title);
+  virtual ~Application();
 
-    void run();
+  // Should only ever be one Application
+  Application(const Application&) = delete;
+  Application& operator=(const Application&) = delete;
 
-  private:
-    void init();
-    void shutdown();
-    void update(float dt);
-    void render();
+  // Runs main loop, calls virtual hooks each frame
+  void run();
 
-    GLFWwindow* m_window = nullptr;
-    bool m_running = false;
-    int m_width;
-    int m_height;
-  
-    // Renderer
-    std::unique_ptr<Shader> m_shader;
-    std::unique_ptr<Camera> m_camera;
-    std::unique_ptr<Animator>m_animator;
+  // System accessors - Game subclass uses these in onInit
+  PhysicsWorld& getPhysics();
+  LuaState& getLua();
+  CombatSystem& getCombat(); 
+  FlagManager& getFlags(); 
+  GLFWwindow* getWindow() const; 
+  int getWidth() const; 
+  int getHeight() const; 
+  float getTotalTime() const; 
 
-    // Cube
-    std::unique_ptr<Mesh> m_cubeMesh;
-    std::unique_ptr<Transform> m_cubeTransform;
-    std::unique_ptr<RigidBodyComponent> m_cubeBody;
+  // Input polling helpers
+  bool isKeyDown(int glfwKey) const;
+  bool isKeyPressed(int glfwKey); // True only on first frame of press
 
-    // Floor (static - visual + physics)
-    std::unique_ptr<Mesh> m_floorMesh;
-    std::unique_ptr<Transform> m_floorTransform;
-    std::unique_ptr<RigidBodyComponent>m_floorBody;
+protected:
+  // Override these in actual game
+  virtual void onInit() = 0; // Setup scene, entities, scripts
+  virtual void onUpdate(float dt) = 0; // Per-frame game logic
+  virtual void onRender() = 0; // Submit draw calls
+  virtual void onShutdown() = 0; // Release game resources
 
-    std::unique_ptr<Mesh> m_boneMarkerMesh;
+  // Clear color - game can change this
+  void setClearColor(float r, float g, float b);
 
-    float m_totalTime = 0.0f; // For rotation animation
+private:
+  void initWindow();
+  void initSystems();
+  void shutdownSystems();
 
-    std::unique_ptr<PhysicsWorld> m_physicsWorld;
-    
-    std::unique_ptr<CombatSystem>m_combatSystem;
-    std::unique_ptr<CombatComponent> m_playerCombat;
-    glm::vec3 m_playerWorldPos = { 0.0f, 0.0f, 5.0f };
+  GLFWwindow* m_window = nullptr;
+  int m_width, m_height;
+  float m_totalTime = 0.0f;
+  bool m_running = false;
+  float m_clearColor[3] = { 0.1f, 0.1f, 0.12f };
 
-    std::unique_ptr<CombatComponent>m_enemyCombat;
-    std::unique_ptr<AIComponent> m_enemyAI;
+  // Prev key states for isKeyPressed
+  static constexpr int KEY_COUNT = 512;
+  int m_prevKeyStates[KEY_COUNT] = {};
 
-    struct InputState {
-      bool attackLight = false;
-      bool attackHeavy = false;
-      bool guard = false;
-    };
-    InputState m_prevInput; // Track previous frame to detect key-down
-
-    std::unique_ptr<LuaState>m_lua;
-    std::string m_scriptPath;
-
-    FlagManager m_flags;
-  };
+  //Engine Systems - Owned here, accessed via getters
+  std::unique_ptr<PhysicsWorld> m_physics;
+  std::unique_ptr<LuaState> m_lua;
+  std::unique_ptr<CombatSystem> m_combat;
+  std::unique_ptr<FlagManager> m_flags;
+};
 
 }
