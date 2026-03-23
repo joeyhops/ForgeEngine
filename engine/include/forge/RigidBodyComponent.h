@@ -41,6 +41,10 @@ public:
 
   btRigidBody* getBulletBody() { return m_body.get(); }
 
+  // Instantly move body to new pos - used for AI/Scripted movement
+  // Unlike forces, this bypasses the simulation and sets pos directly
+  void teleport(const glm::vec3& pos);
+
 private:
   PhysicsWorld& m_world;
   Transform& m_transform;

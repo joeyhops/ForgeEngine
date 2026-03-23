@@ -5,6 +5,7 @@ add_library(forge_engine STATIC
   src/renderer/Shader.cpp
   src/renderer/Mesh.cpp
   src/renderer/Camera.cpp
+  src/renderer/Animator.cpp
   src/scene/Transform.cpp
   src/scripting/LuaState.cpp
   src/physics/PhysicsWorld.cpp
@@ -13,6 +14,7 @@ add_library(forge_engine STATIC
   src/combat/CombatSystem.cpp
   src/events/EventBus.cpp
   src/events/FlagManager.cpp
+  src/ai/AIComponent.cpp
 )
 
 target_include_directories(forge_engine PUBLIC

@@ -94,5 +94,20 @@ void RigidBodyComponent::setAngularForce(const glm::vec3& factor) {
   m_body->setAngularFactor(toBt(factor));
 }
 
+void RigidBodyComponent::teleport(const glm::vec3& pos) {
+  btTransform t = m_body->getWorldTransform();
+  t.setOrigin(toBt(pos));
+
+  // Must update both the body AND the motion state
+  // motion state is what syncTransform reads back from
+  // Upating only one causes them to diverge
+  m_body->setWorldTransform(t);
+  m_motionState->setWorldTransform(t);
+
+  // wake the body - Bullet puts idle bodies to sleep
+  // A sleeping body ignores setWorldTransform completely
+  m_body->activate(true);
+}
+
 }
 

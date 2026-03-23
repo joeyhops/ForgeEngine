@@ -6,6 +6,7 @@
 #include <forge/Transform.h>
 #include <forge/CombatComponent.h>
 #include <forge/AttackData.h>
+#include <forge/AIComponent.h>
 
 #include <glm/glm.hpp>
 #include <fstream>
@@ -44,6 +45,7 @@ void LuaState::registerBindings() {
   registerTransform();
   registerCombat();
   registerEvents();
+  registerAI();
 
   // Expose the logger to Lua so scripts can log properly
   // usage in lua: Log.info("hello from script")
@@ -147,6 +149,20 @@ void LuaState::registerEvents() {
                               EventBus::publish(ScriptEvent{ .name = name, .data = data });
                             }
                            );
+}
+
+void LuaState::registerAI() {
+  m_lua.new_usertype<AIComponent>("AIComponent",
+                                  sol::no_constructor,
+                                  "getStateName", &AIComponent::getStateName,
+                                  "canSeePlayer", &AIComponent::canSeePlayer,
+                                  "inAttackRange", &AIComponent::inAttackRange,
+                                  "getDistToPlayer", &AIComponent::getDistToPlayer,
+                                  "setDetectionRadius", &AIComponent::setDetectionRadius,
+                                  "setAttackRadius", &AIComponent::setAttackRadius,
+                                  "setMoveSpeed", &AIComponent::setMoveSpeed,
+                                  "addWaypoint", &AIComponent::addWaypoint
+                                  );
 }
 
 }

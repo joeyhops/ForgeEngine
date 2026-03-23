@@ -43,6 +43,7 @@ private:
   void registerTransform(); // transform class
   void registerCombat();  // Register combat funcs
   void registerEvents(); // Register events
+  void registerAI(); // Register AI
 
   sol::state m_lua;
 };

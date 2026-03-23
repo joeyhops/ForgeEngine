@@ -10,6 +10,7 @@ struct GLFWwindow;
 
 namespace forge {
   class Shader;
+  class Animator;
   class Mesh;
   class Camera;
   class Transform;
@@ -17,6 +18,7 @@ namespace forge {
   class PhysicsWorld;
   class RigidBodyComponent;
   class CombatSystem;
+  class AIComponent;
 }
 
 namespace forge {
@@ -46,6 +48,7 @@ namespace forge {
     // Renderer
     std::unique_ptr<Shader> m_shader;
     std::unique_ptr<Camera> m_camera;
+    std::unique_ptr<Animator>m_animator;
 
     // Cube
     std::unique_ptr<Mesh> m_cubeMesh;
@@ -57,13 +60,18 @@ namespace forge {
     std::unique_ptr<Transform> m_floorTransform;
     std::unique_ptr<RigidBodyComponent>m_floorBody;
 
+    std::unique_ptr<Mesh> m_boneMarkerMesh;
+
     float m_totalTime = 0.0f; // For rotation animation
 
     std::unique_ptr<PhysicsWorld> m_physicsWorld;
     
     std::unique_ptr<CombatSystem>m_combatSystem;
     std::unique_ptr<CombatComponent> m_playerCombat;
+    glm::vec3 m_playerWorldPos = { 0.0f, 0.0f, 5.0f };
+
     std::unique_ptr<CombatComponent>m_enemyCombat;
+    std::unique_ptr<AIComponent> m_enemyAI;
 
     struct InputState {
       bool attackLight = false;

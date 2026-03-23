@@ -1,5 +1,3 @@
-#include "forge/EventBus.h"
-#include "forge/Events.h"
 #include <forge/Application.h>
 #include <forge/Logger.h>
 #include <forge/Shader.h>
@@ -11,13 +9,19 @@
 #include <forge/RigidBodyComponent.h>
 #include <forge/CombatSystem.h>
 #include <forge/CombatComponent.h>
+#include <forge/EventBus.h>
+#include <forge/Events.h>
+#include <forge/AIComponent.h>
+#include <forge/Animator.h>
 
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
 #include <chrono>
 #include <memory>
+#include <sol/forward.hpp>
 #include <stdexcept>
 #include <vector>
 
@@ -54,6 +58,25 @@ Application::Application(int width, int height, const char* title)
   m_camera = std::make_unique<Camera>(60.0f, aspect, 0.1f, 100.0f);
   m_camera->setPosition({ 0.0f, 4.0f, 8.0f });
   m_camera->setTarget({ 0.0f, 0.0f, 0.0f });
+
+  // Procedural Bone Demo
+  // Creates a 3-bone chain and waves it - all in code
+  // Remove when we have a real asset pipeline and models
+  Bone root, mid, tip;
+  root.name = "root"; root.parentIndex = -1;
+  root.offsetMatrix = glm::mat4(1.0f);
+  root.localTransform = glm::mat4(1.0f);
+
+  mid.name = "mid"; mid.parentIndex = 0;
+  mid.offsetMatrix = glm::translate(glm::mat4(1.0f), { 0, 1, 0 });
+  mid.localTransform = glm::translate(glm::mat4(1.0f), { 0, 1, 0 });
+
+  tip.name = "tip"; tip.parentIndex = 1;
+  tip.offsetMatrix = glm::translate(glm::mat4(1.0f), { 0, 2, 0 });
+  tip.localTransform = glm::translate(glm::mat4(1.0f), { 0, 1, 0 });
+
+  m_animator = std::make_unique<Animator>();
+  m_animator->setSkeleton({ root, mid, tip });
 
   // Physics World
   m_physicsWorld = std::make_unique<PhysicsWorld>();
@@ -109,6 +132,24 @@ Application::Application(int width, int height, const char* title)
     0.0f // mass=0 -> static
   );
 
+  // Bone marker mesh (small cube, reused for all bones)
+  std::vector<Vertex> markerVerts = {
+    {{-0.5f,-0.5f,-0.5f}, {1.0f, 0.8f, 0.0f}}, // Gold color
+    {{ 0.5f,-0.5f,-0.5f}, {1.0f, 0.8f, 0.0f}},
+    {{ 0.5f, 0.5f,-0.5f}, {1.0f, 0.8f, 0.0f}},
+    {{-0.5f, 0.5f,-0.5f}, {1.0f, 0.8f, 0.0f}},
+    {{-0.5f,-0.5f, 0.5f}, {1.0f, 0.9f, 0.2f}},
+    {{ 0.5f,-0.5f, 0.5f}, {1.0f, 0.9f, 0.2f}},
+    {{ 0.5f, 0.5f, 0.5f}, {1.0f, 0.9f, 0.2f}},
+    {{-0.5f, 0.5f, 0.5f}, {1.0f, 0.9f, 0.2f}},
+  };
+  std::vector<unsigned int> markerIdx = {
+    0,1,2, 2,3,0, 4,5,6, 6,7,4,
+    0,4,7, 7,3,0, 1,5,6, 6,2,1,
+    3,2,6, 6,7,3, 0,1,5, 5,4,0,
+  };
+  m_boneMarkerMesh = std::make_unique<Mesh>(markerVerts, markerIdx);
+
   m_lua = std::make_unique<LuaState>();
 
   // Combat system
@@ -145,6 +186,35 @@ Application::Application(int width, int height, const char* title)
     });
   };
 
+  // AI Setup
+
+  m_enemyAI = std::make_unique<AIComponent>(
+    "Dummy", *m_cubeTransform, *m_enemyCombat);
+
+  // Patrol in square around scene
+  m_enemyAI->addWaypoint({ -3.0f, 0.0f, -3.0f });
+  m_enemyAI->addWaypoint({  3.0f, 0.0f, -3.0f });
+  m_enemyAI->addWaypoint({  3.0f, 0.0f,  3.0f });
+  m_enemyAI->addWaypoint({ -3.0f, 0.0f,  3.0f });
+
+  // AI Lua Callbacks
+  m_enemyAI->onPlayerDetected = [this](){
+    m_lua->callFunction("onPlayerDetected");
+  };
+  m_enemyAI->onPlayerLost = [this](){
+    m_lua->callFunction("onPlayerLost");
+  };
+  m_enemyAI->onChooseAttack = [this]() -> std::string {
+    sol::protected_function fn = m_lua->get()["onChooseAttack"];
+    if (!fn.valid()) return "R1";
+    auto result = fn();
+    if (!result.valid()) return "R1";
+    return result.get<std::string>();
+  };
+
+  // Expose AI To Lua
+  m_lua->get()["enemyAI"] = m_enemyAI.get();
+
   EventBus::subscribe<FlagChangeEvent>([](const FlagChangeEvent& e) {
     LOG_INFO("[Event] Flag {} changed -> {}", e.flagId, e.newValue);
   });
@@ -164,6 +234,9 @@ Application::Application(int width, int height, const char* title)
   m_lua->loadScript("../../../../game/scripts/combat/player_combat.lua");
   m_lua->loadScript("../../../../game/scripts/events/flags.lua");
   m_lua->loadScript("../../../../game/scripts/events/demo_quest.lua");
+  // Load AI Script
+  m_lua->loadScript("../../../../game/scripts/ai/enemy_ai.lua");
+  m_lua->callFunction("onAIInit");
   // Lua
   m_scriptPath = "../../../../game/scripts/cube_controller.lua";
   m_lua->get()["transform"] = m_cubeTransform.get();
@@ -199,9 +272,12 @@ void Application::shutdown() {
   m_cubeTransform.reset();
   m_floorMesh.reset();
   m_floorTransform.reset();
+  m_boneMarkerMesh.reset();
+  m_animator.reset();
   m_combatSystem.reset();
   m_playerCombat.reset();
   m_enemyCombat.reset();
+  m_enemyAI.reset();
   m_shader.reset();
   m_camera.reset();
 
@@ -222,43 +298,67 @@ void Application::update(float dt) {
     m_lua->loadScript(m_scriptPath);
   }
 
+  float playerSpeed = 4.0f;
+  if (glfwGetKey(m_window, GLFW_KEY_UP) == GLFW_PRESS)
+    m_playerWorldPos.z -= playerSpeed * dt;
+  if (glfwGetKey(m_window, GLFW_KEY_DOWN) == GLFW_PRESS)
+    m_playerWorldPos.z += playerSpeed * dt;
+  if (glfwGetKey(m_window, GLFW_KEY_LEFT) == GLFW_PRESS)
+    m_playerWorldPos.x -= playerSpeed * dt;
+  if (glfwGetKey(m_window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+    m_playerWorldPos.x += playerSpeed * dt;
+
+  // AI Update
+  m_enemyAI->update(dt, m_playerWorldPos);
+  m_lua->callFunction("onAIUpdate", dt);
+
+  m_cubeBody->teleport(m_cubeTransform->getPosition());
+
   // Physics setup
-  // Bullet advances the simulation, resolves collisions
   m_physicsWorld->step(dt);
-
-  // sync phys results back to transforms
   m_cubeBody->syncTransform();
-  // Floor is static, no sync
 
-  // World data for hit detection
-  glm::vec3 playerPos = { 0.0f, 0.0f, 0.0f };
-  glm::vec3 playerFwd = { 0.0f, 0.0f,-1.0f };
-  glm::vec3 enemyPos = { 0.0f, 0.0f, -1.5f }; //Enemy in front of player
-  glm::vec3 enemyFwd = { 0.0f, 0.0f,  1.0f }; //Enemy in front of player
+  // Animation Demo
+  if (m_animator) {
+    float wave = sinf(m_totalTime * 2.0f);
 
-  m_playerCombat->setWorldData(playerPos, playerFwd);
-  m_enemyCombat->setWorldData(enemyPos, {0,0,1});
+    // Manually drive bone matrices with sine-waves
+    // Simulates real animation clip
+    auto& globals = const_cast<std::vector<glm::mat4>&>(
+      m_animator->getGlobalTransforms());
+    globals.resize(3);
+
+    globals[0] = glm::rotate(glm::mat4(1.0f), wave * 0.3f, glm::vec3(0,0,1));
+    globals[1] = globals[0]
+      * glm::translate(glm::mat4(1.0f), {0,1,0}) 
+      * glm::rotate(glm::mat4(1.0f), wave * 0.5f, glm::vec3(0,0,1));
+    globals[2] = globals[1]
+      * glm::translate(glm::mat4(1.0f), {0,1,0}) 
+      * glm::rotate(glm::mat4(1.0f), wave * 0.8f, glm::vec3(0,0,1));
+
+    auto& matrices = const_cast<std::vector<glm::mat4>&>(
+      m_animator->getBoneMatrices());
+    matrices.resize(3);
+    matrices[0] = globals[0];
+    matrices[1] = globals[1];
+    matrices[2] = globals[2];
+  }
+
+  // Player combat world data
+  glm::vec3 playerFwd = { 0.0f, 0.0f, -1.0f };
+  m_playerCombat->setWorldData(m_playerWorldPos, playerFwd);
 
   // Input -> Lua
-  InputState input;
   bool jPressed = glfwGetKey(m_window, GLFW_KEY_J) == GLFW_PRESS;
   bool kPressed = glfwGetKey(m_window, GLFW_KEY_K) == GLFW_PRESS;
   bool lPressed = glfwGetKey(m_window, GLFW_KEY_L) == GLFW_PRESS;
 
-  input.attackLight = jPressed && !m_prevInput.attackLight;
-  input.attackHeavy = kPressed && !m_prevInput.attackHeavy;
-  input.guard = lPressed;
-
+  auto inputTable = m_lua->get().create_table();
+  inputTable["attackLight"] = jPressed && !m_prevInput.attackLight; 
+  inputTable["attackHeavy"] = kPressed && !m_prevInput.attackHeavy; 
+  inputTable["guard"] = lPressed; 
   m_prevInput = { jPressed, kPressed, lPressed };
 
-  auto inputTable = m_lua->get().create_table();
-  inputTable["attackLight"] = input.attackLight;
-  inputTable["attackHeavy"] = input.attackHeavy;
-  inputTable["guard"] = input.guard;
-  // Lua Note:
-  // Lua script can still read transform position/rotation
-  // but physics owns the cubes movement. script drives logic,
-  // physics drives position.
   m_lua->callFunction("onCombatUpdate", dt, inputTable);
 
   m_combatSystem->update(dt);
@@ -287,7 +387,22 @@ void Application::render() {
   m_shader->setMat4("u_mvp", vp * m_floorTransform->getModelMatrix());
   m_floorMesh->draw();
 
-  //* m_transform->getModelMatrix();
+  // Bone chain visualization
+  if (m_animator && !m_animator->getGlobalTransforms().empty()) {
+    const auto& globals = m_animator->getGlobalTransforms();
+
+    for (const glm::mat4& globalTransform : globals) {
+      // Extract bones world pos from col 3 of matrix
+      glm::vec3 bonePos = glm::vec3(globalTransform[3]);
+
+      // Build model matrix: place small cube at bone pos
+      glm::mat4 markerModel = glm::translate(glm::mat4(1.0f), bonePos) * glm::scale(glm::mat4(1.0f), glm::vec3(0.15f));
+
+      m_shader->setMat4("u_mvp", vp * markerModel);
+      m_boneMarkerMesh->draw();
+    }
+  }
+
 
   m_shader->unbind();
   glfwSwapBuffers(m_window);
