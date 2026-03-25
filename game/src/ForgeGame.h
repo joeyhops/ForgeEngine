@@ -1,6 +1,6 @@
 #pragma once
 #include <forge/Application.h>
-#include <forge/Mesh.h>
+#include <forge/AssetManager.h>
 #include <forge/Shader.h>
 #include <forge/Camera.h>
 #include <forge/Transform.h>
@@ -22,19 +22,23 @@ protected:
   void onShutdown() override;
 
 private:
+  void setupRenderer();
   void setupPlayer();
   void setupEnemy();
   void setupLevel();
   void setupScripts();
   void handleInput(float dt);
 
+  void drawModel(const forge::ModelData& model,
+                 const forge::Transform& transform);
+
   // Rendering
-  std::unique_ptr<forge::Shader> m_shader;
+  std::shared_ptr<forge::Shader> m_shader;
   std::unique_ptr<forge::Camera> m_camera;
 
   // Player
   struct PlayerEntity {
-    std::unique_ptr<forge::Mesh> mesh;
+    forge::ModelData model;
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::RigidBodyComponent> body;
     std::unique_ptr<forge::CombatComponent> combat;
@@ -43,7 +47,7 @@ private:
 
   // Enemy
   struct EnemyEntity {
-    std::unique_ptr<forge::Mesh> mesh;
+    forge::ModelData model;
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::RigidBodyComponent> body;
     std::unique_ptr<forge::CombatComponent> combat;
@@ -51,12 +55,16 @@ private:
   } m_enemy;
 
   // Level geometry
-  struct LevelEntity {
-    std::unique_ptr<forge::Mesh> mesh;
+  struct LevelPiece {
+    forge::ModelData model;
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::RigidBodyComponent> body;
   };
-  std::vector<LevelEntity> m_level;
+  std::vector<LevelPiece> m_level;
+
+  forge::ModelData m_floorModel;
+  forge::ModelData m_wallModel;
+  forge::ModelData m_towerModel;
 
   // Input
   struct InputState { bool j, k, l; } m_prevInput = {};

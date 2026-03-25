@@ -69,6 +69,10 @@ void Shader::setInt(const std::string& name, int value) const {
   glUniform1i(getUniformLocation(name), value);
 }
 
+void Shader::setBool(const std::string& name, bool value) const {
+  glUniform1i(getUniformLocation(name), (int)value);
+}
+
 std::string Shader::readFile(const std::string& path) {
   std::ifstream file(path);
   if (!file.is_open())

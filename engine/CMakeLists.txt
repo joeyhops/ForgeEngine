@@ -6,6 +6,7 @@ add_library(forge_engine STATIC
   src/renderer/Mesh.cpp
   src/renderer/Camera.cpp
   src/renderer/Animator.cpp
+  src/renderer/Texture.cpp
   src/scene/Transform.cpp
   src/scripting/LuaState.cpp
   src/physics/PhysicsWorld.cpp
@@ -15,6 +16,7 @@ add_library(forge_engine STATIC
   src/events/EventBus.cpp
   src/events/FlagManager.cpp
   src/ai/AIComponent.cpp
+  src/assets/AssetManager.cpp
 )
 
 target_include_directories(forge_engine PUBLIC
@@ -31,6 +33,7 @@ find_package(Lua REQUIRED)
 find_package(sol2 CONFIG REQUIRED)
 find_package(Bullet CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(assimp CONFIG REQUIRED)
 
 find_package(spdlog CONFIG REQUIRED)
 
@@ -43,5 +46,7 @@ target_link_libraries(forge_engine PUBLIC
   sol2::sol2
   ${BULLET_LIBRARIES}
   nlohmann_json::nlohmann_json
+  assimp::assimp
   spdlog::spdlog 
+  $<$<PLATFORM_ID:Linux>:stdc++fs>
 )

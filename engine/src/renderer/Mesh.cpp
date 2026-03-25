@@ -44,10 +44,13 @@ void Mesh::setupGPU(const std::vector<Vertex>& vertices,
                         sizeof(Vertex), (void*)offsetof(Vertex, position));
   glEnableVertexAttribArray(0);
 
-  // Color attribute - location 1, 3 floats, offset past the position floats
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE,
-                        sizeof(Vertex), (void*)offsetof(Vertex, color));
+                        sizeof(Vertex), (void*)offsetof(Vertex, normal));
   glEnableVertexAttribArray(1);
+
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,
+                        sizeof(Vertex), (void*)offsetof(Vertex, texCoord));
+  glEnableVertexAttribArray(2);
 
   glBindVertexArray(0);
 }

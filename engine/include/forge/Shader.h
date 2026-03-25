@@ -21,6 +21,7 @@ public:
   void setVec3(const std::string& name, const glm::vec3& vec) const;
   void setFloat(const std::string& name, float value) const;
   void setInt(const std::string& name, int value) const;
+  void setBool(const std::string& name, bool value) const;
 
 private:
   unsigned int m_programID = 0;

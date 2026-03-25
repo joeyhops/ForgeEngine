@@ -11,9 +11,10 @@
 #include <forge/Events.h>
 
 #include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-#include <memory>
+#include <glm/gtc/matrix_transform.hpp>
 #include <sol/forward.hpp>
+
+#include <memory>
 
 #include "GameFlags.h"
 
@@ -49,6 +50,9 @@ ForgeGame::ForgeGame()
 
 void ForgeGame::onInit() {
   LOG_INFO("[Game] Initializing ForgeGame");
+  forge::AssetManager::setAssetRoot("../../../../assets/");
+
+  setupRenderer();
   setupPlayer();
   setupEnemy();
   setupLevel();
@@ -56,18 +60,40 @@ void ForgeGame::onInit() {
 
   // Try loading previous save
   getFlags().loadFromFile("save.json");
+  LOG_INFO("[Game] init complete");
+}
+
+void ForgeGame::onShutdown() {
+  getFlags().saveToFile("save.json");
+  forge::AssetManager::printStats();
+  forge::AssetManager::clear();
+}
+
+void ForgeGame::setupRenderer() {
+  // Shader and camera
+  m_shader = forge::AssetManager::loadShader(
+    "shaders/basic.vert",
+    "shaders/basic.frag"
+  );
+  // Third person camera - positioned behind and above player
+  // angled down to see the level.
+  float aspect = (float)getWidth() / (float)getHeight();
+  m_camera = std::make_unique<forge::Camera>(60.0f, aspect, 0.1f, 200.0f);
+  m_camera->setPosition({ 0.0f, 8.0f, 12.0f });
+  m_camera->setTarget({ 0.0f, 1.0f, 0.0f });
 }
 
 void ForgeGame::setupPlayer() {
-  m_player.mesh = std::make_unique<forge::Mesh>(makeCubeVerts(), makeCubeIdx());
+  m_player.model = forge::AssetManager::loadModel("models/characters/character-a.fbx"); 
   m_player.transform = std::make_unique<forge::Transform>();
-  m_player.transform->setPosition({ 0.0f, 1.0f, 5.0f });
+  m_player.transform->setPosition({ 0.0f, 0.0f, 5.0f });
+  m_player.transform->setScale({ 0.01f, 0.01f, 0.01f });
 
   m_player.body = std::make_unique<forge::RigidBodyComponent>(
     getPhysics(),
     *m_player.transform,
-    forge::CollisionShape::Box,
-    glm::vec3(0.5f),
+    forge::CollisionShape::Capsule,
+    glm::vec3(0.4f, 0.9f, 0.0f),
     1.0f
   );
   m_player.body->setAngularForce({ 0,0,0 });
@@ -93,15 +119,16 @@ void ForgeGame::setupPlayer() {
 }
 
 void ForgeGame::setupEnemy() {
-  m_enemy.mesh = std::make_unique<forge::Mesh>(makeCubeVerts(), makeCubeIdx());
+  m_enemy.model = forge::AssetManager::loadModel("models/characters/character-b.fbx"); 
   m_enemy.transform = std::make_unique<forge::Transform>();
-  m_enemy.transform->setPosition({ 0.0f, 1.0f, -3.0f });
+  m_enemy.transform->setPosition({ 0.0f, 0.0f, -8.0f });
+  m_enemy.transform->setScale({ 0.01f, 0.01f, 0.01f });
 
   m_enemy.body = std::make_unique<forge::RigidBodyComponent>(
     getPhysics(),
     *m_enemy.transform,
-    forge::CollisionShape::Box,
-    glm::vec3(0.5f),
+    forge::CollisionShape::Capsule,
+    glm::vec3(0.4f, 0.9f, 0.0f),
     1.0f
   );
   m_enemy.body->setAngularForce({ 0,0,0 });
@@ -116,16 +143,18 @@ void ForgeGame::setupEnemy() {
   m_enemy.combat->onDeath = [this](){
     getFlags().set(GameFlags::BOSS_DUMMY_DEAD, true);
     forge::EventBus::publish(forge::EntityDiedEvent{
-      .entityName = "Dummy",
+      .entityName = "Hollow",
       .position = m_enemy.transform->getPosition()
     });
   };
 
   m_enemy.ai = std::make_unique<forge::AIComponent>(
-    "Dummy",
+    "Hollow",
     *m_enemy.transform,
     *m_enemy.combat
   );
+  m_enemy.ai->setDetectionRadius(5.0f);
+  m_enemy.ai->setAttackRadius(1.5f);
 
   // Patrol waypoints
   m_enemy.ai->addWaypoint({ -3.0f, 1.0f, -3.0f });
@@ -150,50 +179,127 @@ void ForgeGame::setupEnemy() {
 }
 
 void ForgeGame::setupLevel() {
-  // Shader and camera
-  m_shader = std::make_unique<forge::Shader>(
-    "../../../../assets/shaders/basic.vert",
-    "../../../../assets/shaders/basic.frag"
-  );
+  m_floorModel = forge::AssetManager::loadModel("models/medieval/floor.fbx");
+  m_wallModel = forge::AssetManager::loadModel("models/medieval/wall.fbx");
+  m_towerModel = forge::AssetManager::loadModel("models/medieval/tower.fbx");
 
-  float aspect = (float)getWidth() / (float)getHeight();
-  m_camera = std::make_unique<forge::Camera>(60.0f, aspect, 0.1f, 100.0f);
-  m_camera->setPosition({ 0.0f, 6.0f, 10.0f });
-  m_camera->setTarget({ 0.0f, 0.0f, 0.0f });
+  // Floor - 7x7 grid of tiles centered on origin
+  const float tileSize = 1.0f;
+  const float modelScale = 0.01f;
+  const int gridSize = 7;
+  const float halfGrid = (gridSize - 1) * tileSize * 0.5f;
 
+  for (int z = 0; z < gridSize; z++) {
+    for (int x = 0; x < gridSize; x++) {
+      LevelPiece piece;
+      piece.model = m_floorModel; // Shared, no extra GPU mem
 
-  // Floor
-  std::vector<forge::Vertex> floorVerts = {
-    {{-5.0f,0.0f,-5.0f},{0.3f,0.3f,0.3f}},
-    {{ 5.0f,0.0f,-5.0f},{0.3f,0.3f,0.3f}},
-    {{ 5.0f,0.0f, 5.0f},{0.3f,0.3f,0.3f}},
-    {{-5.0f,0.0f, 5.0f},{0.3f,0.3f,0.3f}},
-  };
-  std::vector<unsigned int> floorIdx = {0,1,2, 2,3,0};
-  
-  LevelEntity floor;
-  floor.mesh = std::make_unique<forge::Mesh>(floorVerts, floorIdx);
-  floor.transform = std::make_unique<forge::Transform>();
-  floor.body = std::make_unique<forge::RigidBodyComponent>(
-    getPhysics(),
-    *floor.transform,
-    forge::CollisionShape::Plane,
-    glm::vec3(0.0f),
-    0.0f
-  );
+      piece.transform = std::make_unique<forge::Transform>();
+      piece.transform->setPosition({
+        x * tileSize - halfGrid, 
+        0.001f,
+        z * tileSize - halfGrid
+      });
+      piece.transform->setScale({ modelScale, modelScale, modelScale });
 
-  m_level.push_back(std::move(floor));
+      // Static phys plane only needed once - invisible floor
+      // handles collision for all tiles collectively
+      piece.body = nullptr;
+
+      m_level.push_back(std::move(piece));
+    }
+  }
+
+  // Invisible floor plane
+  {
+    LevelPiece physicsFloor;
+    physicsFloor.model = {};
+    physicsFloor.transform = std::make_unique<forge::Transform>();
+    physicsFloor.transform->setPosition({ 0,0,0 });
+    physicsFloor.body = std::make_unique<forge::RigidBodyComponent>(
+      getPhysics(),
+      *physicsFloor.transform,
+      forge::CollisionShape::Plane,
+      glm::vec3(0),
+      0.0f
+    );
+    m_level.push_back(std::move(physicsFloor));
+  }
+
+  // Walls -- perimeter of courtyard
+  // North and south
+  for (int x = 0; x < gridSize; x++) {
+    float xPos = x * tileSize - halfGrid;
+
+    // North
+    LevelPiece north;
+    north.model = m_wallModel;
+    north.transform = std::make_unique<forge::Transform>();
+    north.transform->setPosition({ xPos, 0.0f, -halfGrid - tileSize });
+    north.transform->setScale({ modelScale, modelScale, modelScale });
+    north.body = nullptr;
+    m_level.push_back(std::move(north));
+
+    // South
+    LevelPiece south;
+    south.model = m_wallModel;
+    south.transform = std::make_unique<forge::Transform>();
+    south.transform->setPosition({ xPos, 0.0f, halfGrid + tileSize });
+    south.transform->setScale({ modelScale, modelScale, modelScale });
+    south.transform->setEulerAngles({ 0, 180.0f, 0 });
+    south.body = nullptr;
+    m_level.push_back(std::move(south));
+  }
+
+  // East and west walls
+  for (int z = 0; z < gridSize; z++) {
+    float zPos = z * tileSize - halfGrid;
+
+    // North
+    LevelPiece west;
+    west.model = m_wallModel;
+    west.transform = std::make_unique<forge::Transform>();
+    west.transform->setPosition({ -halfGrid - tileSize, 0.0f, zPos });
+    west.transform->setScale({ modelScale, modelScale, modelScale });
+    west.transform->setEulerAngles({ 0, 90.0f, 0 });
+    west.body = nullptr;
+    m_level.push_back(std::move(west));
+
+    // South
+    LevelPiece east;
+    east.model = m_wallModel;
+    east.transform = std::make_unique<forge::Transform>();
+    east.transform->setPosition({ halfGrid + tileSize, 0.0f, zPos });
+    east.transform->setScale({ modelScale, modelScale, modelScale });
+    east.transform->setEulerAngles({ 0, -90.0f, 0 });
+    east.body = nullptr;
+    m_level.push_back(std::move(east));
+  }
+
+  const float corner = halfGrid + tileSize;
+  for (float cx : { -corner, corner }) {
+      for (float cz : { -corner, corner }) {
+          LevelPiece tower;
+          tower.model     = m_towerModel;
+          tower.transform = std::make_unique<forge::Transform>();
+          tower.transform->setPosition({ cx, 0.0f, cz });
+          tower.transform->setScale({ modelScale, modelScale, modelScale });
+          tower.body = nullptr;
+          m_level.push_back(std::move(tower));
+      }
+  }
 }
 
 void ForgeGame::setupScripts() {
   // Load order matters, flags before quests, attacks before combat
   getLua().get()["Flags"] = &getFlags();
 
-  getLua().loadScript("../../../../assets/scripts/events/flags.lua");
-  getLua().loadScript("../../../../assets/scripts/combat/attacks.lua");
-  getLua().loadScript("../../../../assets/scripts/combat/player_combat.lua");
-  getLua().loadScript("../../../../assets/scripts/ai/enemy_ai.lua");
-  getLua().loadScript("../../../../assets/scripts/events/demo_quest.lua");
+  const std::string root = forge::AssetManager::getAssetRoot();
+  getLua().loadScript(root + "scripts/events/flags.lua");
+  getLua().loadScript(root + "scripts/combat/attacks.lua");
+  getLua().loadScript(root + "scripts/combat/player_combat.lua");
+  getLua().loadScript(root + "scripts/ai/enemy_ai.lua");
+  getLua().loadScript(root + "scripts/events/demo_quest.lua");
 
   getLua().callFunction("onAIInit");
 }
@@ -208,6 +314,10 @@ void ForgeGame::onUpdate(float dt) {
   getPhysics().step(dt);
   m_player.body->syncTransform();
   m_enemy.body->syncTransform();
+
+  glm::vec3 playerPos = m_player.transform->getPosition();
+  m_camera->setPosition(playerPos + glm::vec3(0, 8, 12));
+  m_camera->setTarget(playerPos + glm::vec3(0, 1, 0));
 
   m_player.combat->setWorldData(
     m_player.transform->getPosition(),
@@ -236,38 +346,70 @@ void ForgeGame::onUpdate(float dt) {
     getLua().loadScript("../../../../assets/scripts/combat/player_combat.lua");
 }
 
+void ForgeGame::drawModel(const forge::ModelData& model,
+                          const forge::Transform& transform)
+{
+  if (!model.mesh) return;
+
+  glm::mat4 modelMat = transform.getModelMatrix();
+  glm::mat4 mvp      = m_camera->getViewProjection() * modelMat;
+
+  m_shader->setMat4("u_mvp",   mvp);
+  m_shader->setMat4("u_model", modelMat);
+  m_shader->setVec3("u_tint",  glm::vec3(1.0f));  // White tint = no tint
+
+  if (model.hasTexture()) {
+      model.texture->bind(0);           // Bind to texture unit 0
+      m_shader->setInt ("u_texture",    0);
+      m_shader->setBool("u_hasTexture", true);
+  } else {
+      m_shader->setBool("u_hasTexture", false);
+  }
+
+  model.mesh->draw();
+}
+
 void ForgeGame::onRender() {
   m_shader->bind();
-  glm::mat4 vp = m_camera->getViewProjection();
 
-  m_shader->setMat4("u_mvp", vp * m_player.transform->getModelMatrix());
-  m_player.mesh->draw();
+  // Player
+  drawModel(m_player.model, *m_player.transform);
 
-  m_shader->setMat4("u_mvp", vp * m_enemy.transform->getModelMatrix());
-  m_enemy.mesh->draw();
+  // Enemy (tinted red slightly to distinguish)
+  m_shader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
+  drawModel(m_enemy.model, *m_enemy.transform);
 
-  for (auto& e : m_level) {
-    m_shader->setMat4("u_mvp", vp * e.transform->getModelMatrix());
-    e.mesh->draw();
+  // Level geometry
+  for (auto& piece : m_level) {
+      if (piece.model.mesh)
+          drawModel(piece.model, *piece.transform);
   }
 
   m_shader->unbind();
 }
 
-void ForgeGame::onShutdown() {
-  getFlags().saveToFile("save.json");
-  LOG_INFO("[Game] ForgeGame shutdown");
-}
 
 void ForgeGame::handleInput(float dt) {
-  float speed = 5.0f;
-  glm::vec3 pos = m_player.transform->getPosition();
+  const float speed = 5.0f;
+  glm::vec3   pos   = m_player.transform->getPosition();
+  glm::vec3   move  = { 0, 0, 0 };
 
-  if (isKeyDown(GLFW_KEY_W)) pos.z -= speed * dt;
-  if (isKeyDown(GLFW_KEY_S)) pos.z += speed * dt;
-  if (isKeyDown(GLFW_KEY_A)) pos.x -= speed * dt;
-  if (isKeyDown(GLFW_KEY_D)) pos.x += speed * dt;
+  if (isKeyDown(GLFW_KEY_W)) move.z -= 1.0f;
+  if (isKeyDown(GLFW_KEY_S)) move.z += 1.0f;
+  if (isKeyDown(GLFW_KEY_A)) move.x -= 1.0f;
+  if (isKeyDown(GLFW_KEY_D)) move.x += 1.0f;
 
+  if (glm::length(move) > 0.001f) {
+      move = glm::normalize(move) * speed;
+      // Face the direction of movement
+      float angle = atan2f(move.x, move.z);
+      m_player.transform->setEulerAngles({ 0, glm::degrees(angle), 0 });
+      m_player.forward = glm::normalize(glm::vec3(move.x, 0, move.z));
+  }
+
+  pos += move * dt;
+  pos.y = m_player.transform->getPosition().y; // Let physics own Y
   m_player.transform->setPosition(pos);
+  m_player.combat->setWorldData(pos, m_player.forward);
 }
 
