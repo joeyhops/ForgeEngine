@@ -18,6 +18,8 @@ public:
   // Call once per frame - resolves all active hitboxes against all defenders
   void update(float dt);
 
+  // Read only access for debug panels
+  const std::vector<CombatComponent*>& getCombatants() const { return m_combatants; }
 private:
   // Check if attackers active hitbox hits defender
   // Uses cone-based detection: winithin range AND within angle in front of attacker

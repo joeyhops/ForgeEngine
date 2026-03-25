@@ -9,6 +9,7 @@
 #include <forge/AIComponent.h>
 #include <forge/EventBus.h>
 #include <forge/Events.h>
+#include <forge/DebugUI.h>
 
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -17,32 +18,6 @@
 #include <memory>
 
 #include "GameFlags.h"
-
-// Helpers
-static std::vector<forge::Vertex> makeCubeVerts() {
-  return {
-    // position               color
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.2f, 0.2f}}, // 0 back-bottom-left
-    {{ 0.5f, -0.5f, -0.5f}, {0.2f, 1.0f, 0.2f}}, // 1 back-btm-right
-    {{ 0.5f,  0.5f, -0.5f}, {0.2f, 0.2f, 1.0f}}, // 2 back-top-right
-    {{-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 0.2f}}, // 3 back-top-left
-    {{-0.5f, -0.5f,  0.5f}, {1.0f, 0.2f, 1.0f}}, // 4 front-bottom-left
-    {{ 0.5f, -0.5f,  0.5f}, {0.2f, 1.0f, 1.0f}}, // 5 front-btm-right
-    {{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}}, // 6 front-top-right
-    {{-0.5f,  0.5f,  0.5f}, {0.5f, 0.5f, 1.0f}}, // 7 front-top-left
-  };
-}
-
-static std::vector<unsigned int> makeCubeIdx() {
-  return {
-    0,1,2,  2,3,0, // back face
-    4,5,6,  6,7,4, // front face
-    0,4,7,  7,3,0, // left face
-    1,5,6,  6,2,1, // right face
-    3,2,6,  6,7,3, // top face
-    0,1,5,  5,4,0, // bottom face
-  };
-}
 
 ForgeGame::ForgeGame()
   : forge::Application(1280, 720, "Forge Engine - Soulslike demo")
@@ -57,6 +32,9 @@ void ForgeGame::onInit() {
   setupEnemy();
   setupLevel();
   setupScripts();
+
+  // Register AI Components with the debug menu
+  getDebugUI().registerAIComponent(m_enemy.ai.get());
 
   // Try loading previous save
   getFlags().loadFromFile("save.json");

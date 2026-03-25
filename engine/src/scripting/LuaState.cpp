@@ -128,7 +128,8 @@ void LuaState::registerCombat() {
                                       "isGuarding", &CombatComponent::isGuarding,
                                       "tryAttack", &CombatComponent::tryAttack,
                                       "tryGuard", &CombatComponent::tryGuard,
-                                      "releaseGuard", &CombatComponent::releaseGuard
+                                      "releaseGuard", &CombatComponent::releaseGuard,
+                                      "takeDamage", &CombatComponent::takeDamage
                                       );
 }
 

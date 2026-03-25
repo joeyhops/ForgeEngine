@@ -8,6 +8,7 @@ class PhysicsWorld;
 class LuaState;
 class CombatSystem;
 class FlagManager;
+class DebugUI;
 
 class Application {
 
@@ -27,6 +28,7 @@ public:
   LuaState& getLua();
   CombatSystem& getCombat(); 
   FlagManager& getFlags(); 
+  DebugUI& getDebugUI();
   GLFWwindow* getWindow() const; 
   int getWidth() const; 
   int getHeight() const; 
@@ -66,6 +68,7 @@ private:
   std::unique_ptr<LuaState> m_lua;
   std::unique_ptr<CombatSystem> m_combat;
   std::unique_ptr<FlagManager> m_flags;
+  std::unique_ptr<DebugUI> m_debugUI;
 };
 
 }

@@ -29,6 +29,7 @@ public:
   // How many flags are set (useful for debug UI)
   size_t count() const { return m_flags.size(); }
 
+  const std::unordered_map<uint32_t, bool>& getAll() const { return m_flags; }
 private:
   //Only store flags that are true - false is the default
   //This keeps save files small even with thousands of flag IDs

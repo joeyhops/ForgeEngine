@@ -38,6 +38,10 @@ public:
   // Resturns false if can't attack (dead, already attacking, no stamina)
   bool tryAttack(const AttackData& attack);
 
+  void takeDamage(float amount) {
+    applyHit({ amount, 0.0f, glm::vec3(0.0f), "script" });
+  }
+
   // incoming Hit
   void applyHit(const HitEvent& hit);
 
@@ -58,7 +62,9 @@ public:
   float getHp() const { return m_hp; }
   float getMaxHp() const { return m_maxHp; }
   float getStamina() const { return m_stamina; }
+  float getMaxStamina() const { return m_maxStamina; }
   float getPoise() const { return m_poise; }
+  float getMaxPoise() const { return m_maxPoise; }
 
   CombatState getState() const { return m_fsm.current(); }
   std::string getStateName() const;

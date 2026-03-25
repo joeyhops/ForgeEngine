@@ -44,6 +44,11 @@ public:
   bool canSeePlayer() const { return m_distToPlayer <= m_detectionRadius; }
   bool inAttackRange() const { return m_distToPlayer <= m_attackRadius; }
 
+  // Tuning value read-back used by AI Debug panel
+  float getDetectionRadius() const { return m_detectionRadius; }
+  float getAttackRadius() const { return m_attackRadius; }
+  float getMoveSpeed() const { return m_moveSpeed; }
+
   // Lua callbacks
   // Use these in Lua to override default behavior
   std::function<void()> onPlayerDetected;

@@ -4,6 +4,7 @@
 #include <forge/LuaState.h>
 #include <forge/CombatSystem.h>
 #include <forge/FlagManager.h>
+#include <forge/DebugUI.h>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -19,6 +20,7 @@ PhysicsWorld& Application::getPhysics() { return *m_physics; }
 LuaState& Application::getLua() { return *m_lua; }
 CombatSystem& Application::getCombat() { return *m_combat; }
 FlagManager& Application::getFlags() { return *m_flags; }
+DebugUI& Application::getDebugUI() { return *m_debugUI; }
 GLFWwindow* Application::getWindow() const { return m_window; }
 int Application::getWidth() const { return m_width; }
 int Application::getHeight() const { return m_height; }
@@ -68,10 +70,18 @@ void Application::initSystems() {
   m_combat = std::make_unique<CombatSystem>();
   m_flags = std::make_unique<FlagManager>();
 
+  // ImGui - must come after OpenGL context is live (initWindow has ran)
+  m_debugUI = std::make_unique<DebugUI>();
+  m_debugUI->init(m_window);
+  m_debugUI->setCombatSystem(m_combat.get());
+  m_debugUI->setFlagManager(m_flags.get());
+  m_debugUI->setLuaState(m_lua.get());
   LOG_INFO("Engine systems initialized");
 }
 
 void Application::shutdownSystems() {
+  // ImGui first - no deps on any other systems
+  if (m_debugUI) { m_debugUI->shutdown(); m_debugUI.reset(); }
   // Shutdown order matters - Lua first (Lua may reference other systems)
   m_lua.reset();
   m_combat.reset();
@@ -93,21 +103,24 @@ void Application::run() {
     lastTime = now;
     m_totalTime += dt;
 
-    // Cache key stsates before polling (for isKeyPressed)
-   // std::memcpy(m_prevKeyStates,
-   //             glfwGetKeyScancode,
-    //            sizeof(m_prevKeyStates));
-
     glfwPollEvents();
 
     if (isKeyDown(GLFW_KEY_ESCAPE)) m_running = false;
 
     onUpdate(dt);
 
+    // Render
     glClearColor(m_clearColor[0], m_clearColor[1], m_clearColor[2], 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    // build ImGui panels for this frame (must come before onRender so
+    // the game can push its own panels in onRender if needed later)
+    m_debugUI->begin(dt);
+
     onRender();
+
+    //Flush ImGui draw data on top of scene
+    m_debugUI->end();
 
     glfwSwapBuffers(m_window);
   }

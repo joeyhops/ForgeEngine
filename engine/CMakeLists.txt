@@ -7,6 +7,7 @@ add_library(forge_engine STATIC
   src/renderer/Camera.cpp
   src/renderer/Animator.cpp
   src/renderer/Texture.cpp
+  src/renderer/DebugUI.cpp
   src/scene/Transform.cpp
   src/scripting/LuaState.cpp
   src/physics/PhysicsWorld.cpp
@@ -34,6 +35,7 @@ find_package(sol2 CONFIG REQUIRED)
 find_package(Bullet CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
 
 find_package(spdlog CONFIG REQUIRED)
 
@@ -47,6 +49,7 @@ target_link_libraries(forge_engine PUBLIC
   ${BULLET_LIBRARIES}
   nlohmann_json::nlohmann_json
   assimp::assimp
+  imgui::imgui
   spdlog::spdlog 
   $<$<PLATFORM_ID:Linux>:stdc++fs>
 )
