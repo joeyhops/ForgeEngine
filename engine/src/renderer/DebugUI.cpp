@@ -5,6 +5,7 @@
 #include <forge/LuaState.h>
 #include <forge/AIComponent.h>
 #include <forge/Logger.h>
+#include <forge/Animator.h>
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -84,6 +85,7 @@ void DebugUI::begin(float dt) {
   if (ImGui::IsKeyPressed(ImGuiKey_F3)) m_showFlagBrowser = !m_showFlagBrowser;
   if (ImGui::IsKeyPressed(ImGuiKey_F4)) m_showLuaConsole = !m_showLuaConsole;
   if (ImGui::IsKeyPressed(ImGuiKey_F5)) m_showAIInspector = !m_showAIInspector;
+  if (ImGui::IsKeyPressed(ImGuiKey_F6)) m_showAnimGraphMonitor = !m_showAnimGraphMonitor;
 
   // build panels
   if (m_showPerformance) drawPerformancePanel();
@@ -91,6 +93,7 @@ void DebugUI::begin(float dt) {
   if (m_showFlagBrowser) drawFlagBrowserPanel();
   if (m_showLuaConsole) drawLuaConsolePanel();
   if (m_showAIInspector) drawAIInspectorPanel();
+  if (m_showAnimGraphMonitor) drawAnimGraphMonitorPanel();
 }
 
 void DebugUI::end() {
@@ -366,6 +369,60 @@ void DebugUI::drawAIInspectorPanel() {
         ai->inAttackRange()
             ? ImGui::TextColored(ImVec4(1,0.3f,0.3f,1), "YES")
             : ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1), "no");
+
+        ImGui::PopID();
+        ImGui::Spacing();
+      }
+    }
+  }
+  ImGui::End();
+}
+
+void DebugUI::drawAnimGraphMonitorPanel() {
+  ImGui::SetNextWindowPos(ImVec2(620.0f, 10.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(320.0f, 200.0f), ImGuiCond_FirstUseEver);
+
+  if (ImGui::Begin("AnimGraph Monitor [F6]")) {
+    if (m_animators.empty()){
+      ImGui::TextDisabled("No animators registered.");
+      ImGui::TextDisabled("Call DebugUI::reigsterAnimator() in onInit");
+    } else {
+      for (auto& entry : m_animators) {
+        Animator* anim = entry.animator;
+        if (!anim) continue;
+
+        ImGui::PushID(anim);
+        ImGui::SeparatorText(entry.label.c_str());
+
+        // Current clip name
+        const std::string clipName = anim->getClipName();
+        ImGui::Text("Clip : %s", clipName.c_str());
+
+        // Playback progress bar
+        float dur = anim->getDuration();
+        float curTime = anim->getCurrentTime();
+        float frac = (dur > 0.0f) ? std::clamp(curTime / dur, 0.0f, 1.0f) : 0.0f;
+
+        char timeBuff[64];
+        snprintf(timeBuff, sizeof(timeBuff), "%.2f / %.2f s", curTime, dur);
+
+        // Green while playing, grey whe paused/empty
+        ImVec4 barCol = anim->isPlaying()
+          ? ImVec4(0.2f, 0.8f, 0.3f, 1.0f)
+          : ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
+        ImGui::TextUnformatted("Time  "); ImGui::SameLine();
+        ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f), timeBuff);
+        ImGui::PopStyleColor();
+
+        // Finished indicator for non-looping clips
+        if (anim->isFinished())
+          ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.1f, 1.0f), " [FINISHED]");
+
+        // Phase 9.5 placeholder
+        ImGui::Spacing();
+        ImGui::TextDisabled("-- Phase 9.5: param table will appear here --");
 
         ImGui::PopID();
         ImGui::Spacing();

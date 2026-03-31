@@ -7,7 +7,6 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
-#include <string>
 
 namespace forge {
 
@@ -51,6 +50,16 @@ int Shader::getUniformLocation(const std::string& name) const {
   if (loc == -1)
     LOG_WARN("Uniform '{}' not found in shader", name);
   return loc;
+}
+
+void Shader::setMat4Array(const std::string& name, int count, const glm::mat4* data) const
+{
+  int loc = glGetUniformLocation(m_programID, name.c_str());
+  if (loc == -1) {
+    // suppress warning for bone array
+    return;
+  }
+  glUniformMatrix4fv(loc, count, GL_FALSE, glm::value_ptr(data[0]));
 }
 
 void Shader::setMat4(const std::string& name, const glm::mat4& mat) const {

@@ -7,8 +7,11 @@
 #include <forge/RigidBodyComponent.h>
 #include <forge/CombatComponent.h>
 #include <forge/AIComponent.h>
+#include <forge/Animator.h>
+#include <forge/AnimationClip.h>
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 class ForgeGame : public forge::Application {
@@ -32,26 +35,37 @@ private:
   void drawModel(const forge::ModelData& model,
                  const forge::Transform& transform);
 
-  // Rendering
-  std::shared_ptr<forge::Shader> m_shader;
-  std::unique_ptr<forge::Camera> m_camera;
+  void drawSkinnedModel(const forge::SkinnedModelData& model,
+                        const forge::Transform& transform,
+                        const forge::Animator& animator);
 
+  // Rendering
+  std::shared_ptr<forge::Shader> m_shader; // basic.vert/frag
+  std::shared_ptr<forge::Shader> m_skinnedShader; // skinned.vert/basic.frag
+  std::unique_ptr<forge::Camera> m_camera;
+  
   // Player
   struct PlayerEntity {
-    forge::ModelData model;
+    forge::SkinnedModelData skinnedModel;
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::RigidBodyComponent> body;
     std::unique_ptr<forge::CombatComponent> combat;
+    std::unique_ptr<forge::Animator> animator;
+    std::unordered_map<std::string,
+      std::shared_ptr<forge::AnimationClip>> clips;
     glm::vec3 forward = { 0, 0, -1 };
   } m_player;
 
   // Enemy
   struct EnemyEntity {
-    forge::ModelData model;
+    forge::SkinnedModelData skinnedModel;
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::RigidBodyComponent> body;
     std::unique_ptr<forge::CombatComponent> combat;
     std::unique_ptr<forge::AIComponent> ai;
+    std::unique_ptr<forge::Animator> animator;
+    std::unordered_map<std::string,
+      std::shared_ptr<forge::AnimationClip>> clips;
   } m_enemy;
 
   // Level geometry

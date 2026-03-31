@@ -1,23 +1,25 @@
 #include "ForgeGame.h"
 
+#include <forge/AssetManager.h>
+#include <forge/Logger.h>
 #include <forge/PhysicsWorld.h>
-#include <forge/LuaState.h>
-#include <forge/CombatSystem.h>
-#include <forge/FlagManager.h>
-#include <forge/RigidBodyComponent.h>
-#include <forge/CombatComponent.h>
-#include <forge/AIComponent.h>
-#include <forge/EventBus.h>
+#include <forge/AnimationClip.h>
 #include <forge/Events.h>
+#include <forge/EventBus.h>
+#include <forge/FlagManager.h>
 #include <forge/DebugUI.h>
+#include <forge/LuaState.h>
+#include <forge/AnimationClip.h>
+#include <forge/CombatSystem.h>
 
+#include <GL/glew.h>
 #include <GLFW/glfw3.h>
-#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <sol/forward.hpp>
 
 #include <memory>
-
 #include "GameFlags.h"
+#include "forge/Animator.h"
 
 ForgeGame::ForgeGame()
   : forge::Application(1280, 720, "Forge Engine - Soulslike demo")
@@ -33,8 +35,6 @@ void ForgeGame::onInit() {
   setupLevel();
   setupScripts();
 
-  // Register AI Components with the debug menu
-  getDebugUI().registerAIComponent(m_enemy.ai.get());
 
   // Try loading previous save
   getFlags().loadFromFile("save.json");
@@ -53,39 +53,92 @@ void ForgeGame::setupRenderer() {
     "shaders/basic.vert",
     "shaders/basic.frag"
   );
+  m_skinnedShader = forge::AssetManager::loadShader("shaders/skinned.vert",
+                                                    "shaders/basic.frag"); 
   // Third person camera - positioned behind and above player
   // angled down to see the level.
   float aspect = (float)getWidth() / (float)getHeight();
-  m_camera = std::make_unique<forge::Camera>(60.0f, aspect, 0.1f, 200.0f);
-  m_camera->setPosition({ 0.0f, 8.0f, 12.0f });
-  m_camera->setTarget({ 0.0f, 1.0f, 0.0f });
+  m_camera = std::make_unique<forge::Camera>(30.0f, aspect, 0.1f, 300.0f);
 }
 
 void ForgeGame::setupPlayer() {
-  m_player.model = forge::AssetManager::loadModel("models/characters/character-a.fbx"); 
+  m_player.skinnedModel = forge::AssetManager::loadSkinnedModel("models/characters/anim/ybot_idle.glb"); 
   m_player.transform = std::make_unique<forge::Transform>();
-  m_player.transform->setPosition({ 0.0f, 0.0f, 5.0f });
+  m_player.transform->setPosition({ 0.0f, 0.0f, 0.0f });
   m_player.transform->setScale({ 0.01f, 0.01f, 0.01f });
+  m_player.transform->setEulerAngles({ 90.0f, 180.0f, 0.0f });
 
   m_player.body = std::make_unique<forge::RigidBodyComponent>(
     getPhysics(),
     *m_player.transform,
     forge::CollisionShape::Capsule,
-    glm::vec3(0.4f, 0.9f, 0.0f),
-    1.0f
+    glm::vec3(0.3f, 0.9f, 0.0f),
+    80.0f
   );
   m_player.body->setAngularForce({ 0,0,0 });
 
+  // Animator
+  m_player.animator = std::make_unique<forge::Animator>();
+  m_player.animator->setOwnerName("player");
+  m_player.animator->setSkeleton(m_player.skinnedModel.skeleton);
+
+  // Load anim clips
+  // Idle is embadded in the base model - load the first animation from it
+  m_player.clips["idle"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_idle.glb", "idle");
+
+  m_player.clips["attack_r1"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash");
+  m_player.clips["death"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death");
+
+  if (m_player.clips["attack_r1"]) {
+    auto& clip = m_player.clips["attack_r1"];
+    clip->looping = false;
+ 
+    forge::AnimEvent hitboxEvent;
+    hitboxEvent.startTime = 14.0f / 60.0f;
+    hitboxEvent.endTime   = 22.0f / 60.0f;
+    hitboxEvent.type      = forge::AnimEventType::SpawnHitbox;
+    hitboxEvent.payload   = "weapon_r";
+ 
+    forge::AnimEvent sfxEvent;
+    sfxEvent.startTime = 10.0f / 60.0f;
+    sfxEvent.endTime   = 10.0f / 60.0f;   // one-shot
+    sfxEvent.type      = forge::AnimEventType::SoundOneShot;
+    sfxEvent.payload   = "sfx/swing_heavy.wav";
+ 
+    clip->events.push_back(hitboxEvent);
+    clip->events.push_back(sfxEvent);
+ 
+    // Animator assumes sorted order — always sort after authoring
+    std::sort(clip->events.begin(), clip->events.end(),
+      [](const forge::AnimEvent& a, const forge::AnimEvent& b) {
+        return a.startTime < b.startTime;
+      });
+  }
+ 
+  if (m_player.clips["death"])
+    m_player.clips["death"]->looping = false;
+
   m_player.combat = std::make_unique<forge::CombatComponent>(
     "Player",
-    400.0f,
+    500.0f,
     100.0f,
-    60.0f
+    80.0f
   );
+
+  m_player.combat->setAnimator(m_player.animator.get());
+
+  m_player.combat->onAttackStart = [this](const std::string& attackName) {
+    auto it = m_player.clips.find(attackName);
+    if (it != m_player.clips.end() && it->second)
+      m_player.animator->play(it->second, false, 0.1f);
+    else
+      LOG_WARN("[ForgeGame] No clip for attack '{}'", attackName);
+  };
 
   // Wire up lua for player
   m_player.combat->onDeath = [this](){
-    getLua().callFunction("onPlayerDeath");
+    if (m_player.clips["death"])
+      m_player.animator->play(m_player.clips["death"], false, 0.2f);
   };
   m_player.combat->onHit = [this](const forge::HitEvent& h) {
     getLua().callFunction("onPlayerHit", h.damage, h.damageType);
@@ -94,66 +147,83 @@ void ForgeGame::setupPlayer() {
   getCombat().registerCombatant(m_player.combat.get());
   getLua().get()["playerCombat"] = m_player.combat.get();
   getLua().get()["playerTransform"] = m_player.transform.get();
+
+  if (m_player.clips["idle"])
+    m_player.animator->play(m_player.clips["idle"], true);
+
+  getDebugUI().registerAnimator(m_player.animator.get(), "Player");
+
+  LOG_INFO("[ForgeGame] Player ready - skeleton: {} bones",
+           m_player.skinnedModel.skeleton.size());
 }
 
 void ForgeGame::setupEnemy() {
-  m_enemy.model = forge::AssetManager::loadModel("models/characters/character-b.fbx"); 
+  // Reuse the same Y Bot mesh — different transform, same skeleton
+  m_enemy.skinnedModel = forge::AssetManager::loadSkinnedModel(
+    "models/characters/anim/ybot_idle.glb");
+ 
   m_enemy.transform = std::make_unique<forge::Transform>();
-  m_enemy.transform->setPosition({ 0.0f, 0.0f, -8.0f });
+  m_enemy.transform->setPosition({ 4.0f, 0.0f, 0.0f });
   m_enemy.transform->setScale({ 0.01f, 0.01f, 0.01f });
-
+  m_enemy.transform->setEulerAngles({ 90.0f, 0.0f, 0.0f });
+ 
   m_enemy.body = std::make_unique<forge::RigidBodyComponent>(
     getPhysics(),
     *m_enemy.transform,
     forge::CollisionShape::Capsule,
-    glm::vec3(0.4f, 0.9f, 0.0f),
-    1.0f
+    glm::vec3(0.3f, 0.9f, 0.0f),
+    80.0f
   );
-  m_enemy.body->setAngularForce({ 0,0,0 });
-
+  m_enemy.body->setAngularForce({ 0, 0, 0 });
+ 
+  // ── Animator ─────────────────────────────────────────────────────────
+  m_enemy.animator = std::make_unique<forge::Animator>();
+  m_enemy.animator->setOwnerName("enemy");
+  m_enemy.animator->setSkeleton(m_enemy.skinnedModel.skeleton);
+ 
+  // Share clips with the player — same file, same data
+  m_enemy.clips = m_player.clips;
+ 
+  // ── Combat ───────────────────────────────────────────────────────────
   m_enemy.combat = std::make_unique<forge::CombatComponent>(
-    "Dummy",
-    200.0f,
-    999.0f,
-    30.0f
-  );
-
-  m_enemy.combat->onDeath = [this](){
-    getFlags().set(GameFlags::BOSS_DUMMY_DEAD, true);
+    "enemy", 400.0f, 100.0f, 60.0f);
+ 
+  m_enemy.combat->setAnimator(m_enemy.animator.get());
+ 
+  m_enemy.combat->onAttackStart = [this](const std::string& attackName) {
+    auto it = m_enemy.clips.find(attackName);
+    if (it != m_enemy.clips.end() && it->second)
+      m_enemy.animator->play(it->second, false, 0.1f);
+  };
+ 
+  m_enemy.combat->onDeath = [this]() {
+    if (m_enemy.clips["death"])
+      m_enemy.animator->play(m_enemy.clips["death"], false, 0.2f);
     forge::EventBus::publish(forge::EntityDiedEvent{
-      .entityName = "Hollow",
-      .position = m_enemy.transform->getPosition()
-    });
+      "enemy", m_enemy.transform->getPosition() });
   };
-
+ 
+  // ── AI ────────────────────────────────────────────────────────────────
   m_enemy.ai = std::make_unique<forge::AIComponent>(
-    "Hollow",
-    *m_enemy.transform,
-    *m_enemy.combat
-  );
-  m_enemy.ai->setDetectionRadius(5.0f);
-  m_enemy.ai->setAttackRadius(1.5f);
-
-  // Patrol waypoints
-  m_enemy.ai->addWaypoint({ -3.0f, 1.0f, -3.0f });
-  m_enemy.ai->addWaypoint({  3.0f, 1.0f, -3.0f });
-  m_enemy.ai->addWaypoint({  3.0f, 1.0f,  3.0f });
-  m_enemy.ai->addWaypoint({ -3.0f, 1.0f,  3.0f });
-
-  // Wire Lua cbs
-  m_enemy.ai->onPlayerDetected = [this](){
-    getLua().callFunction("onPlayerDetected");
-  };
-  m_enemy.ai->onChooseAttack = [this]() -> std::string {
-    sol::protected_function fn = getLua().get()["onChooseAttack"];
-    if (!fn.valid()) return "R1";
-    auto r = fn();
-    return r.valid() ? r.get<std::string>() : "R1";
-  };
-
+    "enemy", *m_enemy.transform, *m_enemy.combat);
+ 
+  m_enemy.ai->addWaypoint({ -3.0f, 0.0f,  3.0f });
+  m_enemy.ai->addWaypoint({  3.0f, 0.0f,  3.0f });
+  m_enemy.ai->addWaypoint({  3.0f, 0.0f, -3.0f });
+  m_enemy.ai->addWaypoint({ -3.0f, 0.0f, -3.0f });
+ 
+  // ── Play idle ────────────────────────────────────────────────────────
+  if (m_enemy.clips["idle"])
+    m_enemy.animator->play(m_enemy.clips["idle"], true);
+ 
+  getDebugUI().registerAnimator(m_enemy.animator.get(), "Enemy");
+  getDebugUI().registerAIComponent(m_enemy.ai.get());
+ 
   getCombat().registerCombatant(m_enemy.combat.get());
   getLua().get()["enemyCombat"] = m_enemy.combat.get();
   getLua().get()["enemyAI"] = m_enemy.ai.get();
+
+  LOG_INFO("[ForgeGame] Enemy ready");
 }
 
 void ForgeGame::setupLevel() {
@@ -165,7 +235,7 @@ void ForgeGame::setupLevel() {
   const float tileSize = 1.0f;
   const float modelScale = 0.01f;
   const int gridSize = 7;
-  const float halfGrid = (gridSize - 1) * tileSize * 0.5f;
+  const float halfGrid = (gridSize * tileSize) / 2.0f - tileSize / 2.0f;
 
   for (int z = 0; z < gridSize; z++) {
     for (int x = 0; x < gridSize; x++) {
@@ -175,7 +245,7 @@ void ForgeGame::setupLevel() {
       piece.transform = std::make_unique<forge::Transform>();
       piece.transform->setPosition({
         x * tileSize - halfGrid, 
-        0.001f,
+        0.0f,
         z * tileSize - halfGrid
       });
       piece.transform->setScale({ modelScale, modelScale, modelScale });
@@ -297,13 +367,12 @@ void ForgeGame::onUpdate(float dt) {
   m_camera->setPosition(playerPos + glm::vec3(0, 8, 12));
   m_camera->setTarget(playerPos + glm::vec3(0, 1, 0));
 
-  m_player.combat->setWorldData(
-    m_player.transform->getPosition(),
-    m_player.forward
-  );
-
-  m_enemy.ai->update(dt, m_player.transform->getPosition());
+  m_player.combat->setWorldData(playerPos, m_player.forward);
+  m_enemy.ai->update(dt, playerPos);
   
+  m_player.animator->update(dt);
+  m_enemy.animator->update(dt);
+
   // Input -> Lua
   bool j = isKeyDown(GLFW_KEY_J);
   bool k = isKeyDown(GLFW_KEY_K);
@@ -322,6 +391,25 @@ void ForgeGame::onUpdate(float dt) {
     getLua().callFunction("onBonfireReset");
   if (isKeyPressed(GLFW_KEY_F5))
     getLua().loadScript("../../../../assets/scripts/combat/player_combat.lua");
+}
+
+void ForgeGame::onRender() {
+  m_shader->bind();
+  for (auto& piece : m_level) {
+    if (piece.model.mesh) {
+      drawModel(piece.model, *piece.transform);
+    }
+  }
+  m_shader->unbind();
+
+  m_skinnedShader->bind();
+  drawSkinnedModel(m_player.skinnedModel, *m_player.transform, *m_player.animator);
+
+  // tint enemy slightly red so we can see which they are
+  m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
+  drawSkinnedModel(m_enemy.skinnedModel, *m_enemy.transform, *m_enemy.animator);
+  m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
+  m_skinnedShader->unbind();
 }
 
 void ForgeGame::drawModel(const forge::ModelData& model,
@@ -347,25 +435,44 @@ void ForgeGame::drawModel(const forge::ModelData& model,
   model.mesh->draw();
 }
 
-void ForgeGame::onRender() {
-  m_shader->bind();
 
-  // Player
-  drawModel(m_player.model, *m_player.transform);
+// Draw Skinned Model
+void ForgeGame::drawSkinnedModel(const forge::SkinnedModelData& model,
+                                 const forge::Transform& transform,
+                                 const forge::Animator& animator)
+{
+  if (!model.mesh) return;
 
-  // Enemy (tinted red slightly to distinguish)
-  m_shader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
-  drawModel(m_enemy.model, *m_enemy.transform);
+  glm::mat4 modelMat = transform.getModelMatrix();
+  glm::mat4 mvp = m_camera->getViewProjection() * modelMat;
 
-  // Level geometry
-  for (auto& piece : m_level) {
-      if (piece.model.mesh)
-          drawModel(piece.model, *piece.transform);
+  m_skinnedShader->setMat4("u_mvp", mvp);
+  m_skinnedShader->setMat4("u_model", modelMat);
+  m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
+
+  // Upload bone palette - the heart of skinning
+  const auto& bones = animator.getBoneMatrices();
+  if (!bones.empty()) {
+    m_skinnedShader->setBool("u_hasBones", true);
+    m_skinnedShader->setMat4Array(
+      "u_boneMatrices",
+      static_cast<int>(std::min(bones.size(), (size_t)forge::MAX_BONES)),
+      bones.data()
+    );
+  } else {
+    m_skinnedShader->setBool("u_hasBones", false);
   }
 
-  m_shader->unbind();
-}
+  if (model.hasTexture()) {
+    model.texture->bind(0);
+    m_skinnedShader->setInt("u_texture", 0);
+    m_skinnedShader->setBool("u_hasTexture", true);
+  } else {
+    m_skinnedShader->setBool("u_hasTexture", false);
+  }
 
+  model.mesh->draw();
+}
 
 void ForgeGame::handleInput(float dt) {
   const float speed = 5.0f;
@@ -381,7 +488,7 @@ void ForgeGame::handleInput(float dt) {
       move = glm::normalize(move) * speed;
       // Face the direction of movement
       float angle = atan2f(move.x, move.z);
-      m_player.transform->setEulerAngles({ 0, glm::degrees(angle), 0 });
+      m_player.transform->setEulerAngles({ 90.0f, glm::degrees(angle), 0 });
       m_player.forward = glm::normalize(glm::vec3(move.x, 0, move.z));
   }
 

@@ -4,8 +4,11 @@
 #include <glm/glm.hpp>
 #include <functional>
 #include <string>
+#include <memory>
 
 namespace forge {
+
+class Animator;
 
 enum class CombatState {
   Idle,
@@ -33,6 +36,12 @@ public:
 
   // Called every frame from CombatSystem
   void update(float dt);
+
+  // Animation wiring
+  // Set once in ForgeGame::setupPlayer/setupEnemy so CombatComponent can
+  // call play() on state transitions. non-owning animator is owned by the entity struct
+  // in ForgeGame
+  void setAnimator(Animator* animator) { m_animator= animator; }
 
   // Attack initiation
   // Resturns false if can't attack (dead, already attacking, no stamina)
@@ -86,6 +95,7 @@ public:
   // Callback - set from Lua or C++ to react to being hit
   std::function<void(const HitEvent&)> onHit;
   std::function<void()> onDeath;
+  std::function<void(const std::string&)> onAttackStart;
 
   // Consume the one-hit-per-swing token. Returns false if already used
   bool consumeHitToken() {
@@ -96,13 +106,19 @@ public:
 
   const std::string& getName() const { return m_ownerName; }
 
+  // Called from TAE eventbus subscription - sets m_hitboxActive
+  // without touching any kind of timer logic
+  void setHitboxActive(bool active) { m_hitboxActive = true; }
+
 private:
   void setupFSM();
   void tickAttack(float dt);
   void tickStamina(float dt);
   void tickPoise(float dt);
+  void subscribeToTAEEvents();
 
   std::string m_ownerName;
+  Animator* m_animator = nullptr;
 
   // Stats
   float m_hp, m_maxHp;
@@ -134,6 +150,11 @@ private:
   static constexpr float POISE_REGEN_RATE = 10.0f;
   static constexpr float POISE_REGEN_DELAY = 3.0f;
   float m_poiseRegenDelay = 0.0f;
+
+  // TAE Activation: true when a real skinned animator with events is wired up
+  // When false tickAttack falls back to the old timer-based hitbox mgmt
+  // So the game will still work as before with the blocky guys
+  bool m_usingTAEHitboxes = false;
 };
 
 }

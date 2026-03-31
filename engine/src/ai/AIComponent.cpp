@@ -249,7 +249,7 @@ void AIComponent::faceToward(const glm::vec3& target) {
 
   // atan2 gives angle around y axis
   float angle = atan2f(dir.x, dir.z);
-  m_transform.setEulerAngles({ 0.0f, glm::degrees(angle),  0.0f });
+  m_transform.setEulerAngles({ 90.0f, glm::degrees(angle),  0.0f });
 }
 
 // Utils

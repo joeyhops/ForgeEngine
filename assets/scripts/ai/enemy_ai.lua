@@ -6,7 +6,7 @@
 Log.info("Enemy AI Script loaded")
 
 -- Config
-local DETECTION_RADIUS = 7.0
+local DETECTION_RADIUS = 4.0
 local ATTACK_RADIUS = 2.0
 local PATROL_SPEED = 2.0
 local CHASE_SPEED = 4.5

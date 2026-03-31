@@ -4,6 +4,7 @@ add_library(forge_engine STATIC
   src/core/Logger.cpp
   src/renderer/Shader.cpp
   src/renderer/Mesh.cpp
+  src/renderer/SkinnedMesh.cpp
   src/renderer/Camera.cpp
   src/renderer/Animator.cpp
   src/renderer/Texture.cpp

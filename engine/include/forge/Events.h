@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <glm/glm.hpp>
+#include <forge/AnimationClip.h>
 
 namespace forge {
 
@@ -35,6 +36,22 @@ struct WindowResizedEvent {
 struct ScriptEvent {
   std::string name;
   std::string data; // Options payload string - parse as needed
+};
+
+// TAE Animation events
+// Fired by the animators as m_currentTime crosses AnimEvent window boundaries.
+// ownerName matches the name passed to Animator::setOwnerName so
+// subscribers with multiple entries can filter to only their own events
+struct AnimEventActivated {
+  std::string ownerName;
+  AnimEventType type;
+  std::string payload;
+};
+
+struct AnimEventDeactivated {
+  std::string ownerName;
+  AnimEventType type;
+  std::string payload;
 };
 
 }

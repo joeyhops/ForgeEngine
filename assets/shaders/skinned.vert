@@ -6,14 +6,11 @@ layout(location = 2) in vec2 a_texCoord;
 layout(location = 3) in ivec4 a_boneIds;
 layout(location = 4) in vec4 a_boneWeights;
 
-out vec3 v_normal;
+out vec3 v_worldNormal;
 out vec2 v_texCoord;
 
 uniform mat4 u_mvp;
 uniform mat4 u_model;
-
-// Bone palatte - 100 bones max
-// Sent from Animator::getBoneMatrices() each frame
 uniform mat4 u_boneMatrices[100];
 uniform bool u_hasBones;
 
@@ -36,7 +33,7 @@ void main() {
     skinnedNormal = a_normal;
   }
 
-  gl_position = u_mvp * skinnedPosition;
-  v_normal = normalize(mat3(u_model) * skinnedNormal);
+  gl_Position = u_mvp * skinnedPosition;
+  v_worldNormal = normalize(mat3(u_model) * skinnedNormal);
   v_texCoord = a_texCoord;
 }
