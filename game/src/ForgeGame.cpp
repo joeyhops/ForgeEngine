@@ -19,6 +19,7 @@
 
 #include <memory>
 #include "GameFlags.h"
+#include "forge/AnimGraph.h"
 #include "forge/Animator.h"
 
 ForgeGame::ForgeGame()
@@ -58,7 +59,65 @@ void ForgeGame::setupRenderer() {
   // Third person camera - positioned behind and above player
   // angled down to see the level.
   float aspect = (float)getWidth() / (float)getHeight();
-  m_camera = std::make_unique<forge::Camera>(30.0f, aspect, 0.1f, 300.0f);
+  m_camera = std::make_unique<forge::Camera>(60.0f, aspect, 0.1f, 300.0f);
+}
+
+static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
+  std::shared_ptr<forge::AnimationClip>idleClip,
+  std::shared_ptr<forge::AnimationClip> attackClip,
+  std::shared_ptr<forge::AnimationClip> deathClip,
+  const std::string& ownerName)
+{
+  using namespace forge;
+
+  auto idleNode = std::make_shared<ClipNode>(idleClip, true);
+  auto walkNode = std::make_shared<ClipNode>(idleClip, true); //todo walk clip
+  idleNode->setOwnerName(ownerName);
+  walkNode->setOwnerName(ownerName);
+
+  auto locomotionNode = std::make_shared<Blend1DNode>("moveSpeed", idleNode, walkNode);
+
+  // atk
+  auto attackNode = std::make_shared<ClipNode>(attackClip, false);
+  attackNode->setOwnerName(ownerName);
+
+  // death
+  auto deathNode = std::make_shared<ClipNode>(deathClip, false);
+  deathNode->setOwnerName(ownerName);
+
+  // graph root
+  auto root = std::make_shared<StateMachineNode>();
+  root->addState("Locomotion", locomotionNode);
+  root->addState("Attacking", attackNode);
+  root->addState("Dead", deathNode);
+
+  // Locomotion-> attacking
+  root->addTransition({
+    "Locomotion", "Attacking",
+    [](AnimParamTable& p) {
+      return p.consumeTrigger("attackR1") || p.consumeTrigger("attackR2");
+    },
+    0.1f
+  });
+
+  // attacking -> locomotion
+  root->addTransition({
+    "Attacking", "Locomotion",
+    [attackNode](AnimParamTable&) {
+      return attackNode->isFinished();
+    },
+    0.2f
+  });
+
+  // Any -> dead
+  root->addTransition({
+    "", "Dead",
+    [](AnimParamTable& p) { return p.getBool("isDead"); },
+    0.3f
+  });
+
+  root->setInitialState("Locomotion");
+  return root;
 }
 
 void ForgeGame::setupPlayer() {
@@ -92,31 +151,24 @@ void ForgeGame::setupPlayer() {
   if (m_player.clips["attack_r1"]) {
     auto& clip = m_player.clips["attack_r1"];
     clip->looping = false;
- 
-    forge::AnimEvent hitboxEvent;
-    hitboxEvent.startTime = 14.0f / 60.0f;
-    hitboxEvent.endTime   = 22.0f / 60.0f;
-    hitboxEvent.type      = forge::AnimEventType::SpawnHitbox;
-    hitboxEvent.payload   = "weapon_r";
- 
-    forge::AnimEvent sfxEvent;
-    sfxEvent.startTime = 10.0f / 60.0f;
-    sfxEvent.endTime   = 10.0f / 60.0f;   // one-shot
-    sfxEvent.type      = forge::AnimEventType::SoundOneShot;
-    sfxEvent.payload   = "sfx/swing_heavy.wav";
- 
-    clip->events.push_back(hitboxEvent);
-    clip->events.push_back(sfxEvent);
- 
-    // Animator assumes sorted order — always sort after authoring
+    clip->events.push_back({ 14.0f/60.0f, 22.0f/60.0f,
+                            forge::AnimEventType::SpawnHitbox, "weapon_r" });
+    clip->events.push_back({ 10.0f/60.0f, 10.0f/60.0f,
+                            forge::AnimEventType::SoundOneShot, "sfx/swing_heavy.wav" });
     std::sort(clip->events.begin(), clip->events.end(),
-      [](const forge::AnimEvent& a, const forge::AnimEvent& b) {
-        return a.startTime < b.startTime;
-      });
+              [](const forge::AnimEvent& a, const forge::AnimEvent& b) { return a.startTime < b.startTime; });
   }
  
   if (m_player.clips["death"])
     m_player.clips["death"]->looping = false;
+
+  auto graph = buildCharacterGraph(
+    m_player.clips["idle"], 
+    m_player.clips["attack_r1"], 
+    m_player.clips["death"], 
+    "player"
+  );
+  m_player.animator->setGraph(graph);
 
   m_player.combat = std::make_unique<forge::CombatComponent>(
     "Player",
@@ -126,19 +178,11 @@ void ForgeGame::setupPlayer() {
   );
 
   m_player.combat->setAnimator(m_player.animator.get());
-
-  m_player.combat->onAttackStart = [this](const std::string& attackName) {
-    auto it = m_player.clips.find(attackName);
-    if (it != m_player.clips.end() && it->second)
-      m_player.animator->play(it->second, false, 0.1f);
-    else
-      LOG_WARN("[ForgeGame] No clip for attack '{}'", attackName);
-  };
+  m_player.combat->setParamTable(&m_player.animator->getParams());
 
   // Wire up lua for player
   m_player.combat->onDeath = [this](){
-    if (m_player.clips["death"])
-      m_player.animator->play(m_player.clips["death"], false, 0.2f);
+    getLua().callFunction("onPlayerDeath");
   };
   m_player.combat->onHit = [this](const forge::HitEvent& h) {
     getLua().callFunction("onPlayerHit", h.damage, h.damageType);
@@ -147,9 +191,7 @@ void ForgeGame::setupPlayer() {
   getCombat().registerCombatant(m_player.combat.get());
   getLua().get()["playerCombat"] = m_player.combat.get();
   getLua().get()["playerTransform"] = m_player.transform.get();
-
-  if (m_player.clips["idle"])
-    m_player.animator->play(m_player.clips["idle"], true);
+  getLua().get()["playerAnim"] = &m_player.animator->getParams();
 
   getDebugUI().registerAnimator(m_player.animator.get(), "Player");
 
@@ -184,25 +226,27 @@ void ForgeGame::setupEnemy() {
   // Share clips with the player — same file, same data
   m_enemy.clips = m_player.clips;
  
+  auto graph = buildCharacterGraph(
+    m_enemy.clips["idle"], 
+    m_enemy.clips["attack_r1"], 
+    m_enemy.clips["death"], 
+    "enemy"
+  );
+  m_enemy.animator->setGraph(graph);
   // ── Combat ───────────────────────────────────────────────────────────
   m_enemy.combat = std::make_unique<forge::CombatComponent>(
     "enemy", 400.0f, 100.0f, 60.0f);
  
   m_enemy.combat->setAnimator(m_enemy.animator.get());
- 
-  m_enemy.combat->onAttackStart = [this](const std::string& attackName) {
-    auto it = m_enemy.clips.find(attackName);
-    if (it != m_enemy.clips.end() && it->second)
-      m_enemy.animator->play(it->second, false, 0.1f);
-  };
- 
+  m_enemy.combat->setParamTable(&m_enemy.animator->getParams());
+
   m_enemy.combat->onDeath = [this]() {
-    if (m_enemy.clips["death"])
-      m_enemy.animator->play(m_enemy.clips["death"], false, 0.2f);
     forge::EventBus::publish(forge::EntityDiedEvent{
       "enemy", m_enemy.transform->getPosition() });
   };
  
+  getCombat().registerCombatant(m_enemy.combat.get());
+
   // ── AI ────────────────────────────────────────────────────────────────
   m_enemy.ai = std::make_unique<forge::AIComponent>(
     "enemy", *m_enemy.transform, *m_enemy.combat);
@@ -212,16 +256,12 @@ void ForgeGame::setupEnemy() {
   m_enemy.ai->addWaypoint({  3.0f, 0.0f, -3.0f });
   m_enemy.ai->addWaypoint({ -3.0f, 0.0f, -3.0f });
  
-  // ── Play idle ────────────────────────────────────────────────────────
-  if (m_enemy.clips["idle"])
-    m_enemy.animator->play(m_enemy.clips["idle"], true);
- 
-  getDebugUI().registerAnimator(m_enemy.animator.get(), "Enemy");
-  getDebugUI().registerAIComponent(m_enemy.ai.get());
- 
-  getCombat().registerCombatant(m_enemy.combat.get());
+  getLua().get()["enemyAnim"] = &m_enemy.animator->getParams();
   getLua().get()["enemyCombat"] = m_enemy.combat.get();
   getLua().get()["enemyAI"] = m_enemy.ai.get();
+
+  getDebugUI().registerAnimator(m_enemy.animator.get(), "Enemy");
+  getDebugUI().registerAIComponent(m_enemy.ai.get());
 
   LOG_INFO("[ForgeGame] Enemy ready");
 }
@@ -490,6 +530,10 @@ void ForgeGame::handleInput(float dt) {
       float angle = atan2f(move.x, move.z);
       m_player.transform->setEulerAngles({ 90.0f, glm::degrees(angle), 0 });
       m_player.forward = glm::normalize(glm::vec3(move.x, 0, move.z));
+
+      m_player.animator->getParams().setFloat("moveSpeed", glm::length(move) / speed);
+  } else {
+    m_player.animator->getParams().setFloat("moveSpeed", 0.0f);
   }
 
   pos += move * dt;

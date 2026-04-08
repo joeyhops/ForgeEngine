@@ -37,20 +37,22 @@ function onChooseAttack()
     Events.publish("enemyEnraged", "phase2")
   end
 
-  -- Enraged enemy favors heavy attack
-  if enraged then
-    -- 60% chance heavy, 40% light
-    if math.random() < 0.60 then
-      return "R2"
-    end
+  local choice
+  if enraged and math.random() < 0.60 then
+    choice = "R2"
+  elseif math.random() < 0.70 then
+    choice = "R1"
+  else
+    choice = "R2"
   end
 
-  -- Normal: 70% light, 30% Heavy
-  if math.random() < 0.70 then
-    return "R1"
+  if choice == "R2" then
+    enemyAnim:setTrigger("attackR2")
   else
-    return "R2"
+    enemyAnim:setTrigger("attackR1")
   end
+
+  return choice
 end
 
 -- Player detected callback

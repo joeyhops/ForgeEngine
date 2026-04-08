@@ -1,5 +1,5 @@
 #pragma once
-
+#include <forge/Logger.h>
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 #include <string>
@@ -44,6 +44,7 @@ private:
   void registerCombat();  // Register combat funcs
   void registerEvents(); // Register events
   void registerAI(); // Register AI
+  void registerAnimGraph(); // register animation graph
 
   sol::state m_lua;
 };

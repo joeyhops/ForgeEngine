@@ -1,6 +1,6 @@
-#include "forge/AnimationClip.h"
 #include <forge/CombatComponent.h>
 #include <forge/Animator.h>
+#include <forge/AnimGraph.h>
 #include <forge/Events.h>
 #include <forge/EventBus.h>
 #include <forge/AttackData.h>
@@ -8,6 +8,7 @@
 
 #include <glm/glm.hpp>
 #include <algorithm>
+#include <string>
 
 namespace forge {
 
@@ -25,6 +26,15 @@ CombatComponent::CombatComponent(const std::string& ownerName,
            ownerName, maxHp, maxStamina, maxPoise);
 }
 
+void CombatComponent::writeTriggerForAttack(const std::string& attackName) {
+  if (!m_paramTable) return;
+  std::string trigger = "attackR1";
+  if (attackName.find("R2") != std::string::npos)
+    trigger = "attackR2";
+  m_paramTable->setTrigger(trigger);
+  LOG_TRACE("[Combat] {} wrote trigger '{}'", m_ownerName, trigger);
+}
+
 // TAE Subscription
 // Subscribe once at construction. The lambda captures this by pointer.
 // EventBus::clear() should be called on scene change to release all handlers
@@ -32,15 +42,11 @@ CombatComponent::CombatComponent(const std::string& ownerName,
 void CombatComponent::subscribeToTAEEvents() {
   EventBus::subscribe<AnimEventActivated>([this](const AnimEventActivated& e){
     if (e.ownerName != m_ownerName) return; // Only reacts to own events
-
     if (e.type == AnimEventType::SpawnHitbox) {
       m_hitboxActive = true;
       m_hitLanded = false;
       m_usingTAEHitboxes = true;
-      LOG_TRACE("[Combat] {} TAE iFrame ACTIVE", m_ownerName);
-    }
-    else if (e.type == AnimEventType::IFrame) {
-      LOG_TRACE("[Combat] TAE iFrame ACTIVE", m_ownerName);
+      LOG_TRACE("[Combat] {} TAE Hitbox ACTIVE", m_ownerName);
     }
   });
 
@@ -49,6 +55,7 @@ void CombatComponent::subscribeToTAEEvents() {
 
     if (e.type == AnimEventType::SpawnHitbox) {
       m_hitboxActive = false;
+      m_taeAttackComplete = true;
       LOG_TRACE("[Combat] {} TAE hitbox CLOSED");
     }
   });
@@ -71,16 +78,10 @@ void CombatComponent::setupFSM() {
       m_attackTimer = 0.0f;
       m_hitboxActive = false;
       m_hitLanded = false;
+      m_taeAttackComplete = false;
 
-      // Phase 9: Play the attack animation if an Animator is active
-      // the Animator will fire TAE events that set m_hitboxActive,
-      if (m_animator) {
-        // Clip lookup by convention: attack name matches clip name
-        // for nwo forgegame passes the clip in via setAnimator
-        // Phase 9.5 AnimGraph replaces this with a trigger write
-        // the onAttackStart callback is the hook point for clip selection
-        if (onAttackStart) onAttackStart(m_currentAttack.name);
-      }
+      writeTriggerForAttack(m_currentAttack.name);
+
       LOG_TRACE("[Combat] {} -> Attacking ({})",
                 m_ownerName, m_currentAttack.name);
     },
@@ -148,6 +149,8 @@ void CombatComponent::setupFSM() {
   m_fsm.addState(CombatState::Dead, {
     .onEnter = [this]{
       m_hitboxActive = false;
+      if (m_paramTable) m_paramTable->setBool("isDead", true);
+
       LOG_INFO("[Combat] {} died", m_ownerName);
       if (onDeath) onDeath();
     },
@@ -184,25 +187,21 @@ bool CombatComponent::tryAttack(const AttackData& attack) {
 
 void CombatComponent::tickAttack(float dt) {
   m_attackTimer += dt;
-  const AttackData& atk = m_currentAttack;
 
   // if TAE events are driving the hitbox, just watch for the clip to end
   // then transition to recovery
-  if (m_usingTAEHitboxes && m_animator) {
-    if (m_animator->isFinished()) {
-      m_fsm.transition(CombatState::Recovering);
-    }
+  if (m_usingTAEHitboxes && m_animator && 
+    (m_taeAttackComplete || m_animator->isFinished())) {
+    m_taeAttackComplete = false;
+    m_fsm.transition(CombatState::Recovering);
     return;
   }
 
-  // Legacy fallback: timer-based hitbox management
-  if (m_attackTimer < atk.startupTime) {
-    m_hitboxActive = false;
-  } else if (m_attackTimer < atk.startupTime + atk.activeTime) {
-    m_hitboxActive = true;
-  } else {
-    m_hitboxActive = false;
-    m_fsm.transition(CombatState::Recovering);
+  if (!m_usingTAEHitboxes) {
+    const AttackData& atk = m_currentAttack;
+    if (m_attackTimer < atk.startupTime) m_hitboxActive = false;
+    else if (m_attackTimer < atk.startupTime + atk.activeTime) m_hitboxActive = true;
+    else { m_hitboxActive = false; m_fsm.transition(CombatState::Recovering); }
   }
 }
 

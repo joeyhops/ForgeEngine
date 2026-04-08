@@ -9,6 +9,7 @@ add_library(forge_engine STATIC
   src/renderer/Animator.cpp
   src/renderer/Texture.cpp
   src/renderer/DebugUI.cpp
+  src/renderer/AnimGraph.cpp
   src/scene/Transform.cpp
   src/scripting/LuaState.cpp
   src/physics/PhysicsWorld.cpp

@@ -7,7 +7,6 @@
 #include <glm/gtx/quaternion.hpp>
 #include <algorithm>
 #include <memory>
-#include <unordered_set>
 
 namespace forge {
 
@@ -18,13 +17,24 @@ void Animator::setSkeleton(const std::vector<Bone>& skeleton) {
   m_globalTransforms.assign(skeleton.size(), glm::mat4(1.0f));
 }
 
+void Animator::setGraph(std::shared_ptr<AnimGraphNode> graph) {
+  m_graph = std::move(graph);
+  if (m_graph && !m_skeleton.empty())
+    m_graph->setSkeleton(&m_skeleton);
+  LOG_INFO("[Animator] '{}' graph attached", m_ownerName);
+}
+
 void Animator::play(std::shared_ptr<AnimationClip> clip,
                     bool loop, float blendTime)
 {
+  if (m_graph) {
+    LOG_WARN("[Animator] '{}' play() called while graph is active - use params", m_ownerName);
+    return;
+  }
   if (!clip) return;
 
   // Deactivate any currently active TAE events before switching clips
-  deactivateAllEvents();
+  deactivateAllLegacyEvents();
 
   m_prevClip = m_currentClip;
   m_currentClip = clip;
@@ -39,6 +49,13 @@ void Animator::play(std::shared_ptr<AnimationClip> clip,
 }
 
 void Animator::update(float dt) {
+  if (m_graph) {
+    m_graph->update(dt, m_params);
+    m_graph->evaluate(m_localTransforms);
+    computeBoneMatrices();
+    return;
+  }
+
   if (!m_currentClip) return;
 
   m_prevTime = m_currentTime;
@@ -46,7 +63,7 @@ void Animator::update(float dt) {
 
   if (m_currentClip->looping && m_currentTime >= m_currentClip->duration) {
     // Loop wrap - deactivate any still-active events then reset
-    deactivateAllEvents();
+    deactivateAllLegacyEvents();
     m_currentTime = fmodf(m_currentTime, m_currentClip->duration);
     m_prevTime = 0.0f; // Scan from the beginning of the new loop iteration
   } else if (!m_currentClip->looping && m_currentTime >= m_currentClip->duration) {
@@ -55,20 +72,73 @@ void Animator::update(float dt) {
   }
 
   // Fire TAE events for any boundary crossings this frame
-  tickTAEEvents(m_prevTime, m_currentTime);
+  tickLegacyTAEEvents(m_prevTime, m_currentTime);
 
   m_blendElapsed += dt;
   computeBoneMatrices();
 }
 
 bool Animator::isFinished() const {
+  if (m_graph) return m_graph->isFinished();
   if (!m_currentClip || m_currentClip->looping) return false;
   return m_currentTime >= m_currentClip->duration;
 }
 
+bool Animator::isPlaying() const {
+  if (m_graph) return true;
+  return m_currentClip != nullptr;
+}
+
+std::string Animator::getClipName() const {
+  if (m_graph) return m_graph->getDebugStateInfo();
+  return m_currentClip ? m_currentClip->name : "none";
+}
+
+std::string Animator::getGraphStateInfo() const {
+  if (m_graph) return m_graph->getDebugStateInfo();
+  return m_currentClip ? m_currentClip->name : "none";
+}
+
+void Animator::computeBoneMatrices() {
+  if (m_skeleton.empty()) return;
+
+  m_boneMatrices.resize(m_skeleton.size(), glm::mat4(1.0f));
+  m_localTransforms.resize(m_skeleton.size(), glm::mat4(1.0f));
+  m_globalTransforms.resize(m_skeleton.size());
+
+  if (!m_graph && m_currentClip) {
+    // Sample primary clip into local transform
+    m_currentClip->sample(m_currentTime, m_skeleton, m_localTransforms);
+
+    // if cross-fading, blend with previous clips pose
+    if (m_prevClip && m_blendElapsed < m_blendTime) {
+      std::vector<glm::mat4> prevLocal(m_skeleton.size(), glm::mat4(1.0f));
+      m_prevClip->sample(m_blendElapsed, m_skeleton, prevLocal);
+
+      float alpha = m_blendElapsed / m_blendTime; // 0 = all prev, 1= all current
+      for (size_t i = 0; i < m_skeleton.size(); i++) {
+        // Lerp the raw matrices - fine for short blends
+        // a proper implementation would decompose to TRS and slerp
+        // the quaternion. but matrix lerp produces acceptable results
+        // at blend times <= 0.3s
+        m_localTransforms[i] = prevLocal[i] * (1.0f - alpha) + m_localTransforms[i] * alpha;
+      }
+    }
+  }
+
+  for (size_t i = 0; i < m_skeleton.size(); i++) {
+    const Bone& bone = m_skeleton[i];
+    m_globalTransforms[i] = (bone.parentIndex < 0)
+      ? m_localTransforms[i]
+      : m_globalTransforms[bone.parentIndex] * m_localTransforms[i];
+
+    m_boneMatrices[i] = m_globalTransforms[i] * bone.offsetMatrix;
+  }
+}
+
 // TAE Event firing
 
-void Animator::tickTAEEvents(float prevTime, float curTime) {
+void Animator::tickLegacyTAEEvents(float prevTime, float curTime) {
   if (!m_currentClip) return;
   const auto& events = m_currentClip->events;
 
@@ -108,7 +178,7 @@ void Animator::tickTAEEvents(float prevTime, float curTime) {
   }
 }
 
-void Animator::deactivateAllEvents() {
+void Animator::deactivateAllLegacyEvents() {
   if (!m_currentClip) return;
   const auto& events = m_currentClip->events;
 
@@ -120,48 +190,6 @@ void Animator::deactivateAllEvents() {
     }
   }
   m_activeEventIndices.clear();
-}
-
-void Animator::computeBoneMatrices() {
-  if (m_skeleton.empty() || !m_currentClip) return;
-
-  m_boneMatrices.resize(m_skeleton.size(), glm::mat4(1.0f));
-  m_localTransforms.resize(m_skeleton.size(), glm::mat4(1.0f));
-  m_globalTransforms.resize(m_skeleton.size());
-
-  // Sample primary clip into local transform
-  m_currentClip->sample(m_currentTime, m_skeleton, m_localTransforms);
-
-  // if cross-fading, blend with previous clips pose
-  if (m_prevClip && m_blendElapsed < m_blendTime) {
-    std::vector<glm::mat4> prevLocal(m_skeleton.size(), glm::mat4(1.0f));
-    m_prevClip->sample(m_blendElapsed, m_skeleton, prevLocal);
-
-    float alpha = m_blendElapsed / m_blendTime; // 0 = all prev, 1= all current
-    for (size_t i = 0; i < m_skeleton.size(); i++) {
-      // Lerp the raw matrices - fine for short blends
-      // a proper implementation would decompose to TRS and slerp
-      // the quaternion. but matrix lerp produces acceptable results
-      // at blend times <= 0.3s
-      m_localTransforms[i] = prevLocal[i] * (1.0f - alpha) + m_localTransforms[i] * alpha;
-    }
-  }
-
-  // Walk bone hierarchy: each bones global transform =
-  // parents global transform * this bones local transform
-  for (size_t i = 0; i < m_skeleton.size(); i++) {
-    const Bone& bone = m_skeleton[i];
-
-    if (bone.parentIndex < 0)
-      // Root bone - local transform IS global transform
-      m_globalTransforms[i] = m_localTransforms[i];
-    else
-      m_globalTransforms[i] = m_globalTransforms[bone.parentIndex] * m_localTransforms[i];
-
-    // Final bone matrix = globalTransform * offsetMatrix
-    // offsetMatrix transforms from model space into bone space
-    m_boneMatrices[i] = m_globalTransforms[i] * bone.offsetMatrix;
-  }
 }
 
 // BoneTrack::sample - interpolate between keyframes

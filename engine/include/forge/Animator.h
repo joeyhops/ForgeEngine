@@ -1,5 +1,6 @@
 #pragma once
 #include <forge/AnimationClip.h>
+#include <forge/AnimGraph.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include <string>
@@ -19,6 +20,13 @@ public:
 
   void setOwnerName(const std::string& name) { m_ownerName = name; }
 
+  // Animation Graph (replaces play())
+  // Attach a graph to drive all animation via the param table
+  void setGraph(std::shared_ptr<AnimGraphNode> graph);
+
+  AnimParamTable& getParams() { return m_params; }
+  const AnimParamTable& getParams() const { return m_params; }
+
   // Play Clip
   void play(std::shared_ptr<AnimationClip> clip,
             bool loop = true, float blendTime = 0.2f);
@@ -34,12 +42,14 @@ public:
 
   float getCurrentTime() const { return m_currentTime; }
   float getDuration() const { return m_currentClip ? m_currentClip->duration : 0.0f; }
-  bool isPlaying() const { return m_currentClip != nullptr; }
-  std::string getClipName() const { return m_currentClip ? m_currentClip->name : "none"; }
+  bool isPlaying() const; 
+  std::string getClipName() const; 
+  std::string getGraphStateInfo() const;
 private:
   void computeBoneMatrices();
-  void tickTAEEvents(float prevTime, float curTime);
-  void deactivateAllEvents();
+  
+  void tickLegacyTAEEvents(float prevTime, float curTime);
+  void deactivateAllLegacyEvents();
 
   std::string m_ownerName;
 
@@ -47,6 +57,10 @@ private:
   std::vector<glm::mat4> m_boneMatrices; // Final palette for GPU
   std::vector<glm::mat4> m_localTransforms; // Per-bone local TRS
   std::vector<glm::mat4> m_globalTransforms;
+
+  // Graph
+  std::shared_ptr<AnimGraphNode> m_graph;
+  AnimParamTable m_params;
 
   std::shared_ptr<AnimationClip> m_currentClip;
   float m_currentTime = 0.0f;

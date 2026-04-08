@@ -1,12 +1,13 @@
-#include "forge/EventBus.h"
-#include "forge/Events.h"
-#include "forge/FlagManager.h"
 #include <forge/LuaState.h>
 #include <forge/Logger.h>
 #include <forge/Transform.h>
 #include <forge/CombatComponent.h>
 #include <forge/AttackData.h>
 #include <forge/AIComponent.h>
+#include <forge/AnimGraph.h>
+#include <forge/FlagManager.h>
+#include <forge/EventBus.h>
+#include <forge/Events.h>
 
 #include <glm/glm.hpp>
 #include <fstream>
@@ -46,6 +47,7 @@ void LuaState::registerBindings() {
   registerCombat();
   registerEvents();
   registerAI();
+  registerAnimGraph();
 
   // Expose the logger to Lua so scripts can log properly
   // usage in lua: Log.info("hello from script")
@@ -164,6 +166,17 @@ void LuaState::registerAI() {
                                   "setMoveSpeed", &AIComponent::setMoveSpeed,
                                   "addWaypoint", &AIComponent::addWaypoint
                                   );
+}
+
+void LuaState::registerAnimGraph() {
+  m_lua.new_usertype<AnimParamTable>("AnimParamTable",
+                                            sol::no_constructor,
+                                            "setFloat", &forge::AnimParamTable::setFloat,
+                                            "setBool", &forge::AnimParamTable::setBool,
+                                            "setTrigger", &forge::AnimParamTable::setTrigger,
+                                            "getFloat", &forge::AnimParamTable::getFloat,
+                                            "getBool", &forge::AnimParamTable::getBool
+                                            );
 }
 
 }

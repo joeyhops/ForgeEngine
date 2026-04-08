@@ -9,6 +9,7 @@
 namespace forge {
 
 class Animator;
+class AnimParamTable;
 
 enum class CombatState {
   Idle,
@@ -42,6 +43,7 @@ public:
   // call play() on state transitions. non-owning animator is owned by the entity struct
   // in ForgeGame
   void setAnimator(Animator* animator) { m_animator= animator; }
+  void setParamTable(AnimParamTable* params) { m_paramTable = params; }
 
   // Attack initiation
   // Resturns false if can't attack (dead, already attacking, no stamina)
@@ -95,7 +97,6 @@ public:
   // Callback - set from Lua or C++ to react to being hit
   std::function<void(const HitEvent&)> onHit;
   std::function<void()> onDeath;
-  std::function<void(const std::string&)> onAttackStart;
 
   // Consume the one-hit-per-swing token. Returns false if already used
   bool consumeHitToken() {
@@ -116,9 +117,11 @@ private:
   void tickStamina(float dt);
   void tickPoise(float dt);
   void subscribeToTAEEvents();
+  void writeTriggerForAttack(const std::string& attackName);
 
   std::string m_ownerName;
   Animator* m_animator = nullptr;
+  AnimParamTable* m_paramTable = nullptr;
 
   // Stats
   float m_hp, m_maxHp;
@@ -133,7 +136,9 @@ private:
   float m_attackTimer = 0.0f; // counts up through startup + active + recovery
   bool m_hitboxActive = false;
   bool m_hitLanded = false; // Prevents multi-hit in one swing
-  
+  bool m_usingTAEHitboxes = false;
+  bool m_taeAttackComplete = false;
+
   // Stagger state
   float m_staggerTimer = 0.0f;
 
@@ -150,11 +155,6 @@ private:
   static constexpr float POISE_REGEN_RATE = 10.0f;
   static constexpr float POISE_REGEN_DELAY = 3.0f;
   float m_poiseRegenDelay = 0.0f;
-
-  // TAE Activation: true when a real skinned animator with events is wired up
-  // When false tickAttack falls back to the old timer-based hitbox mgmt
-  // So the game will still work as before with the blocky guys
-  bool m_usingTAEHitboxes = false;
 };
 
 }
