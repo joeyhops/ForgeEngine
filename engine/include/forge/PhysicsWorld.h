@@ -12,6 +12,9 @@ class btDiscreteDynamicsWorld;
 class btRigidBody;
 class btCollisionShape;
 
+class btActionInterface;
+class btCollisionObject;
+
 namespace forge {
 
 // Result of raycast
@@ -38,6 +41,16 @@ public:
   // add/remove rigid bodies from sim
   void addRigidBody(btRigidBody* body);
   void removeRigidBody(btRigidBody* body);
+
+  // ghost objects
+  // Character controller/trigger volumes
+  // group/mask are btBroadphaseProxy filter constants
+  void addGhostObject(btCollisionObject* ghost, int group, int mask);
+  void removeGhostObject(btCollisionObject* ghost);
+
+  // action interfaces
+  void addAction(btActionInterface* action);
+  void removeAction(btActionInterface* action);
 
   // Cast a ray 'from' to 'to', returns first hit
   RaycastHit raycast(const glm::vec3& from, const glm::vec3& to) const;

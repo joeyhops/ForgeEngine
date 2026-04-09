@@ -10,10 +10,12 @@ add_library(forge_engine STATIC
   src/renderer/Texture.cpp
   src/renderer/DebugUI.cpp
   src/renderer/AnimGraph.cpp
+  src/renderer/ThirdPersonCamera.cpp
   src/scene/Transform.cpp
   src/scripting/LuaState.cpp
   src/physics/PhysicsWorld.cpp
   src/physics/RigidBodyComponent.cpp
+  src/physics/CharacterController.cpp
   src/combat/CombatComponent.cpp
   src/combat/CombatSystem.cpp
   src/events/EventBus.cpp

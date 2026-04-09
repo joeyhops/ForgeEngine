@@ -1,0 +1,93 @@
+;FBX 6.1.0 project file
+;Created by Mapscape
+
+FBXHeaderExtension:  {
+ FBXHeaderVersion: 1003
+ FBXVersion: 6100
+}
+
+Definitions:  {
+ Version: 100
+ Count: 3
+ ObjectType: "Model" {
+  Count: 1
+ }
+ ObjectType: "Geometry" {
+  Count: 1
+ }
+ ObjectType: "Texture" {
+  Count: 1
+ }
+}
+
+Objects: {
+ Model: "Model::CSG_0", "Mesh" {
+  Version: 232
+  MultiLayer: 0
+  MultiTake: 1
+  Shading: Y
+  Culling: "CullingOn"
+  Vertices: 663.99994,255.99873,704.00165,671.99994,255.99873,704.00165,671.99994,-64.00037,703.99811,663.99994,-64.00037,703.99811,663.99994,-63.99915,-224.00172,671.99994,-63.99915,-224.00172,671.99994,255.99995,-223.99818,663.99994,255.99995,-223.99818,
+            663.99994,255.99995,-223.99818,671.99994,255.99995,-223.99818,671.99994,255.99873,704.00165,663.99994,255.99873,704.00165,663.99994,-64.00037,703.99811,671.99994,-64.00037,703.99811,671.99994,-63.99915,-224.00172,663.99994,-63.99915,-224.00172,
+            671.99994,-64.00037,703.99811,671.99994,255.99873,704.00165,671.99994,255.99995,-223.99818,671.99994,-63.99915,-224.00172,663.99994,-63.99915,-224.00172,663.99994,255.99995,-223.99818,663.99994,255.99873,704.00165,663.99994,-64.00037,703.99811
+  PolygonVertexIndex: 1,0,-3,2,0,-4,5,4,-7,6,4,-8,9,8,-11,10,8,-12,13,12,-15,14,12,-16,17,16,-19,18,16,-20,21,20,-23,22,20,-24
+  GeometryVersion: 124
+  LayerElementNormal: 0 {
+   Version: 101
+   Name: ""
+   MappingInformationType: "ByVertice"
+   ReferenceInformationType: "Direct"
+   Normals: 0.00000,0.00000,1.00000,0.00000,0.00000,1.00000,0.00000,0.00000,1.00000,0.00000,0.00000,1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,
+            -0.00000,1.00000,0.00000,-0.00000,1.00000,0.00000,-0.00000,1.00000,0.00000,-0.00000,1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,0.00000,
+            1.00000,0.00000,0.00000,1.00000,0.00000,0.00000,1.00000,0.00000,0.00000,1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000,-1.00000,0.00000,0.00000
+  }
+  LayerElementUV: 0 {
+   Version: 101
+   Name: ""
+   MappingInformationType: "ByVertice"
+   ReferenceInformationType: "Direct"
+   UV: 5.18750,2.00005,5.25000,2.00005,5.25000,-0.49994,5.18750,-0.49994,-5.18750,-0.50001,-5.25000,-0.50001,-5.25000,1.99998,-5.18750,1.99998,-5.18750,-1.74999,-5.25000,-1.74999,-5.25000,5.50001,-5.18750,5.50001,-5.18750,-5.49998,-5.25000,-5.49998,-5.25000,1.75001,-5.18750,1.75001,
+       -5.49998,-0.50000,-5.50001,1.99999,1.74999,2.00000,1.75001,-0.49999,-1.75001,-0.49999,-1.74999,2.00000,5.50001,1.99999,5.49998,-0.50000
+  }
+  LayerElementTexture: 0 {
+   Version: 101
+   Name: ""
+   MappingInformationType: "AllSame"
+   ReferenceInformationType: "IndexToDirect"
+   TextureId: 0
+  }
+  Layer: 0 {
+   Version: 100
+   LayerElement: {
+    Type: "LayerElementNormal"
+    TypedIndex: 0
+   }
+   LayerElement: {
+    Type: "LayerElementColor"
+    TypedIndex: 0
+   }
+   LayerElement: {
+    Type: "LayerElementUV"
+    TypedIndex: 0
+   }
+   LayerElement: {
+    Type: "LayerElementTexture"
+    TypedIndex: 0
+   }
+  }
+ }
+ Texture: "Texture::rough-brick1_dds", "" {
+  Version: 202
+  TextureName: "Texture::rough-brick1_dds"
+  FileName: "rough-brick1.dds"
+  RelativeFilename: "rough-brick1.dds"
+  ModelUVTranslation: 0,0
+  ModelUVScaling: 1,1
+ }
+}
+
+Connections: {
+ Connect: "OO", "Model::CSG_0", "Model::Scene"
+ Connect: "OO", "Texture::rough-brick1_dds", "Model::CSG_0"
+}
+

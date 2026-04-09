@@ -380,55 +380,98 @@ void DebugUI::drawAIInspectorPanel() {
 
 void DebugUI::drawAnimGraphMonitorPanel() {
   ImGui::SetNextWindowPos(ImVec2(620.0f, 10.0f), ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowSize(ImVec2(320.0f, 200.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(320.0f, 320.0f), ImGuiCond_FirstUseEver);
 
-  if (ImGui::Begin("AnimGraph Monitor [F6]")) {
-    if (m_animators.empty()){
-      ImGui::TextDisabled("No animators registered.");
-      ImGui::TextDisabled("Call DebugUI::reigsterAnimator() in onInit");
-    } else {
-      for (auto& entry : m_animators) {
-        Animator* anim = entry.animator;
-        if (!anim) continue;
+  if (!ImGui::Begin("AnimGraph Monitor [F6]")) { ImGui::End(); return; }
 
-        ImGui::PushID(anim);
-        ImGui::SeparatorText(entry.label.c_str());
-
-        // Current clip name
-        const std::string clipName = anim->getClipName();
-        ImGui::Text("Clip : %s", clipName.c_str());
-
-        // Playback progress bar
-        float dur = anim->getDuration();
-        float curTime = anim->getCurrentTime();
-        float frac = (dur > 0.0f) ? std::clamp(curTime / dur, 0.0f, 1.0f) : 0.0f;
-
-        char timeBuff[64];
-        snprintf(timeBuff, sizeof(timeBuff), "%.2f / %.2f s", curTime, dur);
-
-        // Green while playing, grey whe paused/empty
-        ImVec4 barCol = anim->isPlaying()
-          ? ImVec4(0.2f, 0.8f, 0.3f, 1.0f)
-          : ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
-
-        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
-        ImGui::TextUnformatted("Time  "); ImGui::SameLine();
-        ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f), timeBuff);
-        ImGui::PopStyleColor();
-
-        // Finished indicator for non-looping clips
-        if (anim->isFinished())
-          ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.1f, 1.0f), " [FINISHED]");
-
-        // Phase 9.5 placeholder
-        ImGui::Spacing();
-        ImGui::TextDisabled("-- Phase 9.5: param table will appear here --");
-
-        ImGui::PopID();
-        ImGui::Spacing();
-      }
-    }
+  if (m_animators.empty()) {
+    ImGui::TextDisabled("No animators registered.");
+    ImGui::TextDisabled("Call DebugUI::registerAnimator() in onInit.");
+    ImGui::End();
+    return;
   }
+
+  for (auto& entry : m_animators) {
+    Animator* anim = entry.animator;
+    if (!anim) continue;
+
+    ImGui::PushID(anim);
+    ImGui::SeparatorText(entry.label.c_str());
+
+    // Graph State
+    ImGui::TextUnformatted("State "); ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.5f, 0.9f, 1.0f, 1.0f), "%s", anim->getClipName().c_str());
+
+    // Active clip progress bar
+    float durr = anim->getActiveClipDuration();
+    float curTime = anim->getActiveClipTime();
+    float frac = (durr > 0.0f) ? std::clamp(curTime / durr, 0.0f, 1.0f) : 0.0f;
+
+    char timeBuff[64];
+    snprintf(timeBuff, sizeof(timeBuff), "%.2f / %.2f s", curTime, durr);
+
+    ImVec4 barCol = (durr > 0.0f)
+      ? ImVec4(0.2f, 0.8f, 0.3f, 1.0f) // green - playing
+      : ImVec4(0.4f, 0.4f, 0.4f, 1.0f); // Grey - not playing
+
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
+    ImGui::TextUnformatted("Time  "); ImGui::SameLine();
+    ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f), timeBuff);
+    ImGui::PopStyleColor();
+
+    if (anim->isFinished())
+      ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.1f, 1.0f), "  [FINISHED]");
+
+    // Bone count
+    ImGui::Text("Bones : %d", (int)anim->getBoneMatrices().size());
+
+    ImGui::Spacing();
+
+    // Param Table
+    // Collapsible tree node
+    if (ImGui::TreeNodeEx("Params", ImGuiTreeNodeFlags_DefaultOpen)) {
+      const AnimParamTable& p = anim->getParams();
+
+      // Floats
+      const auto& floats = p.getFloats();
+      if (!floats.empty()) {
+        ImGui::TextDisabled("  floats");
+        for (const auto& [name, val] : floats) {
+          ImGui::Text("    %-18s", name.c_str()); ImGui::SameLine();
+          ImGui::Text("%.3f", val);
+        }
+      }
+
+      // Bools
+      const auto& bools = p.getBools();
+      if (!bools.empty()) {
+        ImGui::TextDisabled("  bools");
+        for (const auto& [name, val] : bools) {
+          ImGui::Text("    %-18s", name.c_str()); ImGui::SameLine();
+          val ? ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.3f, 1.0f), "true")
+              : ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "false");
+          
+        }
+      }
+
+      // Pending triggers
+      const auto& triggers = p.getTriggers();
+      if (!triggers.empty()) {
+        ImGui::TextDisabled("  triggers (pending)");
+        for (const auto& name : triggers)
+          ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.1f, 1.0f), "    [T] %s", name.c_str());
+      }
+
+      if (floats.empty() && bools.empty() && triggers.empty())
+        ImGui::TextDisabled("  (no params set)");
+
+      ImGui::TreePop();
+    }
+    
+    ImGui::PopID();
+    ImGui::Spacing();
+  }
+
   ImGui::End();
 }
 

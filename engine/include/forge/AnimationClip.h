@@ -44,6 +44,8 @@ public:
   //Animator assumes sorted order when scanning boundaries each frame
   std::vector<AnimEvent> events;
 
+  bool stripRootMotionXZ = false;
+
   // Sample all bones at time t, returns local transform per bone
   // boneCount is the total number of bones in model skeleton
   void sample(float t,

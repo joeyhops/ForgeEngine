@@ -40,6 +40,8 @@ public:
   const std::vector<glm::mat4>& getBoneMatrices() const { return m_boneMatrices; }
   const std::vector<glm::mat4>& getGlobalTransforms() const { return m_globalTransforms; }
 
+  float getActiveClipTime() const;
+  float getActiveClipDuration() const;
   float getCurrentTime() const { return m_currentTime; }
   float getDuration() const { return m_currentClip ? m_currentClip->duration : 0.0f; }
   bool isPlaying() const; 

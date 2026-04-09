@@ -1,0 +1,99 @@
+// ForgeEngine.fgd
+// Copy this file to your TrenchBroom games/ForgeEngine/ directory.
+// Entity definitions for the ForgeEngine / TrenchBroom level pipeline.
+
+// ─── World ────────────────────────────────────────────────────────────────────
+
+@SolidClass = worldspawn : "World entity - all static level brushes"
+[
+    message(string) : "Level display name" : "Unnamed Level"
+    author(string)  : "Author"             : ""
+]
+
+// ─── Player ───────────────────────────────────────────────────────────────────
+
+@PointClass
+    size(-16 -16 -36, 16 16 36)
+    color(0 255 0)
+= info_player_start : "Player starting position (one per map)"
+[
+    angle(float) : "Facing yaw (degrees, 0=+Z, 90=+X)" : 0
+]
+
+// ─── Enemies ──────────────────────────────────────────────────────────────────
+
+@PointClass
+    size(-20 -20 -36, 20 20 72)
+    color(255 64 64)
+= enemy_spawn : "Enemy spawn point"
+[
+    angle(float)        : "Facing yaw (degrees)"         : 0
+    enemy_type(choices) : "Enemy type"                   : 0 =
+    [
+        0 : "Standard"
+        1 : "Heavy"
+        2 : "Ranged"
+    ]
+    patrol_group(string) : "Patrol group name (optional, links to patrol_waypoints)" : ""
+]
+
+@PointClass
+    size(-6 -6 -6, 6 6 6)
+    color(255 180 0)
+= patrol_waypoint : "Patrol route waypoint"
+[
+    patrol_group(string) : "Patrol group this waypoint belongs to" : ""
+]
+
+// ─── Triggers ─────────────────────────────────────────────────────────────────
+
+@PointClass
+    size(-8 -8 -8, 8 8 8)
+    color(0 160 255)
+= flag_trigger : "Sets a FlagManager flag when player enters radius"
+[
+    flag_id(integer)      : "Flag ID to set (see GameFlags.h)"   : 0
+    radius(float)         : "Trigger radius (engine meters)"     : 2
+    trigger_once(choices) : "Trigger only once"                  : 1 =
+    [
+        0 : "No - retriggers each time player enters"
+        1 : "Yes - sets flag then deactivates"
+    ]
+]
+
+@PointClass
+    size(-8 -8 -8, 8 8 8)
+    color(0 220 180)
+= script_trigger : "Publishes a named ScriptEvent to the EventBus when player enters"
+[
+    event_name(string)    : "ScriptEvent name to publish" : ""
+    radius(float)         : "Trigger radius (engine meters)" : 2
+    trigger_once(choices) : "Trigger only once" : 1 =
+    [
+        0 : "No"
+        1 : "Yes"
+    ]
+]
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+@PointClass
+    size(-16 -16 -16, 16 16 16)
+    color(200 200 100)
+= prop_static : "Static visual-only prop (no collision)"
+[
+    model(string) : "Model path relative to assets/" : ""
+    angle(float)  : "Yaw angle (degrees)"            : 0
+    scale(float)  : "Uniform scale"                  : 1
+]
+
+@PointClass
+    size(-16 -16 -16, 16 16 16)
+    color(200 140 60)
+= prop_physics : "Physics prop with RigidBodyComponent"
+[
+    model(string) : "Model path relative to assets/" : ""
+    angle(float)  : "Yaw angle (degrees)"            : 0
+    scale(float)  : "Uniform scale"                  : 1
+    mass(float)   : "Mass in kg (0 = static)"        : 0
+]

@@ -115,38 +115,116 @@ void ClipNode::deactivateAllEvents() {
 }
 
 Blend1DNode::Blend1DNode(std::string paramName, std::shared_ptr<AnimGraphNode> from, std::shared_ptr<AnimGraphNode> to)
-  : m_paramName(paramName), m_from(from), m_to(to)
-{}
+  : m_paramName(std::move(paramName))
+{
+  m_entries.push_back({ 0.0f, std::move(from) });
+  m_entries.push_back({ 1.0f, std::move(to) });
+}
+
+void Blend1DNode::addEntry(float threshold, std::shared_ptr<AnimGraphNode> node) {
+  m_entries.push_back({ threshold, std::move(node) });
+  std::sort(m_entries.begin(), m_entries.end(),
+            [](const Entry& a, const Entry& b){ return a.threshold < b.threshold; });
+}
 
 void Blend1DNode::setSkeleton(const std::vector<Bone>* skeleton) {
-  if (m_from) m_from->setSkeleton(skeleton);
-  if (m_to) m_to->setSkeleton(skeleton);
+  for (auto& e : m_entries)
+    if (e.node) e.node->setSkeleton(skeleton);
 }
 
 void Blend1DNode::update(float dt, AnimParamTable& params) {
-  m_blendAlpha = std::clamp(params.getFloat(m_paramName, 0.0f), 0.0f, 1.0f);
-  if (m_from) m_from->update(dt, params);
-  if (m_to) m_to->update(dt, params);
+  if (m_entries.empty()) return;
+
+  m_param = params.getFloat(m_paramName, 0.0f);
+
+  if (m_entries.size() == 1) {
+    m_lowerIdx = 0;
+    m_localAlpha = 0.0f;
+    if (m_entries[0].node) m_entries[0].node->update(dt, params);
+    return;
+  }
+
+  // Clamp param to declared range and find bracketing entries
+  if (m_param <= m_entries.front().threshold) {
+    m_lowerIdx = 0;
+    m_localAlpha = 0.0f;
+  } else if (m_param >= m_entries.back().threshold) {
+    m_lowerIdx = static_cast<int>(m_entries.size()) - 2;
+    m_localAlpha = 1.0f;
+  } else {
+    m_lowerIdx = 0;
+    for (int i = 0; i < static_cast<int>(m_entries.size()) - 1; ++i) {
+      if (m_param >= m_entries[i].threshold && m_param < m_entries[i + 1].threshold) {
+        m_lowerIdx = i;
+        break;
+      }
+    }
+    float range = m_entries[m_lowerIdx + 1].threshold - m_entries[m_lowerIdx].threshold;
+    m_localAlpha = (range > 0.0f)
+      ? (m_param - m_entries[m_lowerIdx].threshold) / range
+      : 0.0f;
+  }
+
+  if (m_entries[m_lowerIdx].node)
+    m_entries[m_lowerIdx].node->update(dt, params);
+
+  int upperIdx = m_lowerIdx + 1;
+  if (upperIdx < static_cast<int>(m_entries.size()) && m_entries[upperIdx].node)
+    m_entries[upperIdx].node->update(dt, params);
 }
 
 void Blend1DNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  if (!m_from && !m_to) return;
-  if (!m_from) { m_to->evaluate(outPose); return; }
-  if (!m_to) { m_from->evaluate(outPose); return; }
+  if (m_entries.empty()) return;
+
+  if (m_entries.size() == 1) {
+    if (m_entries[0].node) m_entries[0].node->evaluate(outPose);
+    return;
+  }
+
+  const auto& lower = m_entries[m_lowerIdx];
+  const auto& upper = m_entries[m_lowerIdx + 1];
+
+  if (!lower.node && !upper.node) return;
+  if (!lower.node) {
+    upper.node->evaluate(outPose);
+    return;
+  }
+  if (!upper.node) {
+    lower.node->evaluate(outPose);
+    return;
+  }
+
+  // Fully at lower bound
+  if (m_localAlpha <= 0.0f) {
+    lower.node->evaluate(outPose);
+    return;
+  }
+  // Fully at upper bound
+  if (m_localAlpha >= 1.0f) {
+    upper.node->evaluate(outPose);
+    return;
+  }
 
   std::vector<glm::mat4> fromPose, toPose;
-  m_from->evaluate(fromPose);
-  m_to->evaluate(toPose);
+  lower.node->evaluate(fromPose);
+  upper.node->evaluate(toPose);
 
   size_t count = std::min(fromPose.size(), toPose.size());
   outPose.resize(count);
-  for (size_t i = 0; i < count; i++) {
-    outPose[i] = fromPose[i] * (1.0f - m_blendAlpha) + toPose[i] * m_blendAlpha;
-  }
+  for (size_t i = 0; i < count; ++i)
+    outPose[i] = fromPose[i] * (1.0f - m_localAlpha) + toPose[i] * m_localAlpha;
 }
 
 std::string Blend1DNode::getDebugStateInfo() const {
-  return "Blend1D(" + m_paramName + "=" + std::to_string(m_blendAlpha).substr(0, 4) + ")";
+  std::string lower = (m_lowerIdx < (int)m_entries.size())
+    ? (m_entries[m_lowerIdx].node ? m_entries[m_lowerIdx].node->getDebugStateInfo() : "?")
+    : "?";
+  std::string upper = (m_lowerIdx + 1 < (int)m_entries.size())
+    ? (m_entries[m_lowerIdx + 1].node ? m_entries[m_lowerIdx + 1].node->getDebugStateInfo() : "?")
+    : "?";
+  int pct = static_cast<int>(m_localAlpha * 100.0f);
+  return "Blend1D(" + m_paramName + "=" + std::to_string(m_param).substr(0, 4) + " "
+          + lower + "->" + upper + " " + std::to_string(pct) + "%)";
 }
 
 void StateMachineNode::addState(const std::string& name, std::shared_ptr<AnimGraphNode> node) {
@@ -195,8 +273,8 @@ void StateMachineNode::update(float dt, AnimParamTable& params) {
 
   // Advance cross fade
   if (m_blendAlpha < 1.0f && m_blendTime > 0.0f) {
-    m_blendTime += dt;
-    m_blendAlpha = std::min(m_blendTime / m_blendTime, 1.0f);
+    m_blendTimer += dt;
+    m_blendAlpha = std::min(m_blendTimer / m_blendTime, 1.0f);
   }
 
   if (m_blendAlpha < 1.0f && !m_previousState.empty()) {

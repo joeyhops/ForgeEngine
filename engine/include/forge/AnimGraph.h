@@ -41,7 +41,7 @@ public:
   // Read-only accessors for DebugUI
   const std::unordered_map<std::string, float>& getFloats() const { return m_floats; }
   const std::unordered_map<std::string, bool>& getBools() const { return m_bools; }
-  const std::unordered_set<std::string>& geTriggers() const { return m_triggers; }
+  const std::unordered_set<std::string>& getTriggers() const { return m_triggers; }
 
 private:
   std::unordered_map<std::string, float> m_floats;
@@ -65,6 +65,9 @@ public:
   virtual void update(float dt, AnimParamTable& params) = 0;
   virtual void evaluate(std::vector<glm::mat4>& outPose) const = 0;
   virtual bool isFinished() const { return false; }
+
+  virtual float getActiveClipTime() const { return 0.0f; }
+  virtual float getActiveClipDuration() const { return 0.0f; }
 
   // propagate the skeleton to leaf ClipNodes
   // Called once when the graph attaches to an animator
@@ -95,6 +98,9 @@ public:
 
   std::string getDebugStateInfo() const override;
 
+  float getActiveClipTime() const override { return m_time; }
+  float getActiveClipDuration() const override { return m_clip ? m_clip->duration : 0.0f; }
+
   float getCurrentTime() const { return m_time; }
   float getDuration() const { return m_clip ? m_clip->duration : 0.0f; }
   const std::shared_ptr<AnimationClip>& getClip() const { return m_clip; }
@@ -123,17 +129,38 @@ class Blend1DNode : public AnimGraphNode {
 public:
   Blend1DNode(std::string paramName, std::shared_ptr<AnimGraphNode> from, std::shared_ptr<AnimGraphNode> to);
 
+  void addEntry(float threshold, std::shared_ptr<AnimGraphNode> node);
+
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const  override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
 
   std::string getDebugStateInfo() const override;
+  float getActiveClipTime() const override {
+    if (m_lowerIdx < (int)m_entries.size() && m_entries[m_lowerIdx].node)
+      return m_entries[m_lowerIdx].node->getActiveClipTime();
+    return 0.0f;
+  }
+
+  float getActiveClipDuration() const override {
+    if (m_lowerIdx < (int)m_entries.size() && m_entries[m_lowerIdx].node)
+      return m_entries[m_lowerIdx].node->getActiveClipDuration();
+    return 0.0f;
+  }
   
 private:
+  struct Entry {
+    float threshold = 0.0f;
+    std::shared_ptr<AnimGraphNode> node;
+  };
+
   std::string m_paramName;
-  std::shared_ptr<AnimGraphNode> m_from;
-  std::shared_ptr<AnimGraphNode> m_to;
-  float m_blendAlpha = 0.0f;
+  std::vector<Entry> m_entries; // sorted ascending by threshold
+
+
+  float m_param = 0.0f;
+  int m_lowerIdx = 0; // Index of lower bracketing entry
+  float m_localAlpha = 0.0f; 
 };
 
 // StateMachineNode
@@ -165,6 +192,20 @@ public:
   void setSkeleton(const std::vector<Bone>* skeleton) override;
 
   std::string getDebugStateInfo() const override;
+
+  float getActiveClipTime() const override {
+    auto it = m_states.find(m_currentState);
+    if (it != m_states.end() && it->second)
+      return it->second->getActiveClipTime();
+    return 0.0f;
+  }
+
+  float getActiveClipDuration() const override {
+    auto it = m_states.find(m_currentState);
+    if (it != m_states.end() && it->second)
+      return it->second->getActiveClipDuration();
+    return 0.0f;
+  }
 
   const std::string& getCurrentState() const { return m_currentState; }
 private:

@@ -3,6 +3,8 @@
 #include <forge/AssetManager.h>
 #include <forge/Shader.h>
 #include <forge/Camera.h>
+#include <forge/ThirdPersonCamera.h>
+#include <forge/CharacterController.h>
 #include <forge/Transform.h>
 #include <forge/RigidBodyComponent.h>
 #include <forge/CombatComponent.h>
@@ -43,12 +45,13 @@ private:
   std::shared_ptr<forge::Shader> m_shader; // basic.vert/frag
   std::shared_ptr<forge::Shader> m_skinnedShader; // skinned.vert/basic.frag
   std::unique_ptr<forge::Camera> m_camera;
+  std::unique_ptr<forge::ThirdPersonCamera> m_tpCamera;
   
   // Player
   struct PlayerEntity {
     forge::SkinnedModelData skinnedModel;
     std::unique_ptr<forge::Transform> transform;
-    std::unique_ptr<forge::RigidBodyComponent> body;
+    std::unique_ptr<forge::CharacterController> controller;
     std::unique_ptr<forge::CombatComponent> combat;
     std::unique_ptr<forge::Animator> animator;
     std::unordered_map<std::string,
@@ -81,5 +84,21 @@ private:
   forge::ModelData m_towerModel;
 
   // Input
+  
+  double m_prevMouseX = 0.0;
+  double m_prevMouseY = 0.0;
+  bool m_firstMouse = true;
+
+  // Lock on: stable buffer holding the enemys chest pos each frame
+  glm::vec3 m_lockOnEnemyPos = { 0.0f, 0.0f, 0.0f };
+  bool m_lockedOn = false;
+
+  // Dodge state
+  float m_dodgeTimer = 0.0f; // Counts down; > 0 == currently dodging
+  glm::vec3 m_dodgeDir = { 0.0f, 0.0f, -1.0f }; // direction frozen at start of dodge
+  float m_dodgeDuration = 0.45f;
+
+  bool m_uiMouseMode = false;
+
   struct InputState { bool j, k, l; } m_prevInput = {};
 };

@@ -2,6 +2,7 @@
 #include <forge/Logger.h>
 
 #include <btBulletDynamicsCommon.h>
+#include <BulletCollision/CollisionDispatch/btGhostObject.h>
 #include <memory>
 
 namespace forge {
@@ -29,6 +30,9 @@ PhysicsWorld::PhysicsWorld() {
   );
 
   m_world->setGravity(btVector3(0.0f, -9.81f, 0.0f));
+
+  m_world->getPairCache()->setInternalGhostPairCallback(new btGhostPairCallback());
+
   LOG_INFO("[Physics] World initialized");
 }
 
@@ -53,6 +57,27 @@ void PhysicsWorld::setGravity(const glm::vec3& gravity) {
   m_world->setGravity(toBt(gravity));
 }
 
+// Ghost objects (character controller)
+void PhysicsWorld::addGhostObject(btCollisionObject* ghost, int group, int mask) {
+  m_world->addCollisionObject(
+    ghost,
+    static_cast<short>(group),
+    static_cast<short>(mask)
+  );
+}
+
+void PhysicsWorld::removeGhostObject(btCollisionObject* ghost) {
+  m_world->removeCollisionObject(ghost);
+}
+
+// Action interfaces
+void PhysicsWorld::addAction(btActionInterface* action) {
+  m_world->addAction(action);
+}
+
+void PhysicsWorld::removeAction(btActionInterface* action) {
+  m_world->removeAction(action);
+}
 // Raycast
 
 RaycastHit PhysicsWorld::raycast(const glm::vec3& from, const glm::vec3& to) const {

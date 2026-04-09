@@ -89,6 +89,16 @@ bool Animator::isPlaying() const {
   return m_currentClip != nullptr;
 }
 
+float Animator::getActiveClipTime() const {
+  if (m_graph) return m_graph->getActiveClipTime();
+  return m_currentTime;
+}
+
+float Animator::getActiveClipDuration() const {
+  if (m_graph) return m_graph->getActiveClipDuration();
+  return m_currentClip ? m_currentClip->duration : 0.0f;
+}
+
 std::string Animator::getClipName() const {
   if (m_graph) return m_graph->getDebugStateInfo();
   return m_currentClip ? m_currentClip->name : "none";
