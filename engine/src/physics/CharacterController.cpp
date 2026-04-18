@@ -19,12 +19,15 @@ static btVector3 toBt(const glm::vec3& v) {
 }
 static glm::vec3 toGlm(const btVector3& v) { return glm::vec3(v.x(), v.y(), v.z()); }
 
-CharacterController::CharacterController(PhysicsWorld& world, Transform& transform, float radius, float height)
-  : m_world(world), m_transform(transform)
+CharacterController::CharacterController(PhysicsWorld& world, Transform& transform, float radius, float cylinderHeight)
+  : m_world(world),
+    m_transform(transform),
+    m_radius(radius),
+    m_cylinderHalfHeight(cylinderHeight * 0.5f)
 {
   m_shape = std::make_unique<btCapsuleShape>(
     static_cast<btScalar>(radius),
-    static_cast<btScalar>(height)
+    static_cast<btScalar>(cylinderHeight)
   );
 
   // Ghost object - the kinematic character controller uses this instead of a rigid body.
@@ -32,10 +35,14 @@ CharacterController::CharacterController(PhysicsWorld& world, Transform& transfo
   m_ghost->setCollisionShape(m_shape.get());
   m_ghost->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
 
+  const float totalHalf = getTotalHalfHeight();
+  glm::vec3 footPos = transform.getPosition();
+  glm::vec3 capsuleCenter = footPos + glm::vec3(0.0f, totalHalf, 0.0f);
+
   // Start at transforms curr world pos
   btTransform startTrans;
   startTrans.setIdentity();
-  startTrans.setOrigin(toBt(transform.getPosition()));
+  startTrans.setOrigin(toBt(capsuleCenter));
   m_ghost->setWorldTransform(startTrans);
 
   // Register ghost with broadphase so other objects can collide with it
@@ -58,7 +65,7 @@ CharacterController::CharacterController(PhysicsWorld& world, Transform& transfo
   // Register controller as action so Bullet calls updateAction each step
   world.addAction(m_controller.get());
 
-  LOG_INFO("[CharController] Created - radius={:.2f}m height={:.2f}m", radius, height);
+  LOG_INFO("[CharController] Created - radius={:.2f}m height={:.2f}m", radius, cylinderHeight);
 }
 
 CharacterController::~CharacterController() {
@@ -73,13 +80,16 @@ void CharacterController::setWalkDirection(const glm::vec3& displacement) {
 
 void CharacterController::syncTransform() {
   const btTransform& t = m_ghost->getWorldTransform();
-  m_transform.setPosition(toGlm(t.getOrigin()));
+  glm::vec3 capsuleCenter = toGlm(t.getOrigin());
+  glm::vec3 footPos = capsuleCenter - glm::vec3(0.0f, getTotalHalfHeight(), 0.0f);
+  m_transform.setPosition(footPos);
 }
 
 // Utils
-void CharacterController::warp(const glm::vec3& pos) {
-  m_controller->warp(toBt(pos));
-  m_transform.setPosition(pos);
+void CharacterController::warp(const glm::vec3& footPos) {
+  glm::vec3 capsuleCenter = footPos + glm::vec3(0.0f, getTotalHalfHeight(), 0.0f);
+  m_controller->warp(toBt(capsuleCenter));
+  m_transform.setPosition(footPos);
 }
 
 bool CharacterController::isOnGround() const {
@@ -87,6 +97,12 @@ bool CharacterController::isOnGround() const {
 }
 
 glm::vec3 CharacterController::getPosition() const {
+  const btTransform& t = m_ghost->getWorldTransform();
+  glm::vec3 capsuleCenter = toGlm(t.getOrigin());
+  return capsuleCenter - glm::vec3(0.0f, getTotalHalfHeight(), 0.0f);
+}
+
+glm::vec3 CharacterController::getCapsuleCenter() const {
   return toGlm(m_ghost->getWorldTransform().getOrigin());
 }
 

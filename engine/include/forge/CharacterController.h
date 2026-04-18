@@ -25,7 +25,7 @@ public:
 
   //radius - capsule radius in meters (collision cylinder radius)
   //height - cylinder-only height in meters; total height = height + 2 * radius
-  CharacterController(PhysicsWorld& world, Transform& transform, float radius = 0.3f, float height = 1.0f);
+  CharacterController(PhysicsWorld& world, Transform& transform, float radius = 0.3f, float cylinderHeight = 1.0f);
   ~CharacterController();
 
   CharacterController(const CharacterController&) = delete;
@@ -34,15 +34,24 @@ public:
   // Set displacement for next physics step
   void setWalkDirection(const glm::vec3& displacement);
 
+  // write the capsule foot position (btm) into Transform
   void syncTransform();
 
-  void warp(const glm::vec3& pos);
+  void warp(const glm::vec3& footPos);
 
   bool isOnGround() const;
   glm::vec3 getPosition() const;
+  glm::vec3 getCapsuleCenter() const;
+
+  float getRadius() const { return m_radius; }
+  float getCylinderHalfHeight() const { return m_cylinderHalfHeight; }
+  float getTotalHalfHeight() const { return m_radius + m_cylinderHalfHeight; }
 private:
   PhysicsWorld& m_world;
   Transform& m_transform;
+
+  float m_radius;
+  float m_cylinderHalfHeight;
 
   std::unique_ptr<btCapsuleShape> m_shape;
   std::unique_ptr<btPairCachingGhostObject> m_ghost;

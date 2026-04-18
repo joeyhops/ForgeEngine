@@ -6,6 +6,7 @@
 class btRigidBody;
 class btCollisionShape;
 class btDefaultMotionState;
+class btTriangleMesh;
 
 namespace forge {
 class PhysicsWorld;
@@ -16,6 +17,7 @@ enum class CollisionShape {
   Sphere, // Radius defines the size
   Capsule, // radius + height - used for characters
   Plane, // Infinite static floor/wall
+  Mesh,
 };
 
 class RigidBodyComponent {
@@ -27,6 +29,13 @@ public:
                      CollisionShape shape,
                      const glm::vec3& shapeSize, // box: half-extents, sphere: (radius,0,0), capsule: (radius, height, 0)
                      float mass = 1.0f);
+
+  RigidBodyComponent(PhysicsWorld& world,
+                     Transform& transform,
+                     const std::vector<glm::vec3>& positions,
+                     const std::vector<uint32_t>& indices,
+                     float mass = 0.0f);
+
   ~RigidBodyComponent();
 
   RigidBodyComponent(const RigidBodyComponent&) = delete;
@@ -46,8 +55,13 @@ public:
   void teleport(const glm::vec3& pos);
 
 private:
+
+  void finalize(Transform& transform, float mass);
+
   PhysicsWorld& m_world;
   Transform& m_transform;
+
+  std::unique_ptr<btTriangleMesh> m_triangleMesh;
 
   // Bullet owned butwe manage lifetime via unique_ptr + custom deleter
   std::unique_ptr<btCollisionShape> m_shape;

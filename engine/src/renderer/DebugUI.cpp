@@ -37,7 +37,7 @@ void DebugUI::init(GLFWwindow* window) {
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init("#version 460");
 
-  LOG_INFO("[DebugUI] Initialized (F1=Perf F2=Combat F3=Flags F4=Lua F5=AI)");
+  LOG_INFO("[DebugUI] Initialized (F1=Perf F2=Combat F3=Flags F4=Lua F5=AI, F6=AnimGraph, F7=Physics)");
 }
 
 void DebugUI::setLuaState(LuaState* lua) {
@@ -86,6 +86,7 @@ void DebugUI::begin(float dt) {
   if (ImGui::IsKeyPressed(ImGuiKey_F4)) m_showLuaConsole = !m_showLuaConsole;
   if (ImGui::IsKeyPressed(ImGuiKey_F5)) m_showAIInspector = !m_showAIInspector;
   if (ImGui::IsKeyPressed(ImGuiKey_F6)) m_showAnimGraphMonitor = !m_showAnimGraphMonitor;
+  if (ImGui::IsKeyPressed(ImGuiKey_F7)) m_showPhysicsDebug = !m_showPhysicsDebug;
 
   // build panels
   if (m_showPerformance) drawPerformancePanel();

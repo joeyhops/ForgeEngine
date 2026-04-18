@@ -8,6 +8,7 @@
 #include <forge/EventBus.h>
 #include <forge/FlagManager.h>
 #include <forge/DebugUI.h>
+#include <forge/DebugDraw.h>
 #include <forge/LuaState.h>
 #include <forge/CombatSystem.h>
 #include <forge/AnimGraph.h>
@@ -37,6 +38,11 @@ void ForgeGame::onInit() {
   setupLevel();
   setupScripts();
 
+  m_debugLineShader = forge::AssetManager::loadShader(
+  "shaders/debug_line.vert", 
+  "shaders/debug_line.frag"
+  );
+  forge::DebugDraw::init(m_debugLineShader.get());
 
   // Try loading previous save
   getFlags().loadFromFile("save.json");
@@ -252,8 +258,9 @@ void ForgeGame::setupEnemy() {
   m_enemy.skinnedModel = forge::AssetManager::loadSkinnedModel(
     "models/characters/anim/ybot_idle.glb");
  
+  constexpr float k_enemyCapsuleHalfHeight = 0.75f;
   m_enemy.transform = std::make_unique<forge::Transform>();
-  m_enemy.transform->setPosition({ 0.0f, 0.0f, -4.0f });
+  m_enemy.transform->setPosition({ 0.0f, k_enemyCapsuleHalfHeight, -4.0f });
   m_enemy.transform->setScale({ 0.01f, 0.01f, 0.01f });
   m_enemy.transform->setEulerAngles({ 90.0f, 0.0f, 0.0f });
  
@@ -306,9 +313,6 @@ void ForgeGame::setupEnemy() {
   m_enemy.ai = std::make_unique<forge::AIComponent>(
     "enemy", *m_enemy.transform, *m_enemy.combat);
  
-  m_enemy.ai->addWaypoint({  2.0f, 0.0f, -4.0f });
-  m_enemy.ai->addWaypoint({ -2.0f, 0.0f, -4.0f });
- 
   getCombat().registerCombatant(m_enemy.combat.get());
   getDebugUI().registerAnimator(m_enemy.animator.get(), "Enemy");
   getDebugUI().registerAIComponent(m_enemy.ai.get());
@@ -322,6 +326,139 @@ void ForgeGame::setupEnemy() {
 }
 
 void ForgeGame::setupLevel() {
+  const std::string root = forge::AssetManager::getAssetRoot();
+  const std::string objPath = "levels/level_01.obj";
+  const std::string mapPath = root + "levels/level_01.map";
+
+  bool objLoaded = false;
+  try {
+    m_levelMesh = forge::AssetManager::loadModel(objPath);
+    objLoaded = m_levelMesh.mesh != nullptr;
+  } catch (const std::exception& e) {
+    LOG_WARN("[Game] level_01.obj not found or failed to load: {}", e.what());
+  }
+
+  if (objLoaded) {
+    LOG_INFO("[Game] TrenchBroom level OBJ loaded ({} physics tris)", m_levelMesh.indices.size() / 3);
+    constexpr float k_mapScale = 1.0f / 64.0f;
+
+    // Place level at origin at engine scale
+    m_levelTransform = std::make_unique<forge::Transform>();
+    m_levelTransform->setPosition({ 0.0f, 0.0f, 0.0f });
+    m_levelTransform->setScale({ k_mapScale, k_mapScale, k_mapScale });
+
+    std::vector<glm::vec3> scaledPositions;
+    scaledPositions.reserve(m_levelMesh.positions.size());
+    for (const auto& p : m_levelMesh.positions)
+      scaledPositions.push_back(p * k_mapScale);
+
+    // Triangle mesh collision - one body for the whole level
+    if (m_levelMesh.hasPhysicsData()) {
+      m_levelPhysicsBody = std::make_unique<forge::RigidBodyComponent>(
+        getPhysics(),
+        *m_levelTransform,
+        scaledPositions,
+        m_levelMesh.indices,
+        0.0f // static
+      );
+    } else {
+      LOG_WARN("[Game] Level OBJ loaded without physics data - using plane collision fallback.");
+      m_levelPhysicsBody = std::make_unique<forge::RigidBodyComponent>(
+        getPhysics(),
+        *m_levelTransform,
+        forge::CollisionShape::Plane,
+        glm::vec3(0),
+        0.0f
+      );
+    }
+
+    // Parse entities from map file
+    m_levelData = forge::LevelLoader::load(mapPath);
+
+    if (m_levelData.valid) {
+      // Player start - override default player spawn
+      if (const auto& start = m_levelData.findFirst("info_player_start")) {
+        glm::vec3 origin = start->origin;
+        constexpr float k_playerCapsuleHalfHeight = 0.9f;
+        origin.y += k_playerCapsuleHalfHeight;
+        m_player.controller->warp(origin);
+        if (start->angle != 0.0f) {
+          float rad = glm::radians(start->angle);
+          m_player.forward = glm::normalize(glm::vec3(sinf(rad), 0.0f, cosf(rad)));
+          m_player.transform->setEulerAngles({ 90.0f, start->angle, 0.0f });
+        }
+        LOG_INFO("[Game] Player spawned at {:.2f},{:.2f},{:.2f} from info_player_start",
+                 start->origin.x, start->origin.y, start->origin.z);
+      }
+
+      // Enemy spawns - relocate existing enemy to first spawn point
+      const auto enemySpawns = m_levelData.getByClass("enemy_spawn");
+      if (!enemySpawns.empty()) {
+        const forge::LevelEntity* spawnEnt = enemySpawns[0];
+        glm::vec3 spawnPos = spawnEnt->origin;
+
+        constexpr float k_capsuleHalfHeight = 0.75f;
+        constexpr float k_rayStart = 2.0f;
+        constexpr float k_rayLength = 10.0f;
+
+        glm::vec3 rayFrom = spawnPos + glm::vec3(0.0f, k_rayStart, 0.0f);
+        glm::vec3 rayTo = spawnPos + glm::vec3(0.0f, -k_rayLength, 0.0f);
+
+        forge::RaycastHit hit = getPhysics().raycast(rayFrom, rayTo);
+        if (hit.hit) {
+          spawnPos.y += hit.point.y + k_capsuleHalfHeight;
+          LOG_INFO("[Game] Enemy snapped to floor at y={:.3f} (raycast hit at y={:.3f})", spawnPos.y, hit.point.y);
+        } else {
+          spawnPos.y -= k_capsuleHalfHeight;
+          LOG_INFO("[Game] Floor raycast missed for enemy_spawn, using entity height + offset");
+        }
+        m_enemy.transform->setPosition(spawnPos);
+        m_enemy.body->teleport(spawnPos);
+
+        // Patrol waypoints for this spawn (matched by patrol_group key)
+        std::string group = spawnEnt->props.count("patrol_group")
+          ? spawnEnt->props.at("patrol_group") : "";
+
+        if (!group.empty()) {
+          // Clear default waypoints
+          m_enemy.ai->clearWaypoints();
+          for (const auto* wp : m_levelData.getByClass("patrol_waypoint")) {
+            if (wp->props.count("patrol_group") && wp->props.at("patrol_group") == group) {
+              m_enemy.ai->addWaypoint(wp->origin);
+            }
+          }
+          LOG_INFO("[Game] Enemy patrol loaded: {} waypoints (group '{}')",
+                   m_enemy.ai->waypointCount(), group);
+        }
+
+        LOG_INFO("[Game] Enemy spawned at {:.2f},{:.2f},{:.2f} from map",
+                 spawnPos.x, spawnPos.y, spawnPos.z);
+      }
+
+      // Flag triggers - more in next phase
+      for (const auto* t : m_levelData.getByClass("flag_trigger")) {
+        int flagId = t->getInt("flag_id", -1);
+        bool triggerOnce = t->getBool("trigger_once", true);
+        float radius = t->getFloat("radius", 2.0f);
+        if (flagId >= 0) {
+          LOG_INFO("[Game] flag_trigger: flag={} radius={:.1f} once={} at {:.1f},{:.1f},{:.1f}",
+                   flagId, radius, triggerOnce,
+                   t->origin.x, t->origin.y, t->origin.z);
+        }
+      }
+
+      LOG_INFO("[Game] Map entities loaded: {} total", m_levelData.entities.size());
+    } else {
+      LOG_WARN("[Game] level_01.map not found - entity data skipped.");
+    }
+
+    m_usingTBLevel = true;
+    LOG_INFO("[Game] TrenchBroom level active.");
+    return;
+  }
+
+  LOG_INFO("[Game] No TrenchBroom level found — using procedural courtyard.");
+
   m_floorModel = forge::AssetManager::loadModel("models/medieval/floor.fbx");
   m_wallModel = forge::AssetManager::loadModel("models/medieval/wall.fbx");
   m_towerModel = forge::AssetManager::loadModel("models/medieval/tower.fbx");
@@ -431,6 +568,8 @@ void ForgeGame::setupLevel() {
           m_level.push_back(std::move(tower));
       }
   }
+
+  m_usingTBLevel = false;
 }
 
 void ForgeGame::setupScripts() {
@@ -450,12 +589,18 @@ void ForgeGame::setupScripts() {
 void ForgeGame::onUpdate(float dt) {
   handleInput(dt);
 
+  const float enemyY = m_enemy.transform->getPosition().y;
+
   m_enemy.body->teleport(m_enemy.transform->getPosition());
 
   // Physics
   getPhysics().step(dt);
   m_player.controller->syncTransform();
   m_enemy.body->syncTransform();
+
+  glm::vec3 ep = m_enemy.transform->getPosition();
+  ep.y = enemyY;
+  m_enemy.transform->setPosition(ep);
 
   m_tpCamera->update(m_player.transform->getPosition());
 
@@ -497,10 +642,12 @@ void ForgeGame::onUpdate(float dt) {
 
 void ForgeGame::onRender() {
   m_shader->bind();
-  for (auto& piece : m_level) {
-    if (piece.model.mesh) {
-      drawModel(piece.model, *piece.transform);
-    }
+  if (m_usingTBLevel) {
+    if (m_levelMesh.mesh)
+      drawModel(m_levelMesh, *m_levelTransform);
+  } else {
+    for (auto& piece : m_level)
+      if (piece.model.mesh) drawModel(piece.model, *piece.transform);
   }
   m_shader->unbind();
 
@@ -508,10 +655,48 @@ void ForgeGame::onRender() {
   drawSkinnedModel(m_player.skinnedModel, *m_player.transform, *m_player.animator);
 
   // tint enemy slightly red so we can see which they are
-  m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
-  drawSkinnedModel(m_enemy.skinnedModel, *m_enemy.transform, *m_enemy.animator);
-  m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
+  {
+    constexpr float k_enemyCapsuleRadius = 0.3f;
+    constexpr float k_enemyCylinderHalfHeight = 0.45f;
+    constexpr float k_enemyTotalHalfHeight = k_enemyCapsuleRadius + k_enemyCylinderHalfHeight;
+
+    forge::Transform enemyVisualTransform;
+    glm::vec3 footPos = m_enemy.transform->getPosition()
+                      - glm::vec3(0.0f, k_enemyTotalHalfHeight, 0.0f);
+    enemyVisualTransform.setPosition(footPos);
+    enemyVisualTransform.setScale(m_enemy.transform->getScale());
+    enemyVisualTransform.setRotation(m_enemy.transform->getRotation());
+
+    m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
+    drawSkinnedModel(m_enemy.skinnedModel, enemyVisualTransform, *m_enemy.animator);
+    m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
+  }
+
   m_skinnedShader->unbind();
+
+  // Physics debug
+  if (getDebugUI().isPhysicsDebugEnabled()) {
+    // Player capsule - CharacterController gives the true phys center
+    // via  getCapsuleCenter(), separate from the foot-position transform
+    forge::DebugDraw::capsule(
+      m_player.controller->getCapsuleCenter(), 
+      m_player.controller->getRadius(), 
+      m_player.controller->getCylinderHalfHeight(),
+      { 0.0f, 1.0f, 0.0f } // green
+    );
+
+    {
+      constexpr float kR = 0.3f;
+      constexpr float kH = 0.45f;
+      forge::DebugDraw::capsule(
+        m_enemy.transform->getPosition(), 
+        kR, kH,
+        { 1.0f, 0.3f, 0.3f }
+      );
+    }
+
+    forge::DebugDraw::flush(m_camera->getViewProjection());
+  }
 }
 
 void ForgeGame::drawModel(const forge::ModelData& model,

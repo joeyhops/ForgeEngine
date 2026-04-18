@@ -154,7 +154,9 @@ void AIComponent::tickPatrol(float dt) {
   faceToward(target);
 
   // Waypoint reached?
-  float dist = glm::length(target - m_transform.getPosition());
+  glm::vec3 diff = target - m_transform.getPosition();
+  diff.y = 0.0f;
+  float dist = glm::length(diff);
   if (dist < m_waypointThreshold) {
     m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
   }

@@ -31,6 +31,8 @@ public:
 
   // Config
   void addWaypoint(const glm::vec3& point);
+  void clearWaypoints() { m_waypoints.clear(); m_currentWaypoint = 0; }
+  int waypointCount() const { return static_cast<int>(m_waypoints.size()); }
   void setDetectionRadius(float r) { m_detectionRadius = r; }
   void setAttackRadius(float r) { m_attackRadius = r; }
   void setMoveSpeed(float s) { m_moveSpeed = s; }

@@ -65,6 +65,8 @@ public:
 
   // Appends a line to console panel output buffer
   void addConsoleLine(std::string line);
+
+  bool isPhysicsDebugEnabled() const { return m_showPhysicsDebug; }
 private:
   void drawPerformancePanel();
   void drawCombatMonitorPanel();
@@ -91,6 +93,7 @@ private:
   bool m_showLuaConsole = false;
   bool m_showAIInspector = false;
   bool m_showAnimGraphMonitor = true;
+  bool m_showPhysicsDebug = false;
 
   // Timing state (updatd in begin)
   float m_fps = 0.0f;

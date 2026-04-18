@@ -11,6 +11,7 @@
 #include <forge/AIComponent.h>
 #include <forge/Animator.h>
 #include <forge/AnimationClip.h>
+#include <forge/LevelLoader.h>
 
 #include <memory>
 #include <unordered_map>
@@ -44,6 +45,7 @@ private:
   // Rendering
   std::shared_ptr<forge::Shader> m_shader; // basic.vert/frag
   std::shared_ptr<forge::Shader> m_skinnedShader; // skinned.vert/basic.frag
+  std::shared_ptr<forge::Shader> m_debugLineShader;
   std::unique_ptr<forge::Camera> m_camera;
   std::unique_ptr<forge::ThirdPersonCamera> m_tpCamera;
   
@@ -71,6 +73,11 @@ private:
       std::shared_ptr<forge::AnimationClip>> clips;
   } m_enemy;
 
+  forge::ModelData m_levelMesh; // OBJ Geometry
+  std::unique_ptr<forge::Transform> m_levelTransform; 
+  std::unique_ptr<forge::RigidBodyComponent> m_levelPhysicsBody; // Collision
+  forge::LevelData m_levelData; // parsed entities
+
   // Level geometry
   struct LevelPiece {
     forge::ModelData model;
@@ -78,16 +85,17 @@ private:
     std::unique_ptr<forge::RigidBodyComponent> body;
   };
   std::vector<LevelPiece> m_level;
-
   forge::ModelData m_floorModel;
   forge::ModelData m_wallModel;
   forge::ModelData m_towerModel;
+  bool m_usingTBLevel = false;
 
   // Input
   
   double m_prevMouseX = 0.0;
   double m_prevMouseY = 0.0;
   bool m_firstMouse = true;
+  bool m_uiMouseMode = false;
 
   // Lock on: stable buffer holding the enemys chest pos each frame
   glm::vec3 m_lockOnEnemyPos = { 0.0f, 0.0f, 0.0f };
@@ -97,8 +105,6 @@ private:
   float m_dodgeTimer = 0.0f; // Counts down; > 0 == currently dodging
   glm::vec3 m_dodgeDir = { 0.0f, 0.0f, -1.0f }; // direction frozen at start of dodge
   float m_dodgeDuration = 0.45f;
-
-  bool m_uiMouseMode = false;
 
   struct InputState { bool j, k, l; } m_prevInput = {};
 };

@@ -145,6 +145,9 @@ ModelData AssetManager::loadModel(const std::string& path) {
   // Merge all meshes in the file into one
   std::vector<Vertex> allVerts;
   std::vector<unsigned int> allIdx;
+  std::vector<glm::vec3> cpuPositions;
+  std::vector<uint32_t> cpuIndices;
+
   unsigned int indexOffset = 0;
 
   for (unsigned int m = 0; m < scene->mNumMeshes; m++) {
@@ -169,12 +172,21 @@ ModelData AssetManager::loadModel(const std::string& path) {
       }
 
       allVerts.push_back(v);
+
+      // Phys vertex (pos only, no normals/UVs)
+      cpuPositions.push_back(glm::vec3(
+        aiM->mVertices[i].x,
+        aiM->mVertices[i].y,
+        aiM->mVertices[i].z
+      ));
     }
 
     for (unsigned int f = 0; f < aiM->mNumFaces; f++) {
       const aiFace& face = aiM->mFaces[f];
       for (unsigned int j = 0; j < face.mNumIndices; j++) {
-        allIdx.push_back(face.mIndices[j] + indexOffset);
+        uint32_t idx = face.mIndices[j] + indexOffset;
+        allIdx.push_back(static_cast<unsigned int>(idx));
+        cpuIndices.push_back(idx);
       }
     }
     indexOffset += aiM->mNumVertices;
@@ -234,7 +246,12 @@ ModelData AssetManager::loadModel(const std::string& path) {
     }
   }
 
-  ModelData result{ std::make_shared<Mesh>(allVerts, allIdx), texture };
+  ModelData result;
+  result.mesh = std::make_shared<Mesh>(allVerts, allIdx);
+  result.texture = texture;
+  result.positions = std::move(cpuPositions);
+  result.indices = std::move(cpuIndices);
+
   s_models[path] = result;
   return result;
 }

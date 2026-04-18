@@ -18,7 +18,11 @@ struct ModelData {
   std::shared_ptr<Mesh> mesh;
   std::shared_ptr<Texture> texture; // Nullptr if no texture
 
+  std::vector<glm::vec3> positions;
+  std::vector<uint32_t> indices;
+
   bool hasTexture() const { return texture != nullptr; }
+  bool hasPhysicsData() const { return !positions.empty() && !indices.empty(); }
 };
 
 // Skinned Mesh
