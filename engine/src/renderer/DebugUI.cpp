@@ -35,7 +35,11 @@ void DebugUI::init(GLFWwindow* window) {
 
   // install cbs=true -> ImGUI hooks into GLFW for mouse/keyboard itself
   ImGui_ImplGlfw_InitForOpenGL(window, true);
+#ifdef __APPLE__
+  ImGui_ImplOpenGL3_Init("#version 410");
+#else
   ImGui_ImplOpenGL3_Init("#version 460");
+#endif
 
   LOG_INFO("[DebugUI] Initialized (F1=Perf F2=Combat F3=Flags F4=Lua F5=AI, F6=AnimGraph, F7=Physics)");
 }
@@ -299,7 +303,7 @@ void DebugUI::drawLuaConsolePanel() {
         } // If script returned value, though, show it
         else if (result.return_count() > 0) {
           sol::object ret = result;
-          if (ret.get_type() != sol::type::nil)
+          if (ret.get_type() != sol::type::none)
             addConsoleLine("=> " + ret.as<std::string>());
         }
       } else {

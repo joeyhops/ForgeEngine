@@ -30,7 +30,11 @@ ForgeGame::ForgeGame()
 
 void ForgeGame::onInit() {
   LOG_INFO("[Game] Initializing ForgeGame");
+#ifdef __APPLE__
+  forge::AssetManager::setAssetRoot("assets/");
+#else
   forge::AssetManager::setAssetRoot("../../../../assets/");
+#endif
 
   setupRenderer();
   setupPlayer();
@@ -38,10 +42,18 @@ void ForgeGame::onInit() {
   setupLevel();
   setupScripts();
 
+#ifdef __APPLE__
   m_debugLineShader = forge::AssetManager::loadShader(
-  "shaders/debug_line.vert", 
-  "shaders/debug_line.frag"
+  "shaders/mac/debug_line.vert", 
+  "shaders/mac/debug_line.frag"
   );
+#else
+  m_debugLineShader = forge::AssetManager::loadShader(
+  "shaders/win/debug_line.vert", 
+  "shaders/win/debug_line.frag"
+  );
+#endif
+
   forge::DebugDraw::init(m_debugLineShader.get());
 
   // Try loading previous save
@@ -57,12 +69,21 @@ void ForgeGame::onShutdown() {
 
 void ForgeGame::setupRenderer() {
   // Shader and camera
+#ifdef __APPLE__
   m_shader = forge::AssetManager::loadShader(
-    "shaders/basic.vert",
-    "shaders/basic.frag"
+    "shaders/mac/basic.vert",
+    "shaders/mac/basic.frag"
   );
-  m_skinnedShader = forge::AssetManager::loadShader("shaders/skinned.vert",
-                                                    "shaders/basic.frag"); 
+  m_skinnedShader = forge::AssetManager::loadShader("shaders/mac/skinned.vert",
+                                                    "shaders/mac/basic.frag"); 
+#else
+  m_shader = forge::AssetManager::loadShader(
+    "shaders/win/basic.vert",
+    "shaders/win/basic.frag"
+  );
+  m_skinnedShader = forge::AssetManager::loadShader("shaders/win/skinned.vert",
+                                                    "shaders/win/basic.frag"); 
+#endif
   // Third person camera - positioned behind and above player
   // angled down to see the level.
   float aspect = (float)getWidth() / (float)getHeight();

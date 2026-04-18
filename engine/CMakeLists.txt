@@ -34,6 +34,7 @@ target_include_directories(forge_engine PUBLIC
 )
 
 find_package(glfw3 CONFIG REQUIRED)
+find_package(OpenGL REQUIRED)
 find_package(GLEW CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(Lua REQUIRED)
@@ -47,7 +48,7 @@ find_package(spdlog CONFIG REQUIRED)
 
 target_link_libraries(forge_engine PUBLIC
   glfw 
-  opengl32
+  OpenGL::GL
   GLEW::GLEW
   glm::glm
   ${LUA_LIBRARIES}
