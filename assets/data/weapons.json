@@ -1,0 +1,37 @@
+{
+  "weapons": [
+    {
+      "id":         "longsword",
+      "mesh":       "models/weapons/longsword.glb",
+      "attachBone": "weapon_r",
+      "hitboxBone": "weapon_r",
+      "attacks": {
+        "r1": {
+          "name":         "r1",
+          "damage":       120.0,
+          "poiseDamage":  30.0,
+          "staminaCost":  25.0,
+          "startupTime":  0.20,
+          "activeTime":   0.30,
+          "recoveryTime": 0.50,
+          "range":        1.8,
+          "angle":        90.0,
+          "damageType":   "slash"
+        },
+        "r2": {
+          "name":         "r2",
+          "damage":       200.0,
+          "poiseDamage":  60.0,
+          "staminaCost":  40.0,
+          "startupTime":  0.35,
+          "activeTime":   0.35,
+          "recoveryTime": 0.70,
+          "range":        2.0,
+          "angle":        100.0,
+          "damageType":   "slash"
+        }
+      }
+    }
+  ]
+}
+

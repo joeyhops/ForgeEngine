@@ -28,7 +28,8 @@ Angle = initial facing direction (0=+Z, 90=+X, 180=-Z, 270=-X)."
 
 @PointClass color(220 60 60) = enemy_spawn : "Enemy spawn point.
 The enemy type and patrol group are configurable per-spawn.
-Patrol waypoints with a matching patrol_group key will be assigned to this enemy."
+Patrol waypoints with a matching patrol_group key will be assigned to this enemy.
+Optional weapon: set weaponId to equip on spawn; dropWeapon to leave a pickup on death."
 [
   enemy_type(choices) : "Enemy type" : 0 =
   [
@@ -38,6 +39,13 @@ Patrol waypoints with a matching patrol_group key will be assigned to this enemy
   ]
   patrol_group(string) : "Patrol group name — must match patrol_waypoint entities in this area" : ""
   aggro_radius(float) : "Detection radius in meters (overrides default)" : 0
+  weaponId(string)    : "WeaponDef ID to equip on spawn (leave blank for unarmed)" : ""
+  dropWeapon(choices) : "Drop equipped weapon as pickup on death" : 1 =
+  [
+    0 : "No",
+    1 : "Yes (default)"
+  ]
+  dropId(string)      : "If dropWeapon is NO, set dropId to set specific weapon drop. Otherwise leave null." : "" 
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,14 +73,47 @@ player enters the trigger radius. Used to drive quest state transitions."
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Fog gate — boss entrance
+// ─────────────────────────────────────────────────────────────────────────────
+
+@PointClass color(100 200 255) = fog_gate : "Fog gate — blocks passage until requiredFlag is set.
+Player is pushed back with a locked feedback if the flag is not set.
+Orient with 'angle' so the gate face points toward the approach direction."
+[
+  requiredFlag(integer) : "FlagManager flag ID that must be set to pass (0 = always open)" : 0
+  width(float)          : "Gate opening width in metres" : 2.0
+  height(float)         : "Gate opening height in metres" : 3.0
+  angle(integer)        : "Facing direction (0=+Z, 90=+X, 180=-Z, 270=-X)" : 0
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Weapon pickup
+// ─────────────────────────────────────────────────────────────────────────────
+
+@PointClass color(255 220 50) = weapon_pickup : "Weapon lying on the ground.
+Press E while inside the trigger radius to pick up.
+Use respawns=1 for rare weapons that should not be permanently collected."
+[
+  weaponId(string)    : "WeaponDef ID — must match an entry in assets/data/weapons.json" : ""
+  radius(float)       : "Pickup trigger radius in metres" : 1.0
+  respawns(choices)   : "Respawns at bonfire rest?" : 0 =
+  [
+    0 : "No — permanent collect (default)"
+    1 : "Yes — respawns on rest"
+  ]
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Bonfire / checkpoint
 // ─────────────────────────────────────────────────────────────────────────────
 
 @PointClass color(255 140 0) = bonfire : "Rest point / checkpoint.
 The player can interact with this to save progress and reset enemies.
-Corresponds to the onBonfireReset Lua function (B key in debug mode)."
+Fires RestEvent through EventBus and calls onBonfireRest Lua callback.""
 [
   bonfire_id(integer) : "Unique ID — used to distinguish multiple bonfires" : 0
+  targetFlag(integer) : "FlagManager flag ID set when player rests here (0 = none)" : 0
+  radius(float)       : "Trigger radius in meters" : 1.5
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
