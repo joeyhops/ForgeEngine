@@ -41,7 +41,7 @@ void DebugUI::init(GLFWwindow* window) {
   ImGui_ImplOpenGL3_Init("#version 460");
 #endif
 
-  LOG_INFO("[DebugUI] Initialized (F1=Perf F2=Combat F3=Flags F4=Lua F5=AI, F6=AnimGraph, F7=Physics)");
+  LOG_INFO("[DebugUI] Initialized (F1=Perf F2=Combat F3=Flags F4=Lua F5=AI, F6=AnimGraph, F7=Physics | F9=LuaReload grave=cursor)");
 }
 
 void DebugUI::setLuaState(LuaState* lua) {
@@ -361,8 +361,13 @@ void DebugUI::drawAIInspectorPanel() {
         ImGui::PopStyleColor();
 
         // Attack radius indicator (just a labelled value)
+        float enemySpeed = stateName == "Chase"
+            ? ai->getChaseSpeed()
+            : stateName == "Patrol"
+              ? ai->getMoveSpeed()
+              : 0.0f;
         ImGui::Text("Atk R : %.1f m | Speed : %.1f",
-                    atkRadius, ai->getMoveSpeed());
+                    atkRadius, enemySpeed);
          // In-range indicators
         ImGui::Text("Sees player : "); ImGui::SameLine();
         ai->canSeePlayer()
@@ -405,7 +410,7 @@ void DebugUI::drawAnimGraphMonitorPanel() {
 
     // Graph State
     ImGui::TextUnformatted("State "); ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.5f, 0.9f, 1.0f, 1.0f), "%s", anim->getClipName().c_str());
+    ImGui::TextColored(ImVec4(0.5f, 0.9f, 1.0f, 1.0f), "%s", anim->getStateInfo().c_str());
 
     // Active clip progress bar
     float durr = anim->getActiveClipDuration();

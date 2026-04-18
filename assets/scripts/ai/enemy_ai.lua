@@ -6,10 +6,10 @@
 Log.info("Enemy AI Script loaded")
 
 -- Config
-local DETECTION_RADIUS = 4.0
-local ATTACK_RADIUS = 2.0
+local DETECTION_RADIUS = 8.0
+local ATTACK_RADIUS = 3.0
 local PATROL_SPEED = 2.0
-local CHASE_SPEED = 4.5
+local CHASE_SPEED = 5.0
 
 -- Phase 2 rage mode - triggered when HP < 30%
 local enraged = false
@@ -19,6 +19,7 @@ function onAIInit()
   enemyAI:setDetectionRadius(DETECTION_RADIUS)
   enemyAI:setAttackRadius(ATTACK_RADIUS)
   enemyAI:setMoveSpeed(PATROL_SPEED)
+  enemyAI:setChaseSpeed(CHASE_SPEED)
 
   Log.info("Enemy AI Initialized")
 end
@@ -33,6 +34,7 @@ function onChooseAttack()
   if ratio < 0.30 and not enraged then
     enraged = true
     enemyAI:setMoveSpeed(CHASE_SPEED)
+    enemyAI:setChaseSpeed(CHASE_SPEED * 1.3)
     Log.warn("Enemy enraged!")
     Events.publish("enemyEnraged", "phase2")
   end

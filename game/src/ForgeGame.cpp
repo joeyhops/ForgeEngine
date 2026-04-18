@@ -97,36 +97,37 @@ void ForgeGame::setupRenderer() {
 
 static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
   std::shared_ptr<forge::AnimationClip> idleClip,
-  std::shared_ptr<forge::AnimationClip> walkClip, // nullptr -> use idle
-  std::shared_ptr<forge::AnimationClip> sprintClip, // nullptr -> use idle
+  std::shared_ptr<forge::AnimationClip> walkClip, 
+  std::shared_ptr<forge::AnimationClip> sprintClip, // Optional - no sprint if null
   std::shared_ptr<forge::AnimationClip> attackClip,
-  std::shared_ptr<forge::AnimationClip> dodgeClip,
+  std::shared_ptr<forge::AnimationClip> dodgeClip, // optional - no dodge if null
   std::shared_ptr<forge::AnimationClip> deathClip,
   const std::string& ownerName)
 {
   using namespace forge;
 
-  // Fall back to idle for missing walk/sprint clips
-  auto effectiveWalk = walkClip ? walkClip : idleClip;
-  auto effectiveSprint = sprintClip ? sprintClip : idleClip;
-
+  if (!idleClip || !walkClip || !attackClip || !deathClip) {
+    LOG_ERROR("[Game] buildCharacterGraph('{}') - required clip null (need idle/walk/attack/death)", ownerName);
+    return nullptr;
+  }
   auto idleNode = std::make_shared<ClipNode>(idleClip, true);
-  auto walkNode = std::make_shared<ClipNode>(effectiveWalk, true); //todo walk clip
-  auto sprintNode = std::make_shared<ClipNode>(effectiveSprint, true); //todo walk clip
+  auto walkNode = std::make_shared<ClipNode>(walkClip, true); //todo walk clip
   idleNode->setOwnerName(ownerName);
   walkNode->setOwnerName(ownerName);
-  sprintNode->setOwnerName(ownerName);
 
-  auto locomotionNode = std::make_shared<Blend1DNode>("moveSpeed", idleNode, walkNode);
-  locomotionNode->addEntry(2.0f, sprintNode);
+  auto locomotionNode = std::make_shared<Blend1DNode>("moveSpeed");
+  locomotionNode->addEntry(0.0f, idleNode);
+  locomotionNode->addEntry(1.0f, walkNode);
+
+  if (sprintClip) {
+    auto sprintNode = std::make_shared<ClipNode>(sprintClip, true);
+    sprintNode->setOwnerName(ownerName);
+    locomotionNode->addEntry(2.0f, sprintNode);
+  }
 
   // atk
   auto attackNode = std::make_shared<ClipNode>(attackClip, false);
   attackNode->setOwnerName(ownerName);
-
-  auto actualDodgeClip = dodgeClip ? dodgeClip : idleClip;
-  auto dodgeNode = std::make_shared<ClipNode>(actualDodgeClip, false);
-  dodgeNode->setOwnerName(ownerName);
 
   // death
   auto deathNode = std::make_shared<ClipNode>(deathClip, false);
@@ -136,7 +137,6 @@ static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
   auto root = std::make_shared<StateMachineNode>();
   root->addState("Locomotion", locomotionNode);
   root->addState("Attacking", attackNode);
-  root->addState("Dodging", dodgeNode);
   root->addState("Dead", deathNode);
 
   // Locomotion-> attacking
@@ -157,17 +157,23 @@ static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
     0.2f
   });
 
-  root->addTransition({
-    "Locomotion", "Dodging",
-    [](AnimParamTable& p) { return p.consumeTrigger("dodge"); },
-    0.05f // fast blend time for responsiveness
-  });
+  if (dodgeClip) {
+    auto dodgeNode = std::make_shared<ClipNode>(dodgeClip, false);
+    dodgeNode->setOwnerName(ownerName);
+    root->addState("Dodging", dodgeNode);
 
-  root->addTransition({
-    "Dodging", "Locomotion",
-    [dodgeNode](AnimParamTable&) { return dodgeNode->isFinished(); },
-    0.15f 
-  });
+    root->addTransition({
+      "Locomotion", "Dodging",
+      [](AnimParamTable& p) { return p.consumeTrigger("dodge"); },
+      0.05f
+    });
+
+    root->addTransition({
+      "Dodging", "Locomotion",
+      [dodgeNode](AnimParamTable&) { return dodgeNode->isFinished(); },
+      0.15f 
+    });
+  }
 
   // Any -> dead
   root->addTransition({
@@ -281,19 +287,14 @@ void ForgeGame::setupEnemy() {
  
   constexpr float k_enemyCapsuleHalfHeight = 0.75f;
   m_enemy.transform = std::make_unique<forge::Transform>();
-  m_enemy.transform->setPosition({ 0.0f, k_enemyCapsuleHalfHeight, -4.0f });
+  m_enemy.transform->setPosition({ 0.0f, 0.0f, -4.0f });
+  //m_enemy.transform->setPosition({ 0.0f, k_enemyCapsuleHalfHeight, -4.0f });
   m_enemy.transform->setScale({ 0.01f, 0.01f, 0.01f });
   m_enemy.transform->setEulerAngles({ 90.0f, 0.0f, 0.0f });
  
-  m_enemy.body = std::make_unique<forge::RigidBodyComponent>(
-    getPhysics(),
-    *m_enemy.transform,
-    forge::CollisionShape::Capsule,
-    glm::vec3(0.3f, 0.9f, 0.0f),
-    80.0f
-  );
-  m_enemy.body->setAngularForce({ 0, 0, 0 });
- 
+  m_enemy.controller = std::make_unique<forge::CharacterController>(
+    getPhysics(), *m_enemy.transform, 0.3f, 0.9f);
+
   // ── Animator ─────────────────────────────────────────────────────────
   m_enemy.animator = std::make_unique<forge::Animator>();
   m_enemy.animator->setOwnerName("enemy");
@@ -301,12 +302,13 @@ void ForgeGame::setupEnemy() {
  
   // Share clips with the player — same file, same data
   m_enemy.clips["idle"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_idle.glb", "idle"); 
+  m_enemy.clips["walk"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_walk.glb", "walk"); 
   m_enemy.clips["attack_r1"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash"); 
   m_enemy.clips["death"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death"); 
 
   auto graph = buildCharacterGraph(
     m_enemy.clips["idle"], 
-    nullptr,
+    m_enemy.clips["walk"],
     nullptr,
     m_enemy.clips["attack_r1"], 
     nullptr,
@@ -427,15 +429,13 @@ void ForgeGame::setupLevel() {
 
         forge::RaycastHit hit = getPhysics().raycast(rayFrom, rayTo);
         if (hit.hit) {
-          spawnPos.y += hit.point.y + k_capsuleHalfHeight;
+          spawnPos.y = hit.point.y + k_capsuleHalfHeight;
           LOG_INFO("[Game] Enemy snapped to floor at y={:.3f} (raycast hit at y={:.3f})", spawnPos.y, hit.point.y);
         } else {
           spawnPos.y -= k_capsuleHalfHeight;
           LOG_INFO("[Game] Floor raycast missed for enemy_spawn, using entity height + offset");
         }
-        m_enemy.transform->setPosition(spawnPos);
-        m_enemy.body->teleport(spawnPos);
-
+        m_enemy.controller->warp(spawnPos);
         // Patrol waypoints for this spawn (matched by patrol_group key)
         std::string group = spawnEnt->props.count("patrol_group")
           ? spawnEnt->props.at("patrol_group") : "";
@@ -604,24 +604,25 @@ void ForgeGame::setupScripts() {
   getLua().loadScript(root + "scripts/ai/enemy_ai.lua");
   getLua().loadScript(root + "scripts/events/demo_quest.lua");
 
+  getLua().get().set_function("setPlayerWalkSpeed",
+                              [this](float s){ m_playerWalkSpeed = s; });
+  getLua().get().set_function("setPlayerSprintSpeed",
+                              [this](float s){ m_playerSprintSpeed = s; });
+  getLua().get().set_function("getPlayerWalkSpeed",
+                              [this]() -> float { return m_playerWalkSpeed; });
+  getLua().get().set_function("getPlayerSprintSpeed",
+                              [this]() -> float { return m_playerSprintSpeed; });
+
   getLua().callFunction("onAIInit");
 }
 
 void ForgeGame::onUpdate(float dt) {
   handleInput(dt);
 
-  const float enemyY = m_enemy.transform->getPosition().y;
-
-  m_enemy.body->teleport(m_enemy.transform->getPosition());
-
   // Physics
   getPhysics().step(dt);
   m_player.controller->syncTransform();
-  m_enemy.body->syncTransform();
-
-  glm::vec3 ep = m_enemy.transform->getPosition();
-  ep.y = enemyY;
-  m_enemy.transform->setPosition(ep);
+  m_enemy.controller->syncTransform();
 
   m_tpCamera->update(m_player.transform->getPosition());
 
@@ -637,7 +638,19 @@ void ForgeGame::onUpdate(float dt) {
   glm::vec3 playerPos = m_player.transform->getPosition();
   m_player.combat->setWorldData(playerPos, m_player.forward);
 
+  glm::vec3 preMovePos = m_enemy.transform->getPosition();
+
   m_enemy.ai->update(dt, playerPos);
+
+  glm::vec3 postMovePos = m_enemy.transform->getPosition();
+  glm::vec3 displacement = postMovePos - preMovePos;
+  displacement.y = 0.0f;
+  m_enemy.transform->setPosition(preMovePos);
+  m_enemy.controller->setWalkDirection(displacement);
+
+  float enemyMoveSpeed = (glm::length(displacement) > 0.0001f) ? 1.0f : 0.0f;
+  m_enemy.animator->getParams().setFloat("moveSpeed", enemyMoveSpeed);
+
   m_player.animator->update(dt);
   m_enemy.animator->update(dt);
 
@@ -657,8 +670,8 @@ void ForgeGame::onUpdate(float dt) {
 
   if (isKeyPressed(GLFW_KEY_B))
     getLua().callFunction("onBonfireReset");
-  if (isKeyPressed(GLFW_KEY_F5))
-    getLua().loadScript("../../../../assets/scripts/combat/player_combat.lua");
+  if (isKeyPressed(GLFW_KEY_F9))
+    getLua().loadScript(forge::AssetManager::getAssetRoot() + "scripts/combat/player_combat.lua");
 }
 
 void ForgeGame::onRender() {
@@ -682,9 +695,7 @@ void ForgeGame::onRender() {
     constexpr float k_enemyTotalHalfHeight = k_enemyCapsuleRadius + k_enemyCylinderHalfHeight;
 
     forge::Transform enemyVisualTransform;
-    glm::vec3 footPos = m_enemy.transform->getPosition()
-                      - glm::vec3(0.0f, k_enemyTotalHalfHeight, 0.0f);
-    enemyVisualTransform.setPosition(footPos);
+    enemyVisualTransform.setPosition(m_enemy.transform->getPosition());
     enemyVisualTransform.setScale(m_enemy.transform->getScale());
     enemyVisualTransform.setRotation(m_enemy.transform->getRotation());
 
@@ -710,7 +721,7 @@ void ForgeGame::onRender() {
       constexpr float kR = 0.3f;
       constexpr float kH = 0.45f;
       forge::DebugDraw::capsule(
-        m_enemy.transform->getPosition(), 
+        m_enemy.controller->getCapsuleCenter(), 
         kR, kH,
         { 1.0f, 0.3f, 0.3f }
       );
@@ -884,8 +895,8 @@ void ForgeGame::handleInput(float dt) {
 
   // Sprint
   bool sprinting = isKeyDown(GLFW_KEY_LEFT_SHIFT);
-  float walkSpeed = 5.0f;
-  float sprintSpeed = 8.0f;
+  float walkSpeed = m_playerWalkSpeed;
+  float sprintSpeed = m_playerSprintSpeed;
   float speed = sprinting ? sprintSpeed : walkSpeed;
 
   // Dodge
@@ -945,7 +956,8 @@ void ForgeGame::handleInput(float dt) {
     }
   }
 
-  m_player.controller->setWalkDirection(velocity * dt);
+  constexpr float physStep = 1.0f / 60.0f;
+  m_player.controller->setWalkDirection(velocity * physStep);
 
   m_player.combat->setWorldData(m_player.transform->getPosition(), m_player.forward);
 }

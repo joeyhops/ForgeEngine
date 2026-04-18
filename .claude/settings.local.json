@@ -3,7 +3,8 @@
     "allow": [
       "Bash(awk '{print $2, $3, $4}')",
       "Bash(awk 'NR==1 || NR==2{print \"min:\", $0} END{print \"max-ish:\", $0}')",
-      "Bash(awk '{x=$2;y=$3;z=$4} {if\\(NR==1||x<xmin\\)xmin=x; if\\(NR==1||x>xmax\\)xmax=x; if\\(NR==1||y<ymin\\)ymin=y; if\\(NR==1||y>ymax\\)ymax=y; if\\(NR==1||z<zmin\\)zmin=z; if\\(NR==1||z>zmax\\)zmax=z} END{printf \"X: %.1f to %.1f\\\\nY: %.1f to %.1f\\\\nZ: %.1f to %.1f\\\\n\", xmin,xmax,ymin,ymax,zmin,zmax}')"
+      "Bash(awk '{x=$2;y=$3;z=$4} {if\\(NR==1||x<xmin\\)xmin=x; if\\(NR==1||x>xmax\\)xmax=x; if\\(NR==1||y<ymin\\)ymin=y; if\\(NR==1||y>ymax\\)ymax=y; if\\(NR==1||z<zmin\\)zmin=z; if\\(NR==1||z>zmax\\)zmax=z} END{printf \"X: %.1f to %.1f\\\\nY: %.1f to %.1f\\\\nZ: %.1f to %.1f\\\\n\", xmin,xmax,ymin,ymax,zmin,zmax}')",
+      "Bash(grep -E \"\\\\.\\(cpp|h\\)$\")"
     ]
   }
 }

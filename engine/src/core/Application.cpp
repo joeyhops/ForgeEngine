@@ -112,6 +112,11 @@ void Application::run() {
 
     if (isKeyDown(GLFW_KEY_ESCAPE)) m_running = false;
 
+    if (m_frameCount++ == 0) {
+      glfwSwapBuffers(m_window);
+      lastTime = std::chrono::high_resolution_clock::now();
+      continue;
+    }
     onUpdate(dt);
 
     // Render

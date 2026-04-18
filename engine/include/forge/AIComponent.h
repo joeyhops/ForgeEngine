@@ -36,6 +36,7 @@ public:
   void setDetectionRadius(float r) { m_detectionRadius = r; }
   void setAttackRadius(float r) { m_attackRadius = r; }
   void setMoveSpeed(float s) { m_moveSpeed = s; }
+  void setChaseSpeed(float s) { m_chaseSpeed = s; }
   void setAlertDuration(float d) { m_alertDuration = d; }
   void setRecoverDuration(float d) { m_recoverDuration = d; }
 
@@ -50,6 +51,7 @@ public:
   float getDetectionRadius() const { return m_detectionRadius; }
   float getAttackRadius() const { return m_attackRadius; }
   float getMoveSpeed() const { return m_moveSpeed; }
+  float getChaseSpeed() const { return m_chaseSpeed; }
 
   // Lua callbacks
   // Use these in Lua to override default behavior
@@ -88,8 +90,8 @@ private:
   // Tuning
   float m_detectionRadius = 7.0f;
   float m_attackRadius = 2.0f;
-  float m_moveSpeed = 2.5f;
-  float m_chaseSpeed = 4.0f;
+  float m_moveSpeed = 5.0f;
+  float m_chaseSpeed = 8.0f;
   float m_alertDuration = 2.5f;
   float m_recoverDuration = 1.2f;
 

@@ -127,7 +127,7 @@ private:
 
 class Blend1DNode : public AnimGraphNode {
 public:
-  Blend1DNode(std::string paramName, std::shared_ptr<AnimGraphNode> from, std::shared_ptr<AnimGraphNode> to);
+  explicit Blend1DNode(std::string paramName);
 
   void addEntry(float threshold, std::shared_ptr<AnimGraphNode> node);
 

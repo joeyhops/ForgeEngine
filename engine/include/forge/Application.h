@@ -53,6 +53,7 @@ private:
   void initSystems();
   void shutdownSystems();
 
+  int m_frameCount = 0;
   GLFWwindow* m_window = nullptr;
   int m_width, m_height;
   float m_totalTime = 0.0f;

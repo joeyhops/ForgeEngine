@@ -195,7 +195,10 @@ void AIComponent::tickChase(float dt) {
   // Move toward player at chaseSpeed
   glm::vec3 myPos = m_transform.getPosition();
   glm::vec3 dir = glm::normalize(m_playerPos - myPos);
-  glm::vec3 newPos = myPos + dir * m_chaseSpeed * dt;
+
+  constexpr float physStep = 1.0f / 60.0f;
+
+  glm::vec3 newPos = myPos + dir * m_chaseSpeed * physStep;
   newPos.y = myPos.y; // Stay on ground
   m_transform.setPosition(newPos);
   faceToward(m_playerPos);
@@ -236,8 +239,10 @@ void AIComponent::moveToward(const glm::vec3& target, float dt) {
   float dist = glm::length(dir);
   if (dist < 0.001f) return;
 
+  constexpr float physStep = 1.0f / 60.0f;
+
   dir = glm::normalize(dir);
-  glm::vec3 newPos = myPos + dir * m_moveSpeed * dt;
+  glm::vec3 newPos = myPos + dir * m_moveSpeed * physStep;
   newPos.y = myPos.y;
   m_transform.setPosition(newPos);
 }

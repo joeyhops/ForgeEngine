@@ -65,7 +65,7 @@ private:
   struct EnemyEntity {
     forge::SkinnedModelData skinnedModel;
     std::unique_ptr<forge::Transform> transform;
-    std::unique_ptr<forge::RigidBodyComponent> body;
+    std::unique_ptr<forge::CharacterController> controller;
     std::unique_ptr<forge::CombatComponent> combat;
     std::unique_ptr<forge::AIComponent> ai;
     std::unique_ptr<forge::Animator> animator;
@@ -96,6 +96,9 @@ private:
   double m_prevMouseY = 0.0;
   bool m_firstMouse = true;
   bool m_uiMouseMode = false;
+
+  float m_playerWalkSpeed = 3.0f;
+  float m_playerSprintSpeed = 6.0f;
 
   // Lock on: stable buffer holding the enemys chest pos each frame
   glm::vec3 m_lockOnEnemyPos = { 0.0f, 0.0f, 0.0f };

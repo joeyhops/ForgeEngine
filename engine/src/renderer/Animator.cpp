@@ -24,89 +24,34 @@ void Animator::setGraph(std::shared_ptr<AnimGraphNode> graph) {
   LOG_INFO("[Animator] '{}' graph attached", m_ownerName);
 }
 
-void Animator::play(std::shared_ptr<AnimationClip> clip,
-                    bool loop, float blendTime)
-{
-  if (m_graph) {
-    LOG_WARN("[Animator] '{}' play() called while graph is active - use params", m_ownerName);
-    return;
-  }
-  if (!clip) return;
-
-  // Deactivate any currently active TAE events before switching clips
-  deactivateAllLegacyEvents();
-
-  m_prevClip = m_currentClip;
-  m_currentClip = clip;
-  m_currentClip->looping = loop;
-  m_prevTime = 0.0f;
-  m_currentTime = 0.0f;
-  m_blendTime = blendTime;
-  m_blendElapsed = 0.0f;
-  m_activeEventIndices.clear();
-
-  LOG_INFO("[Animator] '{}' Playing '{}'", m_ownerName, clip->name);
-}
-
 void Animator::update(float dt) {
-  if (m_graph) {
-    m_graph->update(dt, m_params);
-    m_graph->evaluate(m_localTransforms);
-    computeBoneMatrices();
+  if (!m_graph) {
+    LOG_ERROR("[Animator] '{}' update() called without graph attached.", m_ownerName);
     return;
   }
-
-  if (!m_currentClip) return;
-
-  m_prevTime = m_currentTime;
-  m_currentTime += dt;
-
-  if (m_currentClip->looping && m_currentTime >= m_currentClip->duration) {
-    // Loop wrap - deactivate any still-active events then reset
-    deactivateAllLegacyEvents();
-    m_currentTime = fmodf(m_currentTime, m_currentClip->duration);
-    m_prevTime = 0.0f; // Scan from the beginning of the new loop iteration
-  } else if (!m_currentClip->looping && m_currentTime >= m_currentClip->duration) {
-    // Non-looping clip will finish (shocker) - clamp and deactivate remaining events
-    m_currentTime = m_currentClip->duration;
-  }
-
-  // Fire TAE events for any boundary crossings this frame
-  tickLegacyTAEEvents(m_prevTime, m_currentTime);
-
-  m_blendElapsed += dt;
+  m_graph->update(dt, m_params);
+  m_graph->evaluate(m_localTransforms);
   computeBoneMatrices();
 }
 
 bool Animator::isFinished() const {
-  if (m_graph) return m_graph->isFinished();
-  if (!m_currentClip || m_currentClip->looping) return false;
-  return m_currentTime >= m_currentClip->duration;
-}
-
-bool Animator::isPlaying() const {
-  if (m_graph) return true;
-  return m_currentClip != nullptr;
+  if (!m_graph) return false; 
+  return m_graph->isFinished();
 }
 
 float Animator::getActiveClipTime() const {
-  if (m_graph) return m_graph->getActiveClipTime();
-  return m_currentTime;
+  if (!m_graph) return 0.0f; 
+  return m_graph->getActiveClipTime();
 }
 
 float Animator::getActiveClipDuration() const {
-  if (m_graph) return m_graph->getActiveClipDuration();
-  return m_currentClip ? m_currentClip->duration : 0.0f;
+  if (!m_graph) return 0.0f; 
+  return m_graph->getActiveClipDuration();
 }
 
-std::string Animator::getClipName() const {
-  if (m_graph) return m_graph->getDebugStateInfo();
-  return m_currentClip ? m_currentClip->name : "none";
-}
-
-std::string Animator::getGraphStateInfo() const {
-  if (m_graph) return m_graph->getDebugStateInfo();
-  return m_currentClip ? m_currentClip->name : "none";
+std::string Animator::getStateInfo() const {
+  if (!m_graph) return "none"; 
+  return m_graph->getDebugStateInfo();
 }
 
 void Animator::computeBoneMatrices() {
@@ -116,26 +61,6 @@ void Animator::computeBoneMatrices() {
   m_localTransforms.resize(m_skeleton.size(), glm::mat4(1.0f));
   m_globalTransforms.resize(m_skeleton.size());
 
-  if (!m_graph && m_currentClip) {
-    // Sample primary clip into local transform
-    m_currentClip->sample(m_currentTime, m_skeleton, m_localTransforms);
-
-    // if cross-fading, blend with previous clips pose
-    if (m_prevClip && m_blendElapsed < m_blendTime) {
-      std::vector<glm::mat4> prevLocal(m_skeleton.size(), glm::mat4(1.0f));
-      m_prevClip->sample(m_blendElapsed, m_skeleton, prevLocal);
-
-      float alpha = m_blendElapsed / m_blendTime; // 0 = all prev, 1= all current
-      for (size_t i = 0; i < m_skeleton.size(); i++) {
-        // Lerp the raw matrices - fine for short blends
-        // a proper implementation would decompose to TRS and slerp
-        // the quaternion. but matrix lerp produces acceptable results
-        // at blend times <= 0.3s
-        m_localTransforms[i] = prevLocal[i] * (1.0f - alpha) + m_localTransforms[i] * alpha;
-      }
-    }
-  }
-
   for (size_t i = 0; i < m_skeleton.size(); i++) {
     const Bone& bone = m_skeleton[i];
     m_globalTransforms[i] = (bone.parentIndex < 0)
@@ -144,62 +69,6 @@ void Animator::computeBoneMatrices() {
 
     m_boneMatrices[i] = m_globalTransforms[i] * bone.offsetMatrix;
   }
-}
-
-// TAE Event firing
-
-void Animator::tickLegacyTAEEvents(float prevTime, float curTime) {
-  if (!m_currentClip) return;
-  const auto& events = m_currentClip->events;
-
-  for (int i = 0; i < (int)events.size(); i++) {
-    const AnimEvent& ev = events[i];
-    bool wasActive = m_activeEventIndices.count(i) > 0;
-
-    if (ev.startTime == ev.endTime) {
-      // One-shot: fire activated + deactivated on first crossing
-      if (!wasActive && prevTime <= ev.startTime && curTime > ev.startTime) {
-        EventBus::publish(AnimEventActivated{
-          m_ownerName, ev.type, ev.payload
-        });
-        EventBus::publish(AnimEventDeactivated{
-          m_ownerName, ev.type, ev.payload
-        });
-        // Mark as 'seen' so we don't re-fire; 
-        m_activeEventIndices.insert(i);
-      }
-    } else {
-      // Window event: fire Activated on entry, deactivated on exit
-      bool shouldbeActive = (curTime >= ev.startTime && curTime < ev.endTime);
-
-      if (!wasActive && shouldbeActive) {
-        m_activeEventIndices.insert(i);
-        EventBus::publish(AnimEventActivated{
-          m_ownerName, ev.type, ev.payload
-        });
-
-      } else if (wasActive && !shouldbeActive) {
-        m_activeEventIndices.erase(i);
-        EventBus::publish(AnimEventDeactivated{
-          m_ownerName, ev.type, ev.payload
-        });
-      }
-    }
-  }
-}
-
-void Animator::deactivateAllLegacyEvents() {
-  if (!m_currentClip) return;
-  const auto& events = m_currentClip->events;
-
-  for (int i : m_activeEventIndices) {
-    if (i < (int)events.size()) {
-      EventBus::publish(AnimEventDeactivated{
-        m_ownerName, events[i].type, events[i].payload
-      });
-    }
-  }
-  m_activeEventIndices.clear();
 }
 
 // BoneTrack::sample - interpolate between keyframes

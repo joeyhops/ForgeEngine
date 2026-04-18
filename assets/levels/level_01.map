@@ -24,7 +24,7 @@
 // entity 1
 {
 "classname" "enemy_spawn"
-"origin" "-690.5 344.5 -11"
+"origin" "-786.5 344.5 -39"
 "patrol_group" "gl"
 }
 // entity 2
@@ -104,7 +104,6 @@
 // entity 5
 {
 "classname" "info_player_start"
-"origin" "-224 -141.5 -11"
-"angle" "0"
+"origin" "-264 -40 -39"
 "_tb_layer" "1"
 }

@@ -158,12 +158,15 @@ void LuaState::registerAI() {
   m_lua.new_usertype<AIComponent>("AIComponent",
                                   sol::no_constructor,
                                   "getStateName", &AIComponent::getStateName,
+                                  "getMoveSpeed", &AIComponent::getMoveSpeed,
+                                  "getChaseSpeed", &AIComponent::getChaseSpeed,
                                   "canSeePlayer", &AIComponent::canSeePlayer,
                                   "inAttackRange", &AIComponent::inAttackRange,
                                   "getDistToPlayer", &AIComponent::getDistToPlayer,
                                   "setDetectionRadius", &AIComponent::setDetectionRadius,
                                   "setAttackRadius", &AIComponent::setAttackRadius,
                                   "setMoveSpeed", &AIComponent::setMoveSpeed,
+                                  "setChaseSpeed", &AIComponent::setChaseSpeed,
                                   "addWaypoint", &AIComponent::addWaypoint
                                   );
 }

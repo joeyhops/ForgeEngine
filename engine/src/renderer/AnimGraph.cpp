@@ -114,12 +114,9 @@ void ClipNode::deactivateAllEvents() {
   m_activeEventIndices.clear();
 }
 
-Blend1DNode::Blend1DNode(std::string paramName, std::shared_ptr<AnimGraphNode> from, std::shared_ptr<AnimGraphNode> to)
+Blend1DNode::Blend1DNode(std::string paramName)
   : m_paramName(std::move(paramName))
-{
-  m_entries.push_back({ 0.0f, std::move(from) });
-  m_entries.push_back({ 1.0f, std::move(to) });
-}
+{}
 
 void Blend1DNode::addEntry(float threshold, std::shared_ptr<AnimGraphNode> node) {
   m_entries.push_back({ threshold, std::move(node) });
