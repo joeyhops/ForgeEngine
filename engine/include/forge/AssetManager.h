@@ -15,6 +15,13 @@ namespace forge {
 
 // Static Mesh
 struct ModelData {
+  struct SubMesh {
+    std::shared_ptr<Mesh> mesh;
+    std::shared_ptr<Texture> texture; // Nullptr if no texture
+  };
+
+  std::vector<SubMesh> subMeshes;
+
   std::shared_ptr<Mesh> mesh;
   std::shared_ptr<Texture> texture; // Nullptr if no texture
 
@@ -23,6 +30,7 @@ struct ModelData {
 
   bool hasTexture() const { return texture != nullptr; }
   bool hasPhysicsData() const { return !positions.empty() && !indices.empty(); }
+  bool hasRenderData() const { return !subMeshes.empty(); }
 };
 
 // Skinned Mesh

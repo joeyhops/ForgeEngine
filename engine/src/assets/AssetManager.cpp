@@ -1,3 +1,4 @@
+#include <assimp/material.h>
 #include <forge/AssetManager.h>
 #include <forge/Logger.h>
 #include <forge/Shader.h>
@@ -11,6 +12,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <map>
 #include <memory>
 #include <string>
 #include <functional>
@@ -142,16 +144,47 @@ ModelData AssetManager::loadModel(const std::string& path) {
   if (scene->mNumMeshes == 0)
     throw std::runtime_error("[Assets] No meshes in: " + path);
 
+  fs::path modelDir = fs::path(absPath).parent_path();
+  
+  auto resolveTexture = [&](aiMaterial* mat) -> std::shared_ptr<Texture> {
+    aiString texPath;
+    if (mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) != AI_SUCCESS)
+      return nullptr;
+
+    std::vector<fs::path> candidates = {
+      fs::path(texPath.C_Str()),
+      modelDir / texPath.C_Str(),
+      modelDir / fs::path(texPath.C_Str()).filename(),
+      modelDir / "Textures" / fs::path(texPath.C_Str()).filename(),
+    };
+
+    for (const auto& candidate : candidates) {
+      if (fs::exists(candidate)) {
+        LOG_INFO("[Assets] Texture resolved: {}", candidate.generic_string());
+        return loadTextureAbsolute(candidate.generic_string());
+      }
+    }
+
+    if (std::string(texPath.C_Str()).find("__TB_empty") == std::string::npos)
+      LOG_WARN("[Assets] Texture not found for '{}': {}", path, texPath.C_Str());
+
+    return nullptr;
+  };
+
+  std::map<unsigned int, std::vector<Vertex>> matVerts;
+  std::map<unsigned int, std::vector<unsigned int>> matIdx;
+
   // Merge all meshes in the file into one
-  std::vector<Vertex> allVerts;
-  std::vector<unsigned int> allIdx;
   std::vector<glm::vec3> cpuPositions;
   std::vector<uint32_t> cpuIndices;
 
-  unsigned int indexOffset = 0;
+  unsigned int physicsOffset = 0;
 
   for (unsigned int m = 0; m < scene->mNumMeshes; m++) {
     aiMesh* aiM = scene->mMeshes[m];
+    unsigned int matIdx_ = aiM->mMaterialIndex;
+
+    unsigned int localOffset = static_cast<unsigned int>(matVerts[matIdx_].size());
 
     for (unsigned int i = 0; i < aiM->mNumVertices; i++) {
       Vertex v;
@@ -171,86 +204,56 @@ ModelData AssetManager::loadModel(const std::string& path) {
           v.texCoord[1] = aiM->mTextureCoords[0][i].y;
       }
 
-      allVerts.push_back(v);
+      matVerts[matIdx_].push_back(v);
 
       // Phys vertex (pos only, no normals/UVs)
       cpuPositions.push_back(glm::vec3(
-        aiM->mVertices[i].x,
-        aiM->mVertices[i].y,
-        aiM->mVertices[i].z
+        v.position[0],
+        v.position[1],
+        v.position[2]
       ));
     }
 
     for (unsigned int f = 0; f < aiM->mNumFaces; f++) {
       const aiFace& face = aiM->mFaces[f];
       for (unsigned int j = 0; j < face.mNumIndices; j++) {
-        uint32_t idx = face.mIndices[j] + indexOffset;
-        allIdx.push_back(static_cast<unsigned int>(idx));
-        cpuIndices.push_back(idx);
+        unsigned int localIdx = face.mIndices[j];
+        matIdx[matIdx_].push_back(localIdx + localOffset);
+        cpuIndices.push_back(static_cast<uint32_t>(localIdx + physicsOffset));
       }
     }
-    indexOffset += aiM->mNumVertices;
+    physicsOffset += aiM->mNumVertices;
   }
 
   glm::vec3 bmin(1e9f), bmax(-1e9f);
-  for (auto& v : allVerts) {
-    glm::vec3 p(v.position[0], v.position[1], v.position[2]);
+  for (const auto& p : cpuPositions) {
     bmin = glm::min(bmin, p);
     bmax = glm::max(bmax, p);
   }
   glm::vec3 size = bmax - bmin;
-  LOG_INFO("[Assets] '{}' bounds  min:({:.2f},{:.2f},{:.2f})  max:({:.2f},{:.2f},{:.2f})  size:({:.2f},{:.2f},{:.2f})",
-         path,
-         bmin.x, bmin.y, bmin.z,
-         bmax.x, bmax.y, bmax.z,
-         size.x, size.y, size.z);
-
-  LOG_INFO("[Assets] Model '{}' - {} verts, {} indices",
-           path, allVerts.size(), allIdx.size());
-
-  fs::path modelDir = fs::path(absPath).parent_path();
-  std::shared_ptr<Texture> texture = nullptr;
-
-  // Check the first mesh material for diffuse texture
-  if (scene->mNumMeshes > 0 && scene->mNumMaterials > 0) {
-    aiMesh* firstMesh = scene->mMeshes[0];
-    aiMaterial* mat = scene->mMaterials[firstMesh->mMaterialIndex];
-
-    aiString texPath;
-    if (mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS) {
-      // Assimp gives us a path like "Textures\cobblestone.png"
-      // Try several resolution strats in order:
-
-      std::vector<fs::path> candidates = {
-        //1. As is (may be absolute)
-        fs::path(texPath.C_Str()),
-        // 2. Relative to the models directory
-        modelDir / texPath.C_Str(),
-        // 3. Just the filename in the model directory
-        modelDir / fs::path(texPath.C_Str()).filename(),
-        // 4. Filename in a Textures/ subfolder of the model dir
-        modelDir / "Textures" / fs::path(texPath.C_Str()).filename(),
-      };
-
-      for (auto& candidate : candidates) {
-        std::string cStr = candidate.generic_string();
-        if (fs::exists(candidate)) {
-          LOG_INFO("[Assets] Texture resolved: {}", cStr);
-          texture = loadTextureAbsolute(cStr);
-          break;
-        }
-      }
-
-      if (!texture)
-        LOG_WARN("[Assets] Texture not found for '{}': {}", path, texPath.C_Str());
-    }
-  }
+  LOG_INFO("[Assets] '{}' bounds min:({:.2f},{:.2f},{:.2f}) max:({:.2f},{:.2f},{:.2f}) size:({:.2f},{:.2f},{:.2f})",
+           path, bmin.x,bmin.y,bmin.z, bmax.x,bmax.y,bmax.z, size.x,size.y,size.z);
+  LOG_INFO("[Assets] '{}' — {} verts, {} physics tris, {} materials",
+           path, cpuPositions.size(), cpuIndices.size() / 3, matVerts.size());
 
   ModelData result;
-  result.mesh = std::make_shared<Mesh>(allVerts, allIdx);
-  result.texture = texture;
   result.positions = std::move(cpuPositions);
   result.indices = std::move(cpuIndices);
+
+  for (auto& [matIndex, verts] : matVerts) {
+    ModelData::SubMesh sub;
+    sub.mesh = std::make_shared<Mesh>(verts, matIdx[matIndex]);
+
+    if (matIndex < scene->mNumMaterials)
+      sub.texture = resolveTexture(scene->mMaterials[matIndex]);
+
+    result.subMeshes.push_back(std::move(sub));
+  }
+
+  if (!result.subMeshes.empty()) {
+    result.mesh = result.subMeshes[0].mesh;
+    result.texture = result.subMeshes[0].texture;
+  }
 
   s_models[path] = result;
   return result;

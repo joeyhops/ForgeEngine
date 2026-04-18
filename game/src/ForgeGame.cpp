@@ -333,7 +333,7 @@ void ForgeGame::setupLevel() {
   bool objLoaded = false;
   try {
     m_levelMesh = forge::AssetManager::loadModel(objPath);
-    objLoaded = m_levelMesh.mesh != nullptr;
+    objLoaded = m_levelMesh.hasRenderData(); 
   } catch (const std::exception& e) {
     LOG_WARN("[Game] level_01.obj not found or failed to load: {}", e.what());
   }
@@ -643,11 +643,11 @@ void ForgeGame::onUpdate(float dt) {
 void ForgeGame::onRender() {
   m_shader->bind();
   if (m_usingTBLevel) {
-    if (m_levelMesh.mesh)
+    if (m_levelMesh.hasRenderData())
       drawModel(m_levelMesh, *m_levelTransform);
   } else {
     for (auto& piece : m_level)
-      if (piece.model.mesh) drawModel(piece.model, *piece.transform);
+      if (piece.model.hasRenderData()) drawModel(piece.model, *piece.transform);
   }
   m_shader->unbind();
 
@@ -711,15 +711,32 @@ void ForgeGame::drawModel(const forge::ModelData& model,
   m_shader->setMat4("u_model", modelMat);
   m_shader->setVec3("u_tint",  glm::vec3(1.0f));  // White tint = no tint
 
-  if (model.hasTexture()) {
-      model.texture->bind(0);           // Bind to texture unit 0
-      m_shader->setInt ("u_texture",    0);
-      m_shader->setBool("u_hasTexture", true);
-  } else {
-      m_shader->setBool("u_hasTexture", false);
-  }
+  if (!model.subMeshes.empty()) {
+    for (const auto& sub : model.subMeshes) {
+      if (!sub.mesh) continue;
 
-  model.mesh->draw();
+      if (sub.texture) {
+        sub.texture->bind(0);
+
+        m_shader->setInt("u_texture", 0);
+        m_shader->setBool("u_hasTexture", true);
+      } else {
+        m_shader->setBool("u_hasTexture", false);
+      }
+
+      sub.mesh->draw();
+    }
+  } else {
+    if (model.hasTexture()) {
+        model.texture->bind(0);           // Bind to texture unit 0
+        m_shader->setInt ("u_texture",    0);
+        m_shader->setBool("u_hasTexture", true);
+    } else {
+        m_shader->setBool("u_hasTexture", false);
+    }
+
+    model.mesh->draw();
+  }
 }
 
 
