@@ -22,6 +22,35 @@ extern "C" {
 
 namespace forge {
 
+static int luaConsoleInputCallback(ImGuiInputTextCallbackData* data) {
+  DebugUI* ui = static_cast<DebugUI*>(data->UserData);
+
+  if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
+    const int prevPos = ui->m_historyPos;
+
+    if (data->EventKey == ImGuiKey_UpArrow) {
+      if (ui->m_historyPos == -1)
+        ui->m_historyPos = static_cast<int>(ui->m_history.size()) - 1;
+      else if (ui->m_historyPos > 0)
+        ui->m_historyPos--;
+    } else if (data->EventKey == ImGuiKey_DownArrow) {
+      if (ui->m_historyPos != -1) {
+        ui->m_historyPos++;
+        if (ui->m_historyPos >= static_cast<int>(ui->m_history.size()))
+          ui->m_historyPos = -1;
+      }
+    }
+
+    if (ui->m_historyPos != prevPos) {
+      // Replace buffer contents with selected history entry (or blank)
+      data->DeleteChars(0, data->BufTextLen);
+      if (ui->m_historyPos != -1)
+        data->InsertChars(0, ui->m_history[ui->m_historyPos].c_str());
+    }
+  }
+  return 0;
+}
+
 // Lifecycle
 
 void DebugUI::init(GLFWwindow* window) {
@@ -279,7 +308,9 @@ void DebugUI::drawLuaConsolePanel() {
     ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Run").x - ImGui::GetStyle().ItemSpacing.x * 2.0f - 6.0f);
 
     bool execute = ImGui::InputText("##luainput", m_inputBuff, k_inputBuffSize,
-                                    ImGuiInputTextFlags_EnterReturnsTrue);
+                                    ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
+                                    luaConsoleInputCallback, this
+                                    );
     ImGui::SameLine();
     execute |= ImGui::Button("Run");
 
@@ -288,6 +319,9 @@ void DebugUI::drawLuaConsolePanel() {
       ImGui::SetKeyboardFocusHere(-1);
 
     if (execute && m_inputBuff[0] != '\0') {
+      if (m_history.empty() || m_history.back() != m_inputBuff)
+        m_history.push_back(m_inputBuff);
+      m_historyPos = -1;
       //Echo input so the log reads like repl
       addConsoleLine(std::string("> ") + m_inputBuff);
 

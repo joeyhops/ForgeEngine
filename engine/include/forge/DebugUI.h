@@ -67,6 +67,9 @@ public:
   void addConsoleLine(std::string line);
 
   bool isPhysicsDebugEnabled() const { return m_showPhysicsDebug; }
+
+  std::vector<std::string> m_history;
+  int m_historyPos = -1;
 private:
   void drawPerformancePanel();
   void drawCombatMonitorPanel();

@@ -42,7 +42,7 @@ void ForgeGame::onInit() {
   
   setupPlayer();
   setupEnemy();
-  setupLevel();
+  setupLevel("level_01");
   setupScripts();
 
 #ifdef __APPLE__
@@ -392,10 +392,10 @@ void ForgeGame::setupEnemy() {
   LOG_INFO("[ForgeGame] Enemy ready");
 }
 
-void ForgeGame::setupLevel() {
+void ForgeGame::setupLevel(const std::string& levelName) {
   const std::string root = forge::AssetManager::getAssetRoot();
-  const std::string objPath = "levels/level_01.obj";
-  const std::string mapPath = root + "levels/level_01.map";
+  const std::string objPath = "levels/" + levelName + ".obj";
+  const std::string mapPath = root + "levels/" + levelName + ".map";
 
   bool objLoaded = false;
   try {
@@ -745,6 +745,11 @@ void ForgeGame::setupScripts() {
   getLua().loadScript(root + "scripts/ai/enemy_ai.lua");
   getLua().loadScript(root + "scripts/events/demo_quest.lua");
 
+  getLua().get()["loadLevel"] = [this](const std::string& name) {
+    m_levelPhysicsBody.reset();
+    m_levelTransform.reset();
+    setupLevel(name);
+  };
   getLua().get().set_function("setPlayerWalkSpeed",
                               [this](float s){ m_playerWalkSpeed = s; });
   getLua().get().set_function("setPlayerSprintSpeed",

@@ -109,12 +109,6 @@
 },
 {
   "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
-  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\physics\\TriggerVolume.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\TriggerVolume.cpp",
-  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\TriggerVolume.cpp",
-  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\physics\\TriggerVolume.cpp.obj"
-},
-{
-  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
   "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\combat\\CombatComponent.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\CombatComponent.cpp",
   "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\CombatComponent.cpp",
   "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\combat\\CombatComponent.cpp.obj"
@@ -124,12 +118,6 @@
   "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\combat\\CombatSystem.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\CombatSystem.cpp",
   "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\CombatSystem.cpp",
   "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\combat\\CombatSystem.cpp.obj"
-},
-{
-  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
-  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\combat\\EquipmentComponent.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\EquipmentComponent.cpp",
-  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\EquipmentComponent.cpp",
-  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\combat\\EquipmentComponent.cpp.obj"
 },
 {
   "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",

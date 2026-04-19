@@ -34,7 +34,7 @@ private:
   void setupRenderer();
   void setupPlayer();
   void setupEnemy();
-  void setupLevel();
+  void setupLevel(const std::string& levelName = "level_01");
   void setupScripts();
   void handleInput(float dt);
   void spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns);
