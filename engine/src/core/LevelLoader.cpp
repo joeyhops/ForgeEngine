@@ -94,6 +94,96 @@ bool LevelLoader::extractToken(const std::string& line, size_t startPos, std::st
   return true;
 }
 
+static FaceData parseFaceLine(const std::string& line, float mapScale) {
+  FaceData face;
+  size_t pos = 0;
+
+  // Helper lambda to grab the next token
+  auto nextToken = [&]() -> std::string {
+    while(pos < line.size() && std::isspace((unsigned char)line[pos])) pos++;
+    if (pos >= line.size()) return "";
+
+    char c = line[pos];
+    if (c == '(' || c == ')' || c == '[' || c == ']') {
+      pos++;
+      return std::string(1, c);
+    }
+
+    size_t start = pos;
+    while (pos < line.size() && !std::isspace((unsigned char)line[pos]) &&
+          line[pos] != '(' && line[pos] != ')' &&
+          line[pos] != '[' && line[pos] != ']') {
+      pos++;
+    }
+    return line.substr(start, pos - start);
+  };
+
+  try {
+    // Parse the three plane points defining the face
+    for (int i = 0; i < 3; i++) {
+      std::string t = nextToken(); // consume '('
+      if (t != "(") return {};     // Malformed line
+      
+      float mx = std::stof(nextToken());
+      float my = std::stof(nextToken());
+      float mz = std::stof(nextToken());
+      nextToken(); // consume ')'
+
+      // Apply Coordinate transform (Z-up -> Y-up) and scale immediately
+      face.planePoints[i] = glm::vec3(mx * mapScale, mz * mapScale, -my * mapScale);
+    }
+
+    face.textureName = nextToken();
+    if (face.textureName.empty()) return {};
+
+    std::string lookahead = nextToken();
+    
+    // Determine UV format based on the token immediately following the texture name
+    if (lookahead == "[") {
+      face.uvFormat = UVFormat::Valve220;
+      
+      // [ Ux Uy Uz Uoff ]
+      float ux = std::stof(nextToken());
+      float uy = std::stof(nextToken());
+      float uz = std::stof(nextToken());
+      // Swizzle Z-up to Y-up (direction vector, no scale needed)
+      face.uAxis = glm::vec3(ux, uz, -uy); 
+      
+      face.uOffset = std::stof(nextToken());
+      nextToken(); // consume ']'
+
+      nextToken(); // consume '['
+      // [ Vx Vy Vz Voff ]
+      float vx = std::stof(nextToken());
+      float vy = std::stof(nextToken());
+      float vz = std::stof(nextToken());
+      // Swizzle Z-up to Y-up
+      face.vAxis = glm::vec3(vx, vz, -vy); 
+      
+      face.vOffset = std::stof(nextToken());
+      nextToken(); // consume ']'
+
+      face.rotation = std::stof(nextToken());
+      face.uScale = std::stof(nextToken());
+      face.vScale = std::stof(nextToken());
+    } else {
+      face.uvFormat = UVFormat::Standard;
+      
+      // Standard format: the lookahead was actually the xOffset
+      face.xOffset = std::stof(lookahead);
+      face.yOffset = std::stof(nextToken());
+      face.rotation = std::stof(nextToken());
+      face.xScale = std::stof(nextToken());
+      face.yScale = std::stof(nextToken());
+    }
+  } catch (const std::exception& e) {
+    LOG_WARN("[LevelLoader] Error parsing face line: {}", e.what());
+    return {}; // Return empty face on parsing errors
+  }
+
+  return face;
+}
+
 LevelData LevelLoader::load(const std::string& absPath, float mapScale) {
   LevelData result;
 
@@ -136,6 +226,11 @@ LevelData LevelLoader::load(const std::string& absPath, float mapScale) {
       // open brace (could be geometry brush)
       if (first == '{') {
         ++brushDepth;
+        //continue;
+        if (brushDepth == 1) {
+          //brushdepth 1 makes we just opened a new brush inside the entity
+          ent.brushes.push_back({});
+        }
         continue;
       }
 
@@ -143,14 +238,20 @@ LevelData LevelLoader::load(const std::string& absPath, float mapScale) {
       if (first == '}') {
         if (brushDepth > 0) {
           --brushDepth;
-          ++skippedBrush;
           continue;
         }
         break;
       }
 
-      // Skip geometrey
-      if (brushDepth > 0) continue;
+      if (brushDepth > 0) {
+        if (first == '(') {
+          FaceData face = parseFaceLine(line, mapScale);
+          if (!face.textureName.empty()) {
+            ent.brushes.back().faces.push_back(face);
+          }
+        }
+        continue;
+      }
 
       // KV-pair
       if (first != '"') continue; // Not kv line
@@ -175,7 +276,7 @@ LevelData LevelLoader::load(const std::string& absPath, float mapScale) {
       }
     }
 
-    if (ent.classname == "worldspawn") continue;
+    //if (ent.classname == "worldspawn") continue;
     if (ent.classname.empty()) continue;
 
     result.entities.push_back(std::move(ent));
@@ -184,8 +285,13 @@ LevelData LevelLoader::load(const std::string& absPath, float mapScale) {
 
   result.valid = true;
 
-  LOG_INFO("[LevelLoader] Parsed {} entities ({} brush blocks skipped) from '{}'",
-           entityCount, skippedBrush, absPath);
+  int totalBrushes = 0;
+  for (const auto& e : result.entities) {
+      totalBrushes += (int)e.brushes.size();
+  }
+
+  LOG_INFO("[LevelLoader] Parsed {} entities ({} brushes captured) from '{}'",
+           entityCount, totalBrushes, absPath);
 
   return result;
 }

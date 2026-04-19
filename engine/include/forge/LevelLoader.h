@@ -6,6 +6,25 @@
 
 namespace forge {
 
+enum class UVFormat { Standard, Valve220 };
+
+struct FaceData {
+  glm::vec3 planePoints[3];
+  std::string textureName;
+  UVFormat uvFormat = UVFormat::Standard;
+
+  //std UV
+  float xOffset = 0, yOffset = 0, rotation = 0, xScale = 1, yScale = 1;
+
+  // Valve220 UV
+  glm::vec3 uAxis = {1,0,0}; float uOffset = 0; float uScale = 1;
+  glm::vec3 vAxis = {0,1,0}; float vOffset = 0; float vScale = 1;
+};
+
+struct BrushData {
+  std::vector<FaceData> faces;
+};
+
 // LevelEntity
 // Represents a single point entity parsed from Quak-format .map file.
 // Brush geometry ignored entirely, only kv pairs captured
@@ -18,6 +37,8 @@ struct LevelEntity {
 
   // All other key/value pairs from the entity block, excluding classname or position data
   std::unordered_map<std::string, std::string> props;
+
+  std::vector<BrushData> brushes;
 
   std::string getProperty(const std::string& key, const std::string& def = "") const;
   int getInt(const std::string& key, int def = 0) const;

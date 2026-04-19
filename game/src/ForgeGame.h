@@ -15,6 +15,7 @@
 #include <forge/TriggerVolume.h>
 #include <forge/WeaponDef.h>
 #include <forge/EquipmentComponent.h>
+#include <forge/map/MapScene.h>
 
 #include <memory>
 #include <unordered_map>
@@ -82,8 +83,7 @@ private:
     std::unordered_map<std::string,
       std::shared_ptr<forge::AnimationClip>> clips;
   } m_enemy;
-
-  forge::ModelData m_levelMesh; // OBJ Geometry
+  std::unique_ptr<forge::MapScene> m_mapScene;
   std::unique_ptr<forge::Transform> m_levelTransform; 
   std::unique_ptr<forge::RigidBodyComponent> m_levelPhysicsBody; // Collision
   forge::LevelData m_levelData; // parsed entities
@@ -108,16 +108,7 @@ private:
   std::vector<WeaponPickup> m_weaponPickups;
 
   // Level geometry
-  struct LevelPiece {
-    forge::ModelData model;
-    std::unique_ptr<forge::Transform> transform;
-    std::unique_ptr<forge::RigidBodyComponent> body;
-  };
-  std::vector<LevelPiece> m_level;
-  forge::ModelData m_floorModel;
-  forge::ModelData m_wallModel;
-  forge::ModelData m_towerModel;
-  bool m_usingTBLevel = false;
+  std::shared_ptr<forge::Shader> m_brushShader;
 
   // Input
   

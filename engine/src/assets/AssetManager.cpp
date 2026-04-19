@@ -107,6 +107,9 @@ std::shared_ptr<Texture> AssetManager::loadTextureAbsolute(const std::string& ab
 
   glGenTextures(1, &tex->id);
   glBindTexture(GL_TEXTURE_2D, tex->id);
+
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
   glTexImage2D(GL_TEXTURE_2D, 0, format, width, height,
                0, format, GL_UNSIGNED_BYTE, data);
   glGenerateMipmap(GL_TEXTURE_2D);
@@ -129,6 +132,51 @@ std::shared_ptr<Texture> AssetManager::loadTextureAbsolute(const std::string& ab
 
 std::shared_ptr<Texture> AssetManager::loadTexture(const std::string& path) {
   return loadTextureAbsolute(resolvePath(path));
+}
+
+std::shared_ptr<Texture> AssetManager::loadMapTexture(const std::string& bareName) {
+  if (bareName == "__TB_empty") return nullptr; // Special TrenchBroom editor texture
+
+  std::vector<std::string> exts = { ".png", ".jpg", ".tga" };
+  for (const auto& ext : exts) {
+    std::string path = resolvePath("textures/" + bareName + ext);
+    if (fs::exists(path))
+      return loadTextureAbsolute(path);
+  }
+
+  // Fallback: gen a 2x2 magenta/black checkerboard
+  std::string fallbackKey = "__fallback_magenta";
+  if (s_textures.find(fallbackKey) != s_textures.end()) return s_textures[fallbackKey];
+
+  auto tex = std::make_shared<Texture>();
+  tex->width = 2; tex->height = 2; tex->path = fallbackKey;
+  unsigned char data[16] = {
+    255, 0, 255, 255,  0, 0, 0, 255,
+    0, 0, 0, 255,      255, 0, 255, 255
+  };
+  glGenTextures(1, &tex->id);
+  glBindTexture(GL_TEXTURE_2D, tex->id);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  LOG_WARN("[Assets] Map texture '{}' not found. Using fallback", bareName);
+  s_textures[fallbackKey] = tex;
+  return tex;
+}
+
+std::shared_ptr<Texture> AssetManager::loadMapNormalTexture(const std::string& bareName) {
+  if (bareName == "__TB_empty") return nullptr;
+
+  std::vector<std::string> exts = { ".png", ".jpg", ".tga" };
+  for (const auto& ext : exts) {
+    std::string path = resolvePath("textures/" + bareName + "_normal" + ext);
+    if (fs::exists(path))
+      return loadTextureAbsolute(path);
+  }
+
+  return nullptr;
 }
 
 ModelData AssetManager::loadModel(const std::string& path) {

@@ -13,6 +13,8 @@
 #include <forge/CombatSystem.h>
 #include <forge/AnimGraph.h>
 #include <forge/Animator.h>
+#include <forge/map/GeometryGenerator.h>
+#include <forge/map/MapGeometryTypes.h>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -50,10 +52,18 @@ void ForgeGame::onInit() {
   "shaders/mac/debug_line.vert", 
   "shaders/mac/debug_line.frag"
   );
+  m_brushShader = forge::AssetManager::loadShader(
+    "shaders/mac/brush.vert",
+    "shaders/mac/brush.frag"
+  );
 #else
   m_debugLineShader = forge::AssetManager::loadShader(
   "shaders/win/debug_line.vert", 
   "shaders/win/debug_line.frag"
+  );
+  m_brushShader = forge::AssetManager::loadShader(
+    "shaders/win/brush.vert",
+    "shaders/win/brush.frag"
   );
 #endif
 
@@ -394,345 +404,204 @@ void ForgeGame::setupEnemy() {
 
 void ForgeGame::setupLevel(const std::string& levelName) {
   const std::string root = forge::AssetManager::getAssetRoot();
-  const std::string objPath = "levels/" + levelName + ".obj";
   const std::string mapPath = root + "levels/" + levelName + ".map";
 
-  bool objLoaded = false;
+  // Identity transform map (scale handled by parser)
+  m_levelTransform = std::make_unique<forge::Transform>();
+  m_levelTransform->setPosition({ 0.0f, 0.0f, 0.0f });
+  m_levelTransform->setScale({ 1.0f, 1.0f, 1.0f });
+
+  m_levelData = forge::LevelLoader::load(mapPath);
   m_enemy.active = false;
-  try {
-    m_levelMesh = forge::AssetManager::loadModel(objPath);
-    objLoaded = m_levelMesh.hasRenderData(); 
-  } catch (const std::exception& e) {
-    LOG_WARN("[Game] level_01.obj not found or failed to load: {}", e.what());
+
+  if (!m_levelData.valid) {
+    throw std::runtime_error("[Game] Failed to load level map: " + mapPath);
   }
 
-  if (objLoaded) {
-    LOG_INFO("[Game] TrenchBroom level OBJ loaded ({} physics tris)", m_levelMesh.indices.size() / 3);
-    constexpr float k_mapScale = 1.0f / 64.0f;
+  m_mapScene = std::make_unique<forge::MapScene>();
+  forge::GeometryGenerator gen;
+  forge::GeometrySettings settings;
 
-    // Place level at origin at engine scale
-    m_levelTransform = std::make_unique<forge::Transform>();
-    m_levelTransform->setPosition({ 0.0f, 0.0f, 0.0f });
-    m_levelTransform->setScale({ k_mapScale, k_mapScale, k_mapScale });
+  // compile worldspawn
+  if (const forge::LevelEntity* ws = m_levelData.findFirst("worldspawn")) {
+    forge::EntityGeometry geom = gen.processEntity(*ws, settings);
 
-    std::vector<glm::vec3> scaledPositions;
-    scaledPositions.reserve(m_levelMesh.positions.size());
-    for (const auto& p : m_levelMesh.positions)
-      scaledPositions.push_back(p * k_mapScale);
+    // build render objects
+    for (const auto& surf : geom.surfaces) {
+      std::vector<forge::Vertex> meshVerts;
+      meshVerts.reserve(surf.vertices.size());
+      for (const auto& mv : surf.vertices) {
+        forge::Vertex v;
+        v.position[0] = mv.position.x; v.position[1] = mv.position.y; v.position[2] = mv.position.z;
+        v.normal[0] = mv.normal.x; v.normal[1] = mv.normal.y; v.normal[2] = mv.normal.z;
+        v.texCoord[0] = mv.texCoord.x; v.texCoord[1] = mv.texCoord.y;
+        v.tangent[0] = mv.tangent.x; v.tangent[1] = mv.tangent.y; v.tangent[2] = mv.tangent.z;
+          v.tangent[3] = mv.tangent.w;
+        meshVerts.push_back(v);
+      }
 
-    // Triangle mesh collision - one body for the whole level
-    if (m_levelMesh.hasPhysicsData()) {
+      forge::MapRenderObject ro;
+      ro.mesh = std::make_shared<forge::Mesh>(meshVerts, surf.indices);
+      ro.albedo = forge::AssetManager::loadMapTexture(surf.textureName);
+      ro.normalMap = forge::AssetManager::loadMapNormalTexture(surf.textureName);
+      m_mapScene->renderObjects.push_back(ro);
+    }
+
+    // Save collision data!
+    if (!geom.collisionPositions.empty()) {
       m_levelPhysicsBody = std::make_unique<forge::RigidBodyComponent>(
         getPhysics(),
         *m_levelTransform,
-        scaledPositions,
-        m_levelMesh.indices,
-        0.0f // static
-      );
-    } else {
-      LOG_WARN("[Game] Level OBJ loaded without physics data - using plane collision fallback.");
-      m_levelPhysicsBody = std::make_unique<forge::RigidBodyComponent>(
-        getPhysics(),
-        *m_levelTransform,
-        forge::CollisionShape::Plane,
-        glm::vec3(0),
+        geom.collisionPositions,
+        geom.collisionIndices,
         0.0f
       );
+      LOG_INFO("[Game] Map physics built natively! {} collision triangles",
+               geom.collisionIndices.size() / 3);
     }
+  }
 
-    // Parse entities from map file
-    m_levelData = forge::LevelLoader::load(mapPath);
+  // Player start
+  if (const auto& start = m_levelData.findFirst("info_player_start")) {
+    glm::vec3 origin = start->origin;
+    constexpr float k_playerCapsuleHalfHeight = 0.9f;
+    origin.y += k_playerCapsuleHalfHeight;
+    m_player.controller->warp(origin);
+    if (start->angle != 0.0f) {
+      float rad = glm::radians(start->angle);
+      m_player.forward = glm::normalize(glm::vec3(sinf(rad), 0.0f, cosf(rad)));
+      m_player.transform->setEulerAngles({ 90.0f, start->angle, 0.0f });
+    }
+    LOG_INFO("[Game] Player spawned at {:.2f},{:.2f},{:.2f}", origin.x, origin.y, origin.z);
+    if (m_player.equipment) {
+      m_player.equipment->equip(forge::EquipmentComponent::RIGHT_HAND,
+                                "longsword");
+    }
+  }
 
-    if (m_levelData.valid) {
-      // Player start - override default player spawn
-      if (const auto& start = m_levelData.findFirst("info_player_start")) {
-        glm::vec3 origin = start->origin;
-        constexpr float k_playerCapsuleHalfHeight = 0.9f;
-        origin.y += k_playerCapsuleHalfHeight;
-        m_player.controller->warp(origin);
-        if (start->angle != 0.0f) {
-          float rad = glm::radians(start->angle);
-          m_player.forward = glm::normalize(glm::vec3(sinf(rad), 0.0f, cosf(rad)));
-          m_player.transform->setEulerAngles({ 90.0f, start->angle, 0.0f });
-        }
-        LOG_INFO("[Game] Player spawned at {:.2f},{:.2f},{:.2f} from info_player_start",
-                 start->origin.x, start->origin.y, start->origin.z);
-        if (m_player.equipment) {
-          m_player.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, "longsword");
-          LOG_INFO("[Game] Player equipped with default loadout 'longsword'");
-        }
-      }
+  // Enemy Spawns
+  const auto enemySpawns = m_levelData.getByClass("enemy_spawn");
+  if (!enemySpawns.empty()) {
+    m_enemy.active = true;
+    const forge::LevelEntity* spawnEnt = enemySpawns[0];
+    glm::vec3 spawnPos = spawnEnt->origin;
 
-      // Enemy spawns - relocate existing enemy to first spawn point
-      const auto enemySpawns = m_levelData.getByClass("enemy_spawn");
-      if (!enemySpawns.empty()) {
-        m_enemy.active = true;
-        const forge::LevelEntity* spawnEnt = enemySpawns[0];
-        glm::vec3 spawnPos = spawnEnt->origin;
+    constexpr float k_capsuleHalfHeight = 0.75f;
+    constexpr float k_rayStart = 2.0f;
+    constexpr float k_rayLength = 10.0f;
 
-        constexpr float k_capsuleHalfHeight = 0.75f;
-        constexpr float k_rayStart = 2.0f;
-        constexpr float k_rayLength = 10.0f;
+    glm::vec3 rayFrom = spawnPos + glm::vec3(0.0f, k_rayStart, 0.0f);
+    glm::vec3 rayTo = spawnPos + glm::vec3(0.0f, -k_rayLength, 0.0f);
 
-        glm::vec3 rayFrom = spawnPos + glm::vec3(0.0f, k_rayStart, 0.0f);
-        glm::vec3 rayTo = spawnPos + glm::vec3(0.0f, -k_rayLength, 0.0f);
-
-        forge::RaycastHit hit = getPhysics().raycast(rayFrom, rayTo);
-        if (hit.hit) {
-          spawnPos.y = hit.point.y + k_capsuleHalfHeight;
-          LOG_INFO("[Game] Enemy snapped to floor at y={:.3f} (raycast hit at y={:.3f})", spawnPos.y, hit.point.y);
-        } else {
-          spawnPos.y -= k_capsuleHalfHeight;
-          LOG_INFO("[Game] Floor raycast missed for enemy_spawn, using entity height + offset");
-        }
-        m_enemy.controller->warp(spawnPos);
-        // Patrol waypoints for this spawn (matched by patrol_group key)
-        std::string group = spawnEnt->props.count("patrol_group")
-          ? spawnEnt->props.at("patrol_group") : "";
-
-        if (!group.empty()) {
-          // Clear default waypoints
-          m_enemy.ai->clearWaypoints();
-          for (const auto* wp : m_levelData.getByClass("patrol_waypoint")) {
-            if (wp->props.count("patrol_group") && wp->props.at("patrol_group") == group) {
-              m_enemy.ai->addWaypoint(wp->origin);
-            }
-          }
-          LOG_INFO("[Game] Enemy patrol loaded: {} waypoints (group '{}')",
-                   m_enemy.ai->waypointCount(), group);
-        }
-
-        std::string wepId = spawnEnt->getProperty("weaponId", "");
-        bool dropOwn = (spawnEnt->getProperty("dropWeapon", "1") == "1");
-        std::string otherWepId = !dropOwn ? spawnEnt->getProperty("dropId", "") : "";
-
-        if (!dropOwn && !otherWepId.empty()) {
-          m_enemy.ai->setWeaponConfig(wepId, false, otherWepId);
-        } else {
-          m_enemy.ai->setWeaponConfig(wepId, dropOwn);
-        }
-
-        if (!wepId.empty()) {
-          m_enemy.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, wepId);
-          LOG_INFO("[Game] Enemy equipped with '{}'", wepId);
-        }
-
-        auto existingOnDeath = std::move(m_enemy.combat->onDeath);
-        m_enemy.combat->onDeath = [this, existingOnDeath]() {
-          if (existingOnDeath) existingOnDeath();
-          if (m_enemy.ai->shouldDropWeapon()) {
-            glm::vec3 dropPos = m_enemy.transform->getPosition();
-            if (m_enemy.ai->dropsOwnWeapon()) {
-              spawnWeaponPickup(dropPos, m_enemy.ai->getWeaponId(), false);
-              LOG_INFO("[Game] Enemy dropped '{}' at ({:.1f},{:.1f},{:.1f})",
-                     m_enemy.ai->getWeaponId(), dropPos.x, dropPos.y, dropPos.z);
-            } else if (!m_enemy.ai->getDropId().empty()) {
-              spawnWeaponPickup(dropPos, m_enemy.ai->getDropId(), false);
-              LOG_INFO("[Game] Enemy dropped OTHER WEAPON '{}' at ({:.1f},{:.1f},{:.1f})",
-                     m_enemy.ai->getDropId(), dropPos.x, dropPos.y, dropPos.z);
-            } else {
-              LOG_ERROR("[Game] Enemy was marked as dropping a weapon but no weapon ID present.");
-            }
-          }
-        };
-
-        LOG_INFO("[Game] Enemy spawned at {:.2f},{:.2f},{:.2f} from map",
-                 spawnPos.x, spawnPos.y, spawnPos.z);
-      }
-
-      // Flag triggers - more in next phase
-      for (const auto* t : m_levelData.getByClass("flag_trigger")) {
-        int flagId = t->getInt("flag_id", -1);
-        bool triggerOnce = t->getBool("trigger_once", true);
-        float radius = t->getFloat("radius", 2.0f);
-        if (flagId >= 0) {
-          LOG_INFO("[Game] flag_trigger: flag={} radius={:.1f} once={} at {:.1f},{:.1f},{:.1f}",
-                   flagId, radius, triggerOnce,
-                   t->origin.x, t->origin.y, t->origin.z);
-        }
-      }
-
-      for (const auto* ent : m_levelData.getByClass("bonfire")) {
-        glm::vec3 pos = ent->origin;
-        int bonfireId = std::stoi(ent->getProperty("bonfire_id", "0"));
-        int targetFlag = std::stoi(ent->getProperty("targetFlag", "0"));
-        float radius = std::stof(ent->getProperty("radius", "1.5"));
-
-        BonfireVolume bf;
-        bf.bonfireId = bonfireId;
-        bf.targetFlag = targetFlag;
-        bf.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), pos, radius);
-        m_bonfires.push_back(std::move(bf));
-
-        LOG_INFO("[Level] Bonfire {} wired at ({:.1f},{:.1f},{:.1f})", bonfireId, pos.x, pos.y, pos.z);
-      }
-
-      for (const auto* ent : m_levelData.getByClass("fog_gate")) {
-        glm::vec3 pos = ent->origin;
-        int requiredFlag = std::stoi(ent->getProperty("requiredFlag", "0"));
-        float width = std::stof(ent->getProperty("width", "2.0"));
-        float height = std::stof(ent->getProperty("height", "3.0"));
-
-        glm::vec3 halfExtents(width * 0.5f, height * 0.5f, 0.3f);
-
-        auto vol = std::make_unique<forge::TriggerVolume>(
-          getPhysics(), pos, halfExtents,
-          [this, requiredFlag, pos]() {
-            if (requiredFlag == 0 || getFlags().get(requiredFlag)) {
-              return;
-            }
-
-            glm::vec3 playerPos = m_player.transform->getPosition();
-            glm::vec3 pushBack = glm::normalize(playerPos - pos) * 2.0f;
-            m_player.controller->warp(playerPos + pushBack);
-
-            forge::EventBus::publish(forge::ScriptEvent{ "fogGateLocked", "" });
-            LOG_INFO("[Level] Fog gate blocked (requiredFlag {} not set)", requiredFlag);
-          }
-        );
-
-        m_triggerVolumes.push_back(std::move(vol));
-        LOG_INFO("[Level] Fog gate wired at ({:.1f},{:.1f},{:.1f})", pos.x, pos.y, pos.z);
-      }
-
-      for (const auto* ent : m_levelData.getByClass("weapon_pickup")) {
-        glm::vec3 pos = ent->origin;
-        std::string wepId = ent->getProperty("weaponId", "");
-        float radius = std::stof(ent->getProperty("radius", "1.0"));
-        bool respawns = (ent->getProperty("respawns", "0") == "1");
-
-        if (wepId.empty()) {
-          LOG_WARN("[Level] weapon_pickup at ({:.1f},{:.1f},{:.1f}) has no weaponId - skipped",
-                   pos.x, pos.y, pos.z);
-          continue;
-        }
-
-        spawnWeaponPickup(pos, wepId, respawns);
-      }
-
-      LOG_INFO("[Game] Map entities loaded: {} total", m_levelData.entities.size());
+    forge::RaycastHit hit = getPhysics().raycast(rayFrom, rayTo);
+    if (hit.hit) {
+      spawnPos.y = hit.point.y + k_capsuleHalfHeight;
     } else {
-      LOG_WARN("[Game] level_01.map not found - entity data skipped.");
+      spawnPos.y -= k_capsuleHalfHeight;
     }
+    m_enemy.controller->warp(spawnPos);
 
-    m_usingTBLevel = true;
-    LOG_INFO("[Game] TrenchBroom level active.");
-    return;
-  }
-
-  LOG_INFO("[Game] No TrenchBroom level found — using procedural courtyard.");
-
-  m_floorModel = forge::AssetManager::loadModel("models/medieval/floor.fbx");
-  m_wallModel = forge::AssetManager::loadModel("models/medieval/wall.fbx");
-  m_towerModel = forge::AssetManager::loadModel("models/medieval/tower.fbx");
-
-  // Floor - 7x7 grid of tiles centered on origin
-  const float tileSize = 1.0f;
-  const float modelScale = 0.01f;
-  const int gridSize = 7;
-  const float halfGrid = (gridSize * tileSize) / 2.0f - tileSize / 2.0f;
-
-  for (int z = 0; z < gridSize; z++) {
-    for (int x = 0; x < gridSize; x++) {
-      LevelPiece piece;
-      piece.model = m_floorModel; // Shared, no extra GPU mem
-
-      piece.transform = std::make_unique<forge::Transform>();
-      piece.transform->setPosition({
-        x * tileSize - halfGrid, 
-        0.0f,
-        z * tileSize - halfGrid
-      });
-      piece.transform->setScale({ modelScale, modelScale, modelScale });
-
-      // Static phys plane only needed once - invisible floor
-      // handles collision for all tiles collectively
-      piece.body = nullptr;
-
-      m_level.push_back(std::move(piece));
-    }
-  }
-
-  // Invisible floor plane
-  {
-    LevelPiece physicsFloor;
-    physicsFloor.model = {};
-    physicsFloor.transform = std::make_unique<forge::Transform>();
-    physicsFloor.transform->setPosition({ 0,0,0 });
-    physicsFloor.body = std::make_unique<forge::RigidBodyComponent>(
-      getPhysics(),
-      *physicsFloor.transform,
-      forge::CollisionShape::Plane,
-      glm::vec3(0),
-      0.0f
-    );
-    m_level.push_back(std::move(physicsFloor));
-  }
-
-  // Walls -- perimeter of courtyard
-  // North and south
-  for (int x = 0; x < gridSize; x++) {
-    float xPos = x * tileSize - halfGrid;
-
-    // North
-    LevelPiece north;
-    north.model = m_wallModel;
-    north.transform = std::make_unique<forge::Transform>();
-    north.transform->setPosition({ xPos, 0.0f, -halfGrid - tileSize });
-    north.transform->setScale({ modelScale, modelScale, modelScale });
-    north.body = nullptr;
-    m_level.push_back(std::move(north));
-
-    // South
-    LevelPiece south;
-    south.model = m_wallModel;
-    south.transform = std::make_unique<forge::Transform>();
-    south.transform->setPosition({ xPos, 0.0f, halfGrid + tileSize });
-    south.transform->setScale({ modelScale, modelScale, modelScale });
-    south.transform->setEulerAngles({ 0, 180.0f, 0 });
-    south.body = nullptr;
-    m_level.push_back(std::move(south));
-  }
-
-  // East and west walls
-  for (int z = 0; z < gridSize; z++) {
-    float zPos = z * tileSize - halfGrid;
-
-    // North
-    LevelPiece west;
-    west.model = m_wallModel;
-    west.transform = std::make_unique<forge::Transform>();
-    west.transform->setPosition({ -halfGrid - tileSize, 0.0f, zPos });
-    west.transform->setScale({ modelScale, modelScale, modelScale });
-    west.transform->setEulerAngles({ 0, 90.0f, 0 });
-    west.body = nullptr;
-    m_level.push_back(std::move(west));
-
-    // South
-    LevelPiece east;
-    east.model = m_wallModel;
-    east.transform = std::make_unique<forge::Transform>();
-    east.transform->setPosition({ halfGrid + tileSize, 0.0f, zPos });
-    east.transform->setScale({ modelScale, modelScale, modelScale });
-    east.transform->setEulerAngles({ 0, -90.0f, 0 });
-    east.body = nullptr;
-    m_level.push_back(std::move(east));
-  }
-
-  const float corner = halfGrid + tileSize;
-  for (float cx : { -corner, corner }) {
-      for (float cz : { -corner, corner }) {
-          LevelPiece tower;
-          tower.model     = m_towerModel;
-          tower.transform = std::make_unique<forge::Transform>();
-          tower.transform->setPosition({ cx, 0.0f, cz });
-          tower.transform->setScale({ modelScale, modelScale, modelScale });
-          tower.body = nullptr;
-          m_level.push_back(std::move(tower));
+    // Patrol waypoints
+    std::string group = spawnEnt->props.count("patrol_group")
+      ? spawnEnt->props.at("patrol_group")
+      : "";
+    if (!group.empty()) {
+      m_enemy.ai->clearWaypoints();
+      for (const auto* wp : m_levelData.getByClass("patrol_waypoint")) {
+        if (wp->props.count("patrol_group") && wp->props.at("patrol_group") == group)
+          m_enemy.ai->addWaypoint(wp->origin);
       }
+    }
+
+    // Equipment/Weapons
+    std::string wepId = spawnEnt->getProperty("weaponId", "");
+    bool dropOwn = (spawnEnt->getProperty("dropWeapon", "1") == "1");
+    std::string otherWepId = !dropOwn ? spawnEnt->getProperty("dropId", "") : "";
+
+    if (!dropOwn && !otherWepId.empty()) {
+      m_enemy.ai->setWeaponConfig(wepId, false, otherWepId);
+    } else {
+      m_enemy.ai->setWeaponConfig(wepId, dropOwn);
+    }
+
+    if (!wepId.empty())
+      m_enemy.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, wepId);
+
+    auto existingOnDeath = std::move(m_enemy.combat->onDeath);
+    m_enemy.combat->onDeath = [this, existingOnDeath]() {
+      if (existingOnDeath) existingOnDeath();
+      if (m_enemy.ai->shouldDropWeapon()) {
+        glm::vec3 dropPos = m_enemy.transform->getPosition();
+        if (m_enemy.ai->dropsOwnWeapon()) {
+          spawnWeaponPickup(dropPos, m_enemy.ai->getWeaponId(), false);
+        } else if (!m_enemy.ai->getDropId().empty()) {
+          spawnWeaponPickup(dropPos, m_enemy.ai->getDropId(), false);
+        }
+      }
+    };
   }
 
-  m_usingTBLevel = false;
+  // Flag Triggers
+  for (const auto* t : m_levelData.getByClass("flag_trigger")) {
+    int flagId = t->getInt("flag_id", -1);
+    bool triggerOnce = t->getBool("trigger_once", true);
+    float radius = t->getFloat("radius", 2.0f);
+  }
+
+  // Bonfires
+  for (const auto* ent : m_levelData.getByClass("bonfire")) {
+    glm::vec3 pos = ent->origin;
+    int bonfireId = std::stoi(ent->getProperty("bonfire_id", "0"));
+    int targetFlag = std::stoi(ent->getProperty("targetFlag", "0"));
+    float radius = std::stof(ent->getProperty("radius", "1.5"));
+
+    BonfireVolume bf;
+    bf.bonfireId = bonfireId;
+    bf.targetFlag = targetFlag;
+    bf.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), pos, radius);
+    m_bonfires.push_back(std::move(bf));
+  }
+
+  // Fog gates
+  for (const auto* ent : m_levelData.getByClass("fog_gate")) {
+    glm::vec3 pos = ent->origin;
+    int requiredFlag = std::stoi(ent->getProperty("requiredFlag", "0"));
+    float width = std::stof(ent->getProperty("width", "2.0"));
+    float height = std::stof(ent->getProperty("height", "3.0"));
+
+    glm::vec3 halfExtents(width * 0.5f, height * 0.5f, 0.3f);
+
+    auto vol = std::make_unique<forge::TriggerVolume>(
+      getPhysics(), pos, halfExtents,
+      [this, requiredFlag, pos]() {
+        if (requiredFlag == 0 || getFlags().get(requiredFlag)) {
+          return;
+        }
+
+        glm::vec3 playerPos = m_player.transform->getPosition();
+        glm::vec3 pushBack = glm::normalize(playerPos - pos) * 2.0f;
+        m_player.controller->warp(playerPos + pushBack);
+
+        forge::EventBus::publish(forge::ScriptEvent{ "fogGateLocked", "" });
+        LOG_INFO("[Level] Fog gate blocked (requiredFlag {} not set)", requiredFlag);
+      }
+    );
+
+    m_triggerVolumes.push_back(std::move(vol));
+  }
+
+  // Weapon pickups
+  for (const auto* ent : m_levelData.getByClass("weapon_pickup")) {
+    glm::vec3 pos = ent->origin;
+    std::string wepId = ent->getProperty("weaponId", "");
+    bool respawns = (ent->getProperty("respawns", "0") == "1");
+
+    if (!wepId.empty()) {
+      spawnWeaponPickup(pos, wepId, respawns);
+    }
+  }
+
+  LOG_INFO("[Game] Map entities loaded: {} total", m_levelData.entities.size());
 }
 
 void ForgeGame::setupScripts() {
@@ -882,46 +751,43 @@ void ForgeGame::onUpdate(float dt) {
 
 void ForgeGame::onRender() {
   m_shader->bind();
-  if (m_usingTBLevel) {
-    if (m_levelMesh.hasRenderData())
-      drawModel(m_levelMesh, *m_levelTransform);
-  } else {
-    for (auto& piece : m_level)
-      if (piece.model.hasRenderData()) drawModel(piece.model, *piece.transform);
-  }
 
+  // Draw pickups
   for (const auto& pk : m_weaponPickups) {
     if (!pk.collected && pk.model.hasRenderData())
       drawModelAtMatrix(pk.model, pk.transform->getModelMatrix());
   }
 
+  // Draw player weapon
   if (m_player.equipment && m_player.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND))
     drawModelAtMatrix(m_player.weaponModel, 
                       m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
-  if (m_enemy.active) {
-    if (m_enemy.equipment && m_enemy.combat->isAlive()
 
-      && m_enemy.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND)) {
-      drawModelAtMatrix(m_enemy.weaponModel,
-                        m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
-    }
+  // Draw enemy weapon
+  if (m_enemy.active && m_enemy.equipment && m_enemy.combat->isAlive()
+    && m_enemy.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND)) {
+    drawModelAtMatrix(m_enemy.weaponModel,
+                      m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
   }
   m_shader->unbind();
+
+  // Draw Native Map
+  if (m_mapScene) {
+    m_mapScene->render(*m_camera, m_brushShader.get());
+  }
 
   m_skinnedShader->bind();
   drawSkinnedModel(m_player.skinnedModel, *m_player.transform, *m_player.animator);
 
   if (m_enemy.active) {
-    {
-      forge::Transform enemyVisualTransform;
-      enemyVisualTransform.setPosition(m_enemy.transform->getPosition());
-      enemyVisualTransform.setScale(m_enemy.transform->getScale());
-      enemyVisualTransform.setRotation(m_enemy.transform->getRotation());
+    forge::Transform enemyVisualTransform;
+    enemyVisualTransform.setPosition(m_enemy.transform->getPosition());
+    enemyVisualTransform.setScale(m_enemy.transform->getScale());
+    enemyVisualTransform.setRotation(m_enemy.transform->getRotation());
 
-      m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
-      drawSkinnedModel(m_enemy.skinnedModel, enemyVisualTransform, *m_enemy.animator);
-      m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
-    }
+    m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
+    drawSkinnedModel(m_enemy.skinnedModel, enemyVisualTransform, *m_enemy.animator);
+    m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
   } else {
     m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
   }
@@ -940,15 +806,13 @@ void ForgeGame::onRender() {
     );
 
     if (m_enemy.active) {
-      {
-        constexpr float kR = 0.3f;
-        constexpr float kH = 0.45f;
-        forge::DebugDraw::capsule(
-          m_enemy.controller->getCapsuleCenter(), 
-          kR, kH,
-          { 1.0f, 0.3f, 0.3f }
-        );
-      }
+      constexpr float kR = 0.3f;
+      constexpr float kH = 0.45f;
+      forge::DebugDraw::capsule(
+        m_enemy.controller->getCapsuleCenter(), 
+        kR, kH,
+        { 1.0f, 0.3f, 0.3f }
+      );
     }
 
     forge::DebugDraw::flush(m_camera->getViewProjection());
