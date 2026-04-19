@@ -3,8 +3,8 @@
     {
       "id":         "longsword",
       "mesh":       "models/weapons/longsword.glb",
-      "attachBone": "weapon_r",
-      "hitboxBone": "weapon_r",
+      "attachSocket": "weapon_r",
+      "hitSocket": "weapon_r",
       "attacks": {
         "r1": {
           "name":         "r1",

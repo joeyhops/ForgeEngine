@@ -8,6 +8,8 @@
 #include <forge/FlagManager.h>
 #include <forge/EventBus.h>
 #include <forge/Events.h>
+#include <forge/EquipmentComponent.h>
+#include <forge/WeaponDef.h>
 
 #include <glm/glm.hpp>
 #include <fstream>
@@ -48,6 +50,7 @@ void LuaState::registerBindings() {
   registerEvents();
   registerAI();
   registerAnimGraph();
+  registerEquipment();
 
   // Expose the logger to Lua so scripts can log properly
   // usage in lua: Log.info("hello from script")
@@ -131,7 +134,8 @@ void LuaState::registerCombat() {
                                       "tryAttack", &CombatComponent::tryAttack,
                                       "tryGuard", &CombatComponent::tryGuard,
                                       "releaseGuard", &CombatComponent::releaseGuard,
-                                      "takeDamage", &CombatComponent::takeDamage
+                                      "takeDamage", &CombatComponent::takeDamage,
+                                      "getAttackData", &CombatComponent::getAttackData
                                       );
 }
 
@@ -180,6 +184,30 @@ void LuaState::registerAnimGraph() {
                                             "getFloat", &forge::AnimParamTable::getFloat,
                                             "getBool", &forge::AnimParamTable::getBool
                                             );
+}
+
+void LuaState::registerEquipment() {
+  m_lua.new_usertype<EquipmentComponent>("EquipmentComponent", sol::no_constructor,
+                                         "equip", [](EquipmentComponent& ec, int slot, const std::string& id)-> bool {
+                                            return ec.equip(static_cast<EquipmentComponent::Slot>(slot), id);
+                                         },
+
+                                         "unequip", [](EquipmentComponent& ec, int slot) {
+                                            ec.unequip(static_cast<EquipmentComponent::Slot>(slot));
+                                         },
+
+                                         "hasWeapon", [](EquipmentComponent& ec, int slot) -> bool {
+                                            return ec.hasWeapon(static_cast<EquipmentComponent::Slot>(slot));
+                                         },
+
+                                         "getEquipped", [](EquipmentComponent& ec, int slot) -> std::string {
+                                            const WeaponDef* def = ec.getEquipped(
+                                                                        static_cast<EquipmentComponent::Slot>(slot));
+                                            return def ? def->id : "";
+                                         });
+  auto slotTable = m_lua.create_named_table("EquipSlot");
+  slotTable["RIGHT"] = static_cast<int>(EquipmentComponent::RIGHT_HAND);
+  slotTable["LEFT"] = static_cast<int>(EquipmentComponent::LEFT_HAND);
 }
 
 }

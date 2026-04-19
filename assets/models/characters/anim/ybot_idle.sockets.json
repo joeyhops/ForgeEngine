@@ -1,0 +1,36 @@
+{
+  "sockets": {
+    "weapon_r": {
+      "bone": "mixamorig:RightHand",
+      "offset": {
+        "pos":   [0.1, 0.1, 0.0],
+        "rot":   [0.0, 0.0,-90.0],
+        "scale": [0.5, 0.5, 0.5]
+      }
+    },
+    "weapon_l": {
+      "bone": "mixamorig:LeftHand",
+      "offset": {
+        "pos":   [0.0, 0.0, 0.0],
+        "rot":   [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    "head_crown": {
+      "bone":   "mixamorig:Head",
+      "offset": { "pos": [0.0, 0.12, 0.0] }
+    },
+    "chest_back": {
+      "bone":   "mixamorig:Spine2",
+      "offset": { "pos": [0.0, -0.05, 0.15] }
+    },
+    "hip_r": {
+      "bone":   "mixamorig:RightUpLeg",
+      "offset": { "pos": [0.10, 0.0, 0.0] }
+    },
+    "hip_l": {
+      "bone":   "mixamorig:LeftUpLeg",
+      "offset": { "pos": [-0.10, 0.0, 0.0] }
+    }
+  }
+}

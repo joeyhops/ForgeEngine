@@ -9,6 +9,11 @@
 
 namespace forge {
   
+std::string LevelEntity::getProperty(const std::string& key, const std::string& def) const {
+  auto it = props.find(key);
+  return (it != props.end()) ? it->second : def;
+}
+
 int LevelEntity::getInt(const std::string& key, int def) const {
   auto it = props.find(key);
   if (it == props.end()) return def;

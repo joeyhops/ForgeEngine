@@ -18,8 +18,10 @@ add_library(forge_engine STATIC
   src/physics/PhysicsWorld.cpp
   src/physics/RigidBodyComponent.cpp
   src/physics/CharacterController.cpp
+  src/physics/TriggerVolume.cpp
   src/combat/CombatComponent.cpp
   src/combat/CombatSystem.cpp
+  src/combat/EquipmentComponent.cpp
   src/events/EventBus.cpp
   src/events/FlagManager.cpp
   src/ai/AIComponent.cpp

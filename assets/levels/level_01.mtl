@@ -1,5 +1,5 @@
 newmtl __TB_empty
-map_Kd ../../../../../../Applications/TrenchBroom.app/Contents/Resources/defaults/assets/textures/__TB_empty.png
+map_Kd ../../trenchbroom/defaults/assets/textures/__TB_empty.png
 
 newmtl cobblestone
 map_Kd ../textures/cobblestone.png

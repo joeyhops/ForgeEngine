@@ -37,6 +37,9 @@ void ForgeGame::onInit() {
 #endif
 
   setupRenderer();
+
+  forge::AssetManager::loadWeponDefs("data/weapons.json");
+  
   setupPlayer();
   setupEnemy();
   setupLevel();
@@ -269,10 +272,31 @@ void ForgeGame::setupPlayer() {
     getLua().callFunction("onPlayerHit", h.damage, h.damageType);
   };
 
+  m_player.equipment = std::make_unique<forge::EquipmentComponent>("player");
+
+  // CombatComponent onEquip
+  m_player.equipment->onEquip = [this](forge::EquipmentComponent::Slot slot, const forge::WeaponDef* def) {
+    if (slot == forge::EquipmentComponent::RIGHT_HAND) {
+      m_player.combat->setWeapon(def);
+      if (!def->meshPath.empty())
+        m_player.weaponModel = forge::AssetManager::loadModel(def->meshPath);
+      getLua().callFunction("onPlayerEquip", static_cast<int>(slot), def->id);
+    }
+  };
+
+  m_player.equipment->onUnequip = [this](forge::EquipmentComponent::Slot slot) {
+    if (slot == forge::EquipmentComponent::RIGHT_HAND) {
+      m_player.combat->setWeapon(nullptr);
+      m_player.weaponModel = forge::ModelData{};
+      getLua().callFunction("onPlayerUnequip", static_cast<int>(slot));
+    }
+  };
+
   getCombat().registerCombatant(m_player.combat.get());
   getLua().get()["playerCombat"] = m_player.combat.get();
   getLua().get()["playerTransform"] = m_player.transform.get();
   getLua().get()["playerAnim"] = &m_player.animator->getParams();
+  getLua().get()["playerEquipment"] = m_player.equipment.get();
 
   getDebugUI().registerAnimator(m_player.animator.get(), "Player");
 
@@ -335,7 +359,26 @@ void ForgeGame::setupEnemy() {
   // ── AI ────────────────────────────────────────────────────────────────
   m_enemy.ai = std::make_unique<forge::AIComponent>(
     "enemy", *m_enemy.transform, *m_enemy.combat);
+
+  m_enemy.equipment = std::make_unique<forge::EquipmentComponent>("enemy");
  
+  m_enemy.equipment->onEquip = [this](forge::EquipmentComponent::Slot slot, const forge::WeaponDef* def) {
+    if (slot == forge::EquipmentComponent::RIGHT_HAND) {
+      m_enemy.combat->setWeapon(def);
+      if (!def->meshPath.empty())
+        m_enemy.weaponModel = forge::AssetManager::loadModel(def->meshPath);
+      getLua().callFunction("onEnemyEquip", static_cast<int>(slot), def->id);
+    }
+  };
+
+  m_enemy.equipment->onUnequip = [this](forge::EquipmentComponent::Slot slot) {
+    if (slot == forge::EquipmentComponent::RIGHT_HAND) {
+      m_enemy.combat->setWeapon(nullptr);
+      m_enemy.weaponModel = forge::ModelData{};
+      getLua().callFunction("onEnemyUnequip", static_cast<int>(slot));
+    }
+  };
+
   getCombat().registerCombatant(m_enemy.combat.get());
   getDebugUI().registerAnimator(m_enemy.animator.get(), "Enemy");
   getDebugUI().registerAIComponent(m_enemy.ai.get());
@@ -344,6 +387,7 @@ void ForgeGame::setupEnemy() {
   getLua().get()["enemyTransform"] = m_enemy.transform.get();
   getLua().get()["enemyAnim"] = &m_enemy.animator->getParams();
   getLua().get()["enemyAI"] = m_enemy.ai.get();
+  getLua().get()["enemyEquipment"] = m_enemy.equipment.get();
 
   LOG_INFO("[ForgeGame] Enemy ready");
 }
@@ -412,6 +456,10 @@ void ForgeGame::setupLevel() {
         }
         LOG_INFO("[Game] Player spawned at {:.2f},{:.2f},{:.2f} from info_player_start",
                  start->origin.x, start->origin.y, start->origin.z);
+        if (m_player.equipment) {
+          m_player.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, "longsword");
+          LOG_INFO("[Game] Player equipped with default loadout 'longsword'");
+        }
       }
 
       // Enemy spawns - relocate existing enemy to first spawn point
@@ -452,6 +500,40 @@ void ForgeGame::setupLevel() {
                    m_enemy.ai->waypointCount(), group);
         }
 
+        std::string wepId = spawnEnt->getProperty("weaponId", "");
+        bool dropOwn = (spawnEnt->getProperty("dropWeapon", "1") == "1");
+        std::string otherWepId = !dropOwn ? spawnEnt->getProperty("dropId", "") : "";
+
+        if (!dropOwn && !otherWepId.empty()) {
+          m_enemy.ai->setWeaponConfig(wepId, false, otherWepId);
+        } else {
+          m_enemy.ai->setWeaponConfig(wepId, dropOwn);
+        }
+
+        if (!wepId.empty()) {
+          m_enemy.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, wepId);
+          LOG_INFO("[Game] Enemy equipped with '{}'", wepId);
+        }
+
+        auto existingOnDeath = std::move(m_enemy.combat->onDeath);
+        m_enemy.combat->onDeath = [this, existingOnDeath]() {
+          if (existingOnDeath) existingOnDeath();
+          if (m_enemy.ai->shouldDropWeapon()) {
+            glm::vec3 dropPos = m_enemy.transform->getPosition();
+            if (m_enemy.ai->dropsOwnWeapon()) {
+              spawnWeaponPickup(dropPos, m_enemy.ai->getWeaponId(), false);
+              LOG_INFO("[Game] Enemy dropped '{}' at ({:.1f},{:.1f},{:.1f})",
+                     m_enemy.ai->getWeaponId(), dropPos.x, dropPos.y, dropPos.z);
+            } else if (!m_enemy.ai->getDropId().empty()) {
+              spawnWeaponPickup(dropPos, m_enemy.ai->getDropId(), false);
+              LOG_INFO("[Game] Enemy dropped OTHER WEAPON '{}' at ({:.1f},{:.1f},{:.1f})",
+                     m_enemy.ai->getDropId(), dropPos.x, dropPos.y, dropPos.z);
+            } else {
+              LOG_ERROR("[Game] Enemy was marked as dropping a weapon but no weapon ID present.");
+            }
+          }
+        };
+
         LOG_INFO("[Game] Enemy spawned at {:.2f},{:.2f},{:.2f} from map",
                  spawnPos.x, spawnPos.y, spawnPos.z);
       }
@@ -466,6 +548,64 @@ void ForgeGame::setupLevel() {
                    flagId, radius, triggerOnce,
                    t->origin.x, t->origin.y, t->origin.z);
         }
+      }
+
+      for (const auto* ent : m_levelData.getByClass("bonfire")) {
+        glm::vec3 pos = ent->origin;
+        int bonfireId = std::stoi(ent->getProperty("bonfire_id", "0"));
+        int targetFlag = std::stoi(ent->getProperty("targetFlag", "0"));
+        float radius = std::stof(ent->getProperty("radius", "1.5"));
+
+        BonfireVolume bf;
+        bf.bonfireId = bonfireId;
+        bf.targetFlag = targetFlag;
+        bf.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), pos, radius);
+        m_bonfires.push_back(std::move(bf));
+
+        LOG_INFO("[Level] Bonfire {} wired at ({:.1f},{:.1f},{:.1f})", bonfireId, pos.x, pos.y, pos.z);
+      }
+
+      for (const auto* ent : m_levelData.getByClass("fog_gate")) {
+        glm::vec3 pos = ent->origin;
+        int requiredFlag = std::stoi(ent->getProperty("requiredFlag", "0"));
+        float width = std::stof(ent->getProperty("width", "2.0"));
+        float height = std::stof(ent->getProperty("height", "3.0"));
+
+        glm::vec3 halfExtents(width * 0.5f, height * 0.5f, 0.3f);
+
+        auto vol = std::make_unique<forge::TriggerVolume>(
+          getPhysics(), pos, halfExtents,
+          [this, requiredFlag, pos]() {
+            if (requiredFlag == 0 || getFlags().get(requiredFlag)) {
+              return;
+            }
+
+            glm::vec3 playerPos = m_player.transform->getPosition();
+            glm::vec3 pushBack = glm::normalize(playerPos - pos) * 2.0f;
+            m_player.controller->warp(playerPos + pushBack);
+
+            forge::EventBus::publish(forge::ScriptEvent{ "fogGateLocked", "" });
+            LOG_INFO("[Level] Fog gate blocked (requiredFlag {} not set)", requiredFlag);
+          }
+        );
+
+        m_triggerVolumes.push_back(std::move(vol));
+        LOG_INFO("[Level] Fog gate wired at ({:.1f},{:.1f},{:.1f})", pos.x, pos.y, pos.z);
+      }
+
+      for (const auto* ent : m_levelData.getByClass("weapon_pickup")) {
+        glm::vec3 pos = ent->origin;
+        std::string wepId = ent->getProperty("weaponId", "");
+        float radius = std::stof(ent->getProperty("radius", "1.0"));
+        bool respawns = (ent->getProperty("respawns", "0") == "1");
+
+        if (wepId.empty()) {
+          LOG_WARN("[Level] weapon_pickup at ({:.1f},{:.1f},{:.1f}) has no weaponId - skipped",
+                   pos.x, pos.y, pos.z);
+          continue;
+        }
+
+        spawnWeaponPickup(pos, wepId, respawns);
       }
 
       LOG_INFO("[Game] Map entities loaded: {} total", m_levelData.entities.size());
@@ -600,6 +740,7 @@ void ForgeGame::setupScripts() {
   const std::string root = forge::AssetManager::getAssetRoot();
   getLua().loadScript(root + "scripts/events/flags.lua");
   getLua().loadScript(root + "scripts/combat/attacks.lua");
+  getLua().loadScript(root + "scripts/equipment.lua");
   getLua().loadScript(root + "scripts/combat/player_combat.lua");
   getLua().loadScript(root + "scripts/ai/enemy_ai.lua");
   getLua().loadScript(root + "scripts/events/demo_quest.lua");
@@ -621,6 +762,63 @@ void ForgeGame::onUpdate(float dt) {
 
   // Physics
   getPhysics().step(dt);
+
+  for (auto& vol : m_triggerVolumes) {
+    vol->update();
+  }
+
+  for (auto& bf : m_bonfires) {
+    bf.trigger->update();
+  }
+
+  // Bonfire interaction
+  if (isKeyPressed(GLFW_KEY_B)) {
+    for (auto& bf : m_bonfires) {
+      if (bf.trigger->isOverlapping()) {
+        m_player.combat->healToFull();
+        if (bf.targetFlag != 0)
+          getFlags().set(bf.targetFlag, true);
+        getFlags().saveToFile(k_saveFilePath);
+        forge::EventBus::publish(forge::RestEvent{ bf.bonfireId });
+        getLua().callFunction("onBonfireRest", bf.bonfireId);
+        LOG_INFO("[Level] Bonfire {} rest — player healed, flags saved", bf.bonfireId);
+        break;
+      }
+    }
+  }
+
+  for (auto& pk : m_weaponPickups) {
+    if (!pk.collected) pk.trigger->update();
+  }
+
+  if (isKeyPressed(GLFW_KEY_E)) {
+    for (auto& pk : m_weaponPickups) {
+      if (!pk.collected && pk.trigger->isOverlapping()) {
+        m_player.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, pk.weaponId);
+        if (!pk.respawns) {
+          pk.collected = true;
+          pk.trigger->setEnabled(false);
+        }
+        LOG_INFO("[Level] Player picked up '{}'", pk.weaponId);
+        break;
+      }
+    }
+  }
+
+  if (m_player.equipment) {
+    m_player.equipment->update(
+      m_player.transform->getModelMatrix(),
+      m_player.animator->getGlobalTransforms(),
+      m_player.skinnedModel);
+  }
+
+  if (m_enemy.equipment && m_enemy.combat->isAlive()) {
+    m_enemy.equipment->update(
+      m_enemy.transform->getModelMatrix(),
+      m_enemy.animator->getGlobalTransforms(),
+      m_enemy.skinnedModel);
+  }
+
   m_player.controller->syncTransform();
   m_enemy.controller->syncTransform();
 
@@ -682,6 +880,22 @@ void ForgeGame::onRender() {
   } else {
     for (auto& piece : m_level)
       if (piece.model.hasRenderData()) drawModel(piece.model, *piece.transform);
+  }
+
+  for (const auto& pk : m_weaponPickups) {
+    if (!pk.collected && pk.model.hasRenderData())
+      drawModelAtMatrix(pk.model, pk.transform->getModelMatrix());
+  }
+
+  if (m_player.equipment && m_player.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND))
+    drawModelAtMatrix(m_player.weaponModel, 
+                      m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
+
+  if (m_enemy.equipment && m_enemy.combat->isAlive()
+
+    && m_enemy.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND)) {
+    drawModelAtMatrix(m_enemy.weaponModel,
+                      m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
   }
   m_shader->unbind();
 
@@ -962,3 +1176,47 @@ void ForgeGame::handleInput(float dt) {
   m_player.combat->setWorldData(m_player.transform->getPosition(), m_player.forward);
 }
 
+void ForgeGame::spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns) {
+  const forge::WeaponDef* def = forge::AssetManager::getWeaponDef(weaponId);
+  if (!def) {
+    LOG_ERROR("[Level] spawnWeaponPickup: unknown weaponId '{}'", weaponId);
+    return;
+  }
+
+  WeaponPickup pickup;
+  pickup.weaponId = weaponId;
+  pickup.respawns = respawns;
+
+  pickup.transform = std::make_unique<forge::Transform>();
+  pickup.transform->setPosition(pos);
+
+  // Load weapon mesh
+  if (!def->meshPath.empty())
+    pickup.model = forge::AssetManager::loadModel(def->meshPath);
+
+  pickup.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), pos, 1.0f);
+
+  m_weaponPickups.push_back(std::move(pickup));
+  LOG_INFO("[Level] Spawned '{}' pickup at ({:.1f},{:.1f},{:.1f})",
+           weaponId, pos.x, pos.y, pos.z);
+}
+
+void ForgeGame::drawModelAtMatrix(const forge::ModelData& model, const glm::mat4& matrix) {
+  if (!model.hasRenderData()) return;
+
+  glm::mat4 mvp = m_camera->getViewProjection() * matrix;
+  m_shader->setMat4("u_mvp", mvp);
+  m_shader->setMat4("u_model", matrix);
+  m_shader->setVec3("u_tint", glm::vec3(1.0f));
+
+  for (const auto& sub : model.subMeshes) {
+    if (sub.texture) {
+      sub.texture->bind(0);
+      m_shader->setInt("u_texture", 0);
+      m_shader->setBool("u_hasTexture", true);
+    } else {
+      m_shader->setBool("u_hasTexture", false);
+    }
+    sub.mesh->draw();
+  }
+}

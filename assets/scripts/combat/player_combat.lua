@@ -4,14 +4,17 @@ function onCombatUpdate(dt, input)
   if not playerCombat:isAlive() then return end
 
   if input.attackLight and not playerCombat:isAttacking() then
-    if playerCombat:tryAttack(Attacks.R1) then
-      Log.info("R1 Swing!")
+    -- getAttackData("r1") returns longsword R1 if equipped, bare-hand fallback otherwise.
+    if playerCombat:tryAttack(playerCombat:getAttackData("r1")) then
+      local wep = playerEquipment:getEquipped(EquipSlot.RIGHT)
+      Log.info("R1 Swing! [" .. (wep ~= "" and wep or "bare hand") .. "]")
     end
   end
 
   if input.attackHeavy and not playerCombat:isAttacking() then
-    if playerCombat:tryAttack(Attacks.R2) then
-      Log.info("R2 Overhead!")
+    if playerCombat:tryAttack(playerCombat:getAttackData("r2")) then
+      local wep = playerEquipment:getEquipped(EquipSlot.RIGHT)
+      Log.info("R2 Heavy! [" .. (wep ~= "" and wep or "bare hand") .. "]")
     end
   end
 
@@ -24,11 +27,13 @@ function onCombatUpdate(dt, input)
   debugTimer = (debugTimer or 0) + dt
   if debugTimer > 2.0 then
     debugTimer = 0
+    local wep = playerEquipment:getEquipped(EquipSlot.RIGHT)
     Log.info(string.format(
-      "Player - HP: %.0f STA: %.0f State: %s",
+      "Player - HP: %.0f STA: %.0f State: %s Weapon: %s",
       playerCombat:getHp(),
       playerCombat:getStamina(),
-      playerCombat:getStateName()
+      playerCombat:getStateName(),
+      wep ~= "" and wep or "none"
     ))
   end
 end

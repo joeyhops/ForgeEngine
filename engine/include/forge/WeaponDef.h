@@ -15,8 +15,8 @@ namespace forge {
 struct WeaponDef {
   std::string id;
   std::string meshPath;
-  std::string attachBone; // bone name in chars skeleton
-  std::string hitboxBone;
+  std::string attachSocket; // bone name in chars skeleton
+  std::string hitSocket;
   std::unordered_map<std::string, AttackData> attacks;
 };
 

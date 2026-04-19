@@ -40,6 +40,21 @@ public:
   void setAlertDuration(float d) { m_alertDuration = d; }
   void setRecoverDuration(float d) { m_recoverDuration = d; }
 
+  // weapons
+  void setWeaponConfig(const std::string& weaponId, bool drop, const std::string& otherDropId = "") {
+    m_weaponId = weaponId;
+    m_dropWeapon = drop;
+    if (!drop) {
+      if (!otherDropId.empty())
+        m_dropOtherWeaponId = otherDropId;
+    }
+  }
+
+  const std::string& getWeaponId() const { return m_weaponId; }
+  const std::string& getDropId() const { return m_dropOtherWeaponId; }
+  bool shouldDropWeapon() const { return (m_dropWeapon && !m_weaponId.empty()) || !m_dropOtherWeaponId.empty(); }
+  bool dropsOwnWeapon() const { return (m_dropWeapon && !m_weaponId.empty()); }
+
   // Queries
   AIState getState() const { return m_fsm.current(); }
   std::string getStateName() const;
@@ -103,5 +118,10 @@ private:
   // Runtime
   glm::vec3 m_playerPos = { 0,0,0 };
   float m_distToPlayer = 999.0f;
+
+  // Weapons
+  std::string m_weaponId;
+  bool m_dropWeapon = true;
+  std::string m_dropOtherWeaponId;
 };
 }

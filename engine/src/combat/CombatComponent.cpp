@@ -12,6 +12,33 @@
 
 namespace forge {
 
+// Bare hand attack data
+const AttackData CombatComponent::k_bareHandR1 = {
+  "r1", // name
+  40.0f, // damage
+  10.0f, // poiseDamage
+  15.0f, // staminaCost
+  0.15f, // startupTime
+  0.10f, // activeTIme
+  0.40f, // recoveryTime
+  1.2f, // range
+  80.0f, // angle
+  "blunt" // damageType
+};
+
+const AttackData CombatComponent::k_bareHandR2 = {
+  "r2", // name
+  60.0f, // damage
+  15.0f, // poiseDamage
+  25.0f, // staminaCost
+  0.25f, // startupTime
+  0.12f, // activeTIme
+  0.55f, // recoveryTime
+  1.4f, // range
+  90.0f, // angle
+  "blunt" // damageType
+};
+
 CombatComponent::CombatComponent(const std::string& ownerName,
                                  float maxHp, float maxStamina, float maxPoise)
   : m_ownerName(ownerName)
@@ -184,6 +211,25 @@ bool CombatComponent::tryAttack(const AttackData& attack) {
   m_fsm.transition(CombatState::Attacking);
   return true;
 }
+
+void CombatComponent::setWeapon(const WeaponDef* weapon) {
+  m_weapon = weapon;
+  if (weapon) {
+    LOG_INFO("[Combat] '{}' weapon set to '{}'", m_ownerName, weapon->id);
+  } else {
+    LOG_INFO("[Combat] '{}' reverted to bare-hand", m_ownerName);
+  }
+}
+
+const AttackData& CombatComponent::getAttackData(const std::string& name) const {
+  if (m_weapon) {
+    auto it = m_weapon->attacks.find(name);
+    if (it != m_weapon->attacks.end()) return it->second;
+    LOG_WARN("[Combat] '{}' no attack '{}' in weapon '{}' - using bare-hands",
+             m_ownerName, name, m_weapon->id);
+  }
+  return (name == "r2") ? k_bareHandR2 : k_bareHandR1;
+} 
 
 void CombatComponent::tickAttack(float dt) {
   m_attackTimer += dt;

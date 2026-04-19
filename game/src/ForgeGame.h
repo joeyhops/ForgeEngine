@@ -12,6 +12,9 @@
 #include <forge/Animator.h>
 #include <forge/AnimationClip.h>
 #include <forge/LevelLoader.h>
+#include <forge/TriggerVolume.h>
+#include <forge/WeaponDef.h>
+#include <forge/EquipmentComponent.h>
 
 #include <memory>
 #include <unordered_map>
@@ -34,6 +37,8 @@ private:
   void setupLevel();
   void setupScripts();
   void handleInput(float dt);
+  void spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns);
+  void drawModelAtMatrix(const forge::ModelData& model, const glm::mat4& matrix);
 
   void drawModel(const forge::ModelData& model,
                  const forge::Transform& transform);
@@ -55,7 +60,9 @@ private:
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::CharacterController> controller;
     std::unique_ptr<forge::CombatComponent> combat;
+    std::unique_ptr<forge::EquipmentComponent> equipment;
     std::unique_ptr<forge::Animator> animator;
+    forge::ModelData weaponModel;
     std::unordered_map<std::string,
       std::shared_ptr<forge::AnimationClip>> clips;
     glm::vec3 forward = { 0, 0, -1 };
@@ -67,8 +74,10 @@ private:
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::CharacterController> controller;
     std::unique_ptr<forge::CombatComponent> combat;
+    std::unique_ptr<forge::EquipmentComponent> equipment;
     std::unique_ptr<forge::AIComponent> ai;
     std::unique_ptr<forge::Animator> animator;
+    forge::ModelData weaponModel;
     std::unordered_map<std::string,
       std::shared_ptr<forge::AnimationClip>> clips;
   } m_enemy;
@@ -77,6 +86,25 @@ private:
   std::unique_ptr<forge::Transform> m_levelTransform; 
   std::unique_ptr<forge::RigidBodyComponent> m_levelPhysicsBody; // Collision
   forge::LevelData m_levelData; // parsed entities
+
+  std::vector<std::unique_ptr<forge::TriggerVolume>> m_triggerVolumes;
+
+  struct BonfireVolume {
+    std::unique_ptr<forge::TriggerVolume> trigger;
+    int bonfireId = 0;
+    int targetFlag = 0;
+  };
+  std::vector<BonfireVolume> m_bonfires;
+
+  struct WeaponPickup {
+    std::unique_ptr<forge::TriggerVolume> trigger;
+    std::unique_ptr<forge::Transform> transform;
+    forge::ModelData model;
+    std::string weaponId;
+    bool respawns = false;
+    bool collected = false;
+  };
+  std::vector<WeaponPickup> m_weaponPickups;
 
   // Level geometry
   struct LevelPiece {
@@ -110,4 +138,6 @@ private:
   float m_dodgeDuration = 0.45f;
 
   struct InputState { bool j, k, l; } m_prevInput = {};
+
+  static constexpr const char* k_saveFilePath = "saves/flags.json";
 };

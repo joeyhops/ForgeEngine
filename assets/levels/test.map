@@ -28,6 +28,7 @@
 "classname" "enemy_spawn"
 "origin" "-706.5 184.5 -39"
 "patrol_group" "gl"
+"weaponId" "longsword"
 }
 // entity 2
 {

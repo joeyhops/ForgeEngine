@@ -19,6 +19,7 @@ struct LevelEntity {
   // All other key/value pairs from the entity block, excluding classname or position data
   std::unordered_map<std::string, std::string> props;
 
+  std::string getProperty(const std::string& key, const std::string& def = "") const;
   int getInt(const std::string& key, int def = 0) const;
   float getFloat(const std::string& key, float def = 0.0f) const;
   bool getBool(const std::string& key, bool def = false) const;

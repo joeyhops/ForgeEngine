@@ -1,6 +1,7 @@
 #pragma once
 #include <forge/StateMachine.h>
 #include <forge/AttackData.h>
+#include <forge/WeaponDef.h>
 #include <glm/glm.hpp>
 #include <functional>
 #include <string>
@@ -49,10 +50,21 @@ public:
   // Resturns false if can't attack (dead, already attacking, no stamina)
   bool tryAttack(const AttackData& attack);
 
+  // Weapon system
+  // Pass nullptr to revert to bare-hand AttackData
+  // Called by EquipmentComponent::onEquip and onUnequip
+  void setWeapon(const WeaponDef* weapon);
+
+  // Returns attack data for the named attack ("r1", "r2")
+  // Falls back to barehand r1 if name not found or no weapon equipped
+  const AttackData& getAttackData(const std::string& name) const;
+
   void takeDamage(float amount) {
     applyHit({ amount, 0.0f, glm::vec3(0.0f), "script" });
   }
 
+  void healToFull() { m_hp = m_maxHp; }
+  
   // incoming Hit
   void applyHit(const HitEvent& hit);
 
@@ -155,6 +167,11 @@ private:
   static constexpr float POISE_REGEN_RATE = 10.0f;
   static constexpr float POISE_REGEN_DELAY = 3.0f;
   float m_poiseRegenDelay = 0.0f;
+
+  const WeaponDef* m_weapon = nullptr;
+
+  static const AttackData k_bareHandR1;
+  static const AttackData k_bareHandR2;
 };
 
 }

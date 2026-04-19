@@ -21,26 +21,21 @@ function onQuestUpdate(dt)
   end
 end
 
+-- AFTER
 function onEnemyDefeated()
-  Log.warn("The enemy has falled! Seek the bonfire!")
+  Log.warn("The enemy has fallen! Seek the bonfire!")
 
   Events.publish("enemyDefeated", "dummy")
 
   Flags:set(FLAGS.GATE_HIGHWALL_OPEN, true)
   Log.info("The gate has opened!")
+
+  -- If the enemy was armed, their weapon was dropped as a pickup by C++.
+  -- getEnemyWeapon() returns the last known weapon ID before the unequip callback.
+  -- Note: onEnemyUnequip clears the cache; if the enemy was NOT explicitly unequipped
+  -- on death (which is Phase 12's default), getEnemyWeapon() still returns the weapon ID.
+  local w = getEnemyWeapon()
+  if w ~= "" then
+    Log.info(string.format("The enemy dropped their %s. Go claim it.", w))
+  end
 end
-
-function onBonfireReset()
-  if questStage ~= 1 then return end
-
-  Log.info("Yes rest at the bonfire, the world resets but your progress remaine.")
-  Flags:set(FLAGS.BONFIRE_HIGHWALL_LIT, true)
-  questStage = 2
-
-  Log.info(string.format("Quest state: enemy=%s gate=%s bonfire=%s",
-      tostring(Flags:get(FLAGS.BOSS_DUMMY_DEAD)),
-      tostring(Flags:get(FLAGS.GATE_HIGHWALL_OPEN)),
-      tostring(Flags:get(FLAGS.BONFIRE_HIGHWALL_LIT))
-  ))
-end
-

@@ -1,6 +1,5 @@
 #pragma once
 #include <forge/WeaponDef.h>
-#include <forge/Bone.h>
 
 #include <glm/glm.hpp>
 
@@ -9,6 +8,8 @@
 #include <string>
 
 namespace forge {
+
+struct SkinnedModelData;
 
 class AssetManager;
 
@@ -36,19 +37,28 @@ public:
 
   const WeaponDef* getEquipped(Slot slot) const;
   bool hasWeapon(Slot slot) const { return m_equipped[slot] != nullptr; }
+  const glm::mat4& getWeaponTransform(Slot slot) { return m_weaponTransforms[slot]; }
 
-  void update(const std::vector<glm::mat4>& globalTransforms,
-              const std::vector<Bone>& skeleton);
+  void update(const glm::mat4& ownerModelMatrix,
+              const std::vector<glm::mat4>& globalTransforms,
+              const SkinnedModelData& model);
 
   // Callbacks - wired into main game class to notify combat component
   std::function<void(Slot, const WeaponDef*)> onEquip;
   std::function<void(Slot)> onUnequip;
 
 private:
+  struct SlotBinding {
+    int boneIndex = -1;
+    glm::mat4 localOffset = glm::mat4(1.0f);
+    bool resolved = false;
+    bool logged = false;
+  };
+
   std::string m_ownerName;
   const WeaponDef* m_equipped[SLOT_COUNT] = {};
-  int m_boneIndex[SLOT_COUNT] = { -1, -1 };
-  glm::mat4 m_weaponTransforms[SLOT_COUNT];
+  SlotBinding m_binding[SLOT_COUNT] = {};
+  glm::mat4 m_weaponTransforms[SLOT_COUNT] = {};
 };
 
 }

@@ -54,4 +54,8 @@ struct AnimEventDeactivated {
   std::string payload;
 };
 
+struct RestEvent {
+  int bonfireId;
+};
+
 }

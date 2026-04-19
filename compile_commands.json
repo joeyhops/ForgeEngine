@@ -1,1 +1,170 @@
-out/build/macos-debug/compile_commands.json
+[
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\core\\Application.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\core\\Application.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\core\\Application.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\core\\Application.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\core\\Logger.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\core\\Logger.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\core\\Logger.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\core\\Logger.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\core\\LevelLoader.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\core\\LevelLoader.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\core\\LevelLoader.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\core\\LevelLoader.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Shader.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Shader.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Shader.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Shader.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\DebugDraw.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\DebugDraw.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\DebugDraw.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\DebugDraw.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Mesh.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Mesh.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Mesh.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Mesh.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\SkinnedMesh.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\SkinnedMesh.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\SkinnedMesh.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\SkinnedMesh.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Camera.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Camera.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Camera.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Camera.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Animator.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Animator.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Animator.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Animator.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Texture.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Texture.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\Texture.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\Texture.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\DebugUI.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\DebugUI.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\DebugUI.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\DebugUI.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\AnimGraph.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\AnimGraph.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\AnimGraph.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\AnimGraph.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\ThirdPersonCamera.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\ThirdPersonCamera.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\renderer\\ThirdPersonCamera.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\renderer\\ThirdPersonCamera.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\scene\\Transform.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\scene\\Transform.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\scene\\Transform.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\scene\\Transform.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\scripting\\LuaState.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\scripting\\LuaState.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\scripting\\LuaState.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\scripting\\LuaState.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\physics\\PhysicsWorld.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\PhysicsWorld.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\PhysicsWorld.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\physics\\PhysicsWorld.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\physics\\RigidBodyComponent.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\RigidBodyComponent.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\RigidBodyComponent.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\physics\\RigidBodyComponent.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\physics\\CharacterController.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\CharacterController.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\CharacterController.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\physics\\CharacterController.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\physics\\TriggerVolume.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\TriggerVolume.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\physics\\TriggerVolume.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\physics\\TriggerVolume.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\combat\\CombatComponent.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\CombatComponent.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\CombatComponent.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\combat\\CombatComponent.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\combat\\CombatSystem.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\CombatSystem.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\CombatSystem.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\combat\\CombatSystem.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\combat\\EquipmentComponent.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\EquipmentComponent.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\combat\\EquipmentComponent.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\combat\\EquipmentComponent.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\events\\EventBus.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\events\\EventBus.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\events\\EventBus.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\events\\EventBus.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\events\\FlagManager.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\events\\FlagManager.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\events\\FlagManager.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\events\\FlagManager.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\ai\\AIComponent.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\ai\\AIComponent.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\ai\\AIComponent.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\ai\\AIComponent.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Foengine\\CMakeFiles\\forge_engine.dir\\src\\assets\\AssetManager.cpp.obj /Fdengine\\CMakeFiles\\forge_engine.dir\\forge_engine.pdb /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\assets\\AssetManager.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\src\\assets\\AssetManager.cpp",
+  "output": "engine\\CMakeFiles\\forge_engine.dir\\src\\assets\\AssetManager.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Fogame\\CMakeFiles\\game.dir\\src\\main.cpp.obj /Fdgame\\CMakeFiles\\game.dir\\ /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\game\\src\\main.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\game\\src\\main.cpp",
+  "output": "game\\CMakeFiles\\game.dir\\src\\main.cpp.obj"
+},
+{
+  "directory": "C:/Users/annan/source/repos/ForgeEngine/out/build/x64-debug",
+  "command": "C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DGLFW_DLL -DLUA_BUILD_AS_DLL -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -IC:\\Users\\annan\\source\\repos\\ForgeEngine\\engine\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include -external:IC:\\Users\\annan\\workspace\\vcpkg\\installed\\x64-windows\\include\\bullet -external:W0 /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Zi /Ob0 /Od /RTC1 -std:c++20 /wd4251 /wd4275 /utf-8 /Fogame\\CMakeFiles\\game.dir\\src\\ForgeGame.cpp.obj /Fdgame\\CMakeFiles\\game.dir\\ /FS -c C:\\Users\\annan\\source\\repos\\ForgeEngine\\game\\src\\ForgeGame.cpp",
+  "file": "C:\\Users\\annan\\source\\repos\\ForgeEngine\\game\\src\\ForgeGame.cpp",
+  "output": "game\\CMakeFiles\\game.dir\\src\\ForgeGame.cpp.obj"
+}
+]

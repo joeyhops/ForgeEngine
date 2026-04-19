@@ -45,6 +45,7 @@ private:
   void registerEvents(); // Register events
   void registerAI(); // Register AI
   void registerAnimGraph(); // register animation graph
+  void registerEquipment(); // Register equipment components
 
   sol::state m_lua;
 };

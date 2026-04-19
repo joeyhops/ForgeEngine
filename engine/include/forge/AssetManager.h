@@ -6,6 +6,8 @@
 #include <forge/AnimationClip.h>
 #include <forge/Texture.h>
 #include <forge/Shader.h>
+#include <forge/Socket.h>
+#include <forge/WeaponDef.h>
 #include <string>
 #include <memory>
 #include <unordered_map>
@@ -39,6 +41,7 @@ struct ModelData {
 struct SkinnedModelData {
   std::shared_ptr<SkinnedMesh> mesh;
   std::vector<Bone> skeleton; // Full bone hierarchy, parent indices set
+  std::unordered_map<std::string, Socket> sockets;
   std::shared_ptr<Texture> texture;
 
   bool hasTexture() const { return texture != nullptr; }
@@ -77,17 +80,28 @@ public:
   static std::shared_ptr<Texture> loadTexture(const std::string& path);
   static std::shared_ptr<Texture> loadTextureAbsolute(const std::string& absPath);
 
+  // Load weapon defs
+  // reads weapons.json file and populates internal def table.
+  // Called once at startup. Path is relative to asset root.
+  static void loadWeponDefs(const std::string& relativePath);
+
+  // returns nullptr if weaponId is not found. Does not log, caller logs
+  static const WeaponDef* getWeaponDef(const std::string& weaponId);
+
   // Release everything - call on shutdown or scene change
   static void clear();
   static void printStats();
 
 private:
+  static void loadSocketsFor(SkinnedModelData& model, const std::string& modelRelativePath);
+
   static std::string s_assetRoot;
   static std::unordered_map<std::string, ModelData> s_models;
   static std::unordered_map<std::string, SkinnedModelData> s_skinnedModels;
   static std::unordered_map<std::string, std::shared_ptr<AnimationClip>> s_clips;
   static std::unordered_map<std::string, std::shared_ptr<Shader>> s_shaders;
   static std::unordered_map<std::string, std::shared_ptr<Texture>> s_textures;
+  static std::unordered_map<std::string, WeaponDef> s_weaponDefs;
 };
 
 }
