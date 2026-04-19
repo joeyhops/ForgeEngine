@@ -70,6 +70,7 @@ private:
 
   // Enemy
   struct EnemyEntity {
+    bool active = false;
     forge::SkinnedModelData skinnedModel;
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::CharacterController> controller;

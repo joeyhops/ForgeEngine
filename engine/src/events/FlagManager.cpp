@@ -45,6 +45,10 @@ void FlagManager::saveToFile(const std::string& path) const {
       flagsJson[std::to_string(id)] = true;
   }
 
+  auto parent = std::filesystem::path(path).parent_path();
+  if (!parent.empty())
+    std::filesystem::create_directories(parent);
+
   std::ofstream file(path);
   if (!file.is_open())
     throw std::runtime_error("Cannot write save file: " + path);

@@ -94,15 +94,6 @@ void EquipmentComponent::update(const glm::mat4& ownerModelMatrix,
       if (sy > 1e-6f) boneAttach[1] /= sy;
       if (sz > 1e-6f) boneAttach[2] /= sz;
 
-      if (s == RIGHT_HAND) {
-        LOG_INFO("[Equipment] '{}' slot {} attach basis: T=({:.2f},{:.2f},{:.2f}) "
-                 "col0_len={:.3f} col1_len={:.3f} col2_len={:.3f}",
-                 m_ownerName, s,
-                 boneAttach[3][0], boneAttach[3][1], boneAttach[3][2],
-                 glm::length(glm::vec3(boneAttach[0])),
-                 glm::length(glm::vec3(boneAttach[1])),
-                 glm::length(glm::vec3(boneAttach[2])));
-      }
       m_weaponTransforms[s] = boneAttach * b.localOffset;
     }
     // visible failure

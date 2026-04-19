@@ -1,0 +1,12 @@
+newmtl Developer/bluegrid
+map_Kd ../textures/Developer/bluegrid.png
+
+newmtl Developer/greygrid
+map_Kd ../textures/Developer/greygrid.png
+
+newmtl Developer/orangegrid
+map_Kd ../textures/Developer/orangegrid.png
+
+newmtl __TB_empty
+map_Kd ../../trenchbroom/defaults/assets/textures/__TB_empty.png
+

@@ -42,7 +42,7 @@ void ForgeGame::onInit() {
   
   setupPlayer();
   setupEnemy();
-  setupLevel("level_01");
+  setupLevel("bonfire");
   setupScripts();
 
 #ifdef __APPLE__
@@ -60,12 +60,12 @@ void ForgeGame::onInit() {
   forge::DebugDraw::init(m_debugLineShader.get());
 
   // Try loading previous save
-  getFlags().loadFromFile("save.json");
+  getFlags().loadFromFile(k_saveFilePath);
   LOG_INFO("[Game] init complete");
 }
 
 void ForgeGame::onShutdown() {
-  getFlags().saveToFile("save.json");
+  getFlags().saveToFile(k_saveFilePath);
   forge::AssetManager::printStats();
   forge::AssetManager::clear();
 }
@@ -398,6 +398,7 @@ void ForgeGame::setupLevel(const std::string& levelName) {
   const std::string mapPath = root + "levels/" + levelName + ".map";
 
   bool objLoaded = false;
+  m_enemy.active = false;
   try {
     m_levelMesh = forge::AssetManager::loadModel(objPath);
     objLoaded = m_levelMesh.hasRenderData(); 
@@ -465,6 +466,7 @@ void ForgeGame::setupLevel(const std::string& levelName) {
       // Enemy spawns - relocate existing enemy to first spawn point
       const auto enemySpawns = m_levelData.getByClass("enemy_spawn");
       if (!enemySpawns.empty()) {
+        m_enemy.active = true;
         const forge::LevelEntity* spawnEnt = enemySpawns[0];
         glm::vec3 spawnPos = spawnEnt->origin;
 
@@ -816,47 +818,48 @@ void ForgeGame::onUpdate(float dt) {
       m_player.animator->getGlobalTransforms(),
       m_player.skinnedModel);
   }
-
-  if (m_enemy.equipment && m_enemy.combat->isAlive()) {
-    m_enemy.equipment->update(
-      m_enemy.transform->getModelMatrix(),
-      m_enemy.animator->getGlobalTransforms(),
-      m_enemy.skinnedModel);
-  }
-
   m_player.controller->syncTransform();
-  m_enemy.controller->syncTransform();
 
   m_tpCamera->update(m_player.transform->getPosition());
 
-  if (m_lockedOn) {
-    m_lockOnEnemyPos = m_enemy.transform->getPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
-    if (!m_enemy.combat->isAlive()) {
-      m_lockedOn = false;
-      m_tpCamera->setLockOnTarget(nullptr);
-      LOG_INFO("[Game] Lock-on released - enemy dead");
-    }
-  }
-
   glm::vec3 playerPos = m_player.transform->getPosition();
   m_player.combat->setWorldData(playerPos, m_player.forward);
-
-  glm::vec3 preMovePos = m_enemy.transform->getPosition();
-
-  m_enemy.ai->update(dt, playerPos);
-
-  glm::vec3 postMovePos = m_enemy.transform->getPosition();
-  glm::vec3 displacement = postMovePos - preMovePos;
-  displacement.y = 0.0f;
-  m_enemy.transform->setPosition(preMovePos);
-  m_enemy.controller->setWalkDirection(displacement);
-
-  float enemyMoveSpeed = (glm::length(displacement) > 0.0001f) ? 1.0f : 0.0f;
-  m_enemy.animator->getParams().setFloat("moveSpeed", enemyMoveSpeed);
-
   m_player.animator->update(dt);
-  m_enemy.animator->update(dt);
 
+  if (m_enemy.active) {
+    if (m_enemy.equipment && m_enemy.combat->isAlive()) {
+      m_enemy.equipment->update(
+        m_enemy.transform->getModelMatrix(),
+        m_enemy.animator->getGlobalTransforms(),
+        m_enemy.skinnedModel);
+    }
+
+    m_enemy.controller->syncTransform();
+
+    if (m_lockedOn) {
+      m_lockOnEnemyPos = m_enemy.transform->getPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
+      if (!m_enemy.combat->isAlive()) {
+        m_lockedOn = false;
+        m_tpCamera->setLockOnTarget(nullptr);
+        LOG_INFO("[Game] Lock-on released - enemy dead");
+      }
+    }
+
+    glm::vec3 preMovePos = m_enemy.transform->getPosition();
+
+    m_enemy.ai->update(dt, playerPos);
+
+    glm::vec3 postMovePos = m_enemy.transform->getPosition();
+    glm::vec3 displacement = postMovePos - preMovePos;
+    displacement.y = 0.0f;
+    m_enemy.transform->setPosition(preMovePos);
+    m_enemy.controller->setWalkDirection(displacement);
+
+    float enemyMoveSpeed = (glm::length(displacement) > 0.0001f) ? 1.0f : 0.0f;
+    m_enemy.animator->getParams().setFloat("moveSpeed", enemyMoveSpeed);
+
+    m_enemy.animator->update(dt);
+  }
   // Input -> Lua
   bool j = isKeyDown(GLFW_KEY_J);
   bool k = isKeyDown(GLFW_KEY_K);
@@ -895,31 +898,31 @@ void ForgeGame::onRender() {
   if (m_player.equipment && m_player.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND))
     drawModelAtMatrix(m_player.weaponModel, 
                       m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
+  if (m_enemy.active) {
+    if (m_enemy.equipment && m_enemy.combat->isAlive()
 
-  if (m_enemy.equipment && m_enemy.combat->isAlive()
-
-    && m_enemy.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND)) {
-    drawModelAtMatrix(m_enemy.weaponModel,
-                      m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
+      && m_enemy.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND)) {
+      drawModelAtMatrix(m_enemy.weaponModel,
+                        m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
+    }
   }
   m_shader->unbind();
 
   m_skinnedShader->bind();
   drawSkinnedModel(m_player.skinnedModel, *m_player.transform, *m_player.animator);
 
-  // tint enemy slightly red so we can see which they are
-  {
-    constexpr float k_enemyCapsuleRadius = 0.3f;
-    constexpr float k_enemyCylinderHalfHeight = 0.45f;
-    constexpr float k_enemyTotalHalfHeight = k_enemyCapsuleRadius + k_enemyCylinderHalfHeight;
+  if (m_enemy.active) {
+    {
+      forge::Transform enemyVisualTransform;
+      enemyVisualTransform.setPosition(m_enemy.transform->getPosition());
+      enemyVisualTransform.setScale(m_enemy.transform->getScale());
+      enemyVisualTransform.setRotation(m_enemy.transform->getRotation());
 
-    forge::Transform enemyVisualTransform;
-    enemyVisualTransform.setPosition(m_enemy.transform->getPosition());
-    enemyVisualTransform.setScale(m_enemy.transform->getScale());
-    enemyVisualTransform.setRotation(m_enemy.transform->getRotation());
-
-    m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
-    drawSkinnedModel(m_enemy.skinnedModel, enemyVisualTransform, *m_enemy.animator);
+      m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
+      drawSkinnedModel(m_enemy.skinnedModel, enemyVisualTransform, *m_enemy.animator);
+      m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
+    }
+  } else {
     m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
   }
 
@@ -936,14 +939,16 @@ void ForgeGame::onRender() {
       { 0.0f, 1.0f, 0.0f } // green
     );
 
-    {
-      constexpr float kR = 0.3f;
-      constexpr float kH = 0.45f;
-      forge::DebugDraw::capsule(
-        m_enemy.controller->getCapsuleCenter(), 
-        kR, kH,
-        { 1.0f, 0.3f, 0.3f }
-      );
+    if (m_enemy.active) {
+      {
+        constexpr float kR = 0.3f;
+        constexpr float kH = 0.45f;
+        forge::DebugDraw::capsule(
+          m_enemy.controller->getCapsuleCenter(), 
+          kR, kH,
+          { 1.0f, 0.3f, 0.3f }
+        );
+      }
     }
 
     forge::DebugDraw::flush(m_camera->getViewProjection());
