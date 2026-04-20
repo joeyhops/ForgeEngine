@@ -43,6 +43,13 @@ public:
                 std::function<void()> onEnter = {},
                 std::function<void()> onExit = {});
 
+  // Brush Trigger
+  // hullVertices are the raw collision positions from the GeometryGenerator
+  TriggerVolume(PhysicsWorld& physics,
+                const std::vector<glm::vec3>& hullVertices,
+                std::function<void()> onEnter = {},
+                std::function<void()> onExit = {});
+
   ~TriggerVolume();
 
   // Must be called every frame after physics.step()

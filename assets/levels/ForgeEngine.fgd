@@ -42,7 +42,7 @@ Optional weapon: set weaponId to equip on spawn; dropWeapon to leave a pickup on
   weaponId(string)    : "WeaponDef ID to equip on spawn (leave blank for unarmed)" : ""
   dropWeapon(choices) : "Drop equipped weapon as pickup on death" : 1 =
   [
-    0 : "No",
+    0 : "No"
     1 : "Yes (default)"
   ]
   dropId(string)      : "If dropWeapon is NO, set dropId to set specific weapon drop. Otherwise leave null." : "" 
@@ -109,7 +109,7 @@ Use respawns=1 for rare weapons that should not be permanently collected."
 
 @PointClass color(255 140 0) = bonfire : "Rest point / checkpoint.
 The player can interact with this to save progress and reset enemies.
-Fires RestEvent through EventBus and calls onBonfireRest Lua callback.""
+Fires RestEvent through EventBus and calls onBonfireRest Lua callback."
 [
   bonfire_id(integer) : "Unique ID — used to distinguish multiple bonfires" : 0
   targetFlag(integer) : "FlagManager flag ID set when player rests here (0 = none)" : 0
@@ -128,4 +128,24 @@ Fires RestEvent through EventBus and calls onBonfireRest Lua callback.""
   g(integer)    : "Green channel 0-255" : 230
   b(integer)    : "Blue channel 0-255" : 180
   intensity(float) : "Brightness multiplier" : 1.0
+]
+
+// ------------
+// Brush Entities
+// -----------
+
+@SolidClass = func_wall : "Static collision geometry. Identical to worldspawn but can be grouped." []
+
+@SolidClass = func_illusionary : "Visible geometry with NO collision." []
+
+@SolidClass color(255 100 0) = trigger_once : "Invisible trigger volume defined by brush shape. Fires its target once
+when entered"
+[
+  target(string) : "Entity targetname to activate" : ""
+]
+
+@SolidClass color(255 100 0) = trigger_multiple : "Invisible trigger volume defined by brush shape. Fires its target
+each time the player enters"
+[
+  target(string) : "Entity targetname to activate" : ""
 ]

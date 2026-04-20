@@ -7,6 +7,7 @@
 
 #include <btBulletDynamicsCommon.h>
 #include <BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h>
+#include <BulletCollision/CollisionShapes/btConvexHullShape.h>
 #include <glm/gtc/quaternion.hpp>
 #include <memory>
 
@@ -103,6 +104,23 @@ RigidBodyComponent::RigidBodyComponent(PhysicsWorld& world,
   finalize(transform, 0.0f);
 }
 
+RigidBodyComponent::RigidBodyComponent(PhysicsWorld& world,
+                                       Transform& transform,
+                                       const std::vector<glm::vec3>& hullPoints,
+                                       float mass)
+  : m_world(world), m_transform(transform)
+{
+  auto hull = std::make_unique<btConvexHullShape>();
+  for (const auto& p : hullPoints) {
+    hull->addPoint(toBt(p), false);
+  }
+  hull->recalcLocalAabb();
+  hull->optimizeConvexHull();
+  m_shape = std::move(hull);
+
+  finalize(transform, mass);
+}
+
 void RigidBodyComponent::finalize(Transform& transform, float mass) {
   const glm::vec3& pos = transform.getPosition();
   const glm::quat& rot = transform.getRotation();
@@ -168,6 +186,17 @@ void RigidBodyComponent::teleport(const glm::vec3& pos) {
   m_body->setLinearVelocity(btVector3(0,0,0));
   m_body->setAngularVelocity(btVector3(0,0,0));
   m_body->activate(true);
+}
+
+void RigidBodyComponent::setKinematic(bool kinematic) {
+  if (!m_body) return;
+  if (kinematic) {
+    m_body->setCollisionFlags(m_body->getCollisionFlags() | btCollisionObject::CF_KINEMATIC_OBJECT);
+    m_body->setActivationState(DISABLE_DEACTIVATION);
+  } else {
+    m_body->setCollisionFlags(m_body->getCollisionFlags() & ~btCollisionObject::CF_KINEMATIC_OBJECT);
+    m_body->setActivationState(ACTIVE_TAG);
+  }
 }
 
 }

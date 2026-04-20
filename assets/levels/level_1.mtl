@@ -1,9 +1,0 @@
-newmtl __TB_empty
-map_Kd textures/__TB_empty.png
-
-newmtl cobblestone
-map_Kd textures/cobblestone.png
-
-newmtl roof
-map_Kd textures/roof.png
-

@@ -35,6 +35,10 @@ public:
                      const std::vector<glm::vec3>& positions,
                      const std::vector<uint32_t>& indices,
                      float mass = 0.0f);
+  RigidBodyComponent(PhysicsWorld& world,
+                     Transform& transform,
+                     const std::vector<glm::vec3>& hullPoints,
+                     float mass = 0.0f);
 
   ~RigidBodyComponent();
 
@@ -53,6 +57,8 @@ public:
   // Instantly move body to new pos - used for AI/Scripted movement
   // Unlike forces, this bypasses the simulation and sets pos directly
   void teleport(const glm::vec3& pos);
+
+  void setKinematic(bool kinematic);
 
 private:
 

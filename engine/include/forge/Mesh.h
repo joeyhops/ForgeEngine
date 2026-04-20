@@ -7,6 +7,7 @@ struct Vertex {
   float position[3] = { 0, 0, 0 };
   float normal[3] = { 0, 1, 0 };
   float texCoord[2] = { 0, 0 };
+  float tangent[4] = { 0, 0, 0, 1 };
 };
 
 class Mesh {

@@ -15,6 +15,8 @@
 #include <forge/TriggerVolume.h>
 #include <forge/WeaponDef.h>
 #include <forge/EquipmentComponent.h>
+#include <forge/map/MapScene.h>
+#include <forge/map/EntityAssembler.h>
 
 #include <memory>
 #include <unordered_map>
@@ -46,6 +48,8 @@ private:
   void drawSkinnedModel(const forge::SkinnedModelData& model,
                         const forge::Transform& transform,
                         const forge::Animator& animator);
+
+  std::vector<forge::MapRenderObject> buildRenderObjects(const forge::EntityGeometry& geom);
 
   // Rendering
   std::shared_ptr<forge::Shader> m_shader; // basic.vert/frag
@@ -83,13 +87,6 @@ private:
       std::shared_ptr<forge::AnimationClip>> clips;
   } m_enemy;
 
-  forge::ModelData m_levelMesh; // OBJ Geometry
-  std::unique_ptr<forge::Transform> m_levelTransform; 
-  std::unique_ptr<forge::RigidBodyComponent> m_levelPhysicsBody; // Collision
-  forge::LevelData m_levelData; // parsed entities
-
-  std::vector<std::unique_ptr<forge::TriggerVolume>> m_triggerVolumes;
-
   struct BonfireVolume {
     std::unique_ptr<forge::TriggerVolume> trigger;
     int bonfireId = 0;
@@ -108,16 +105,16 @@ private:
   std::vector<WeaponPickup> m_weaponPickups;
 
   // Level geometry
-  struct LevelPiece {
-    forge::ModelData model;
-    std::unique_ptr<forge::Transform> transform;
-    std::unique_ptr<forge::RigidBodyComponent> body;
-  };
-  std::vector<LevelPiece> m_level;
-  forge::ModelData m_floorModel;
-  forge::ModelData m_wallModel;
-  forge::ModelData m_towerModel;
-  bool m_usingTBLevel = false;
+  std::unique_ptr<forge::Transform> m_levelTransform; 
+  std::unique_ptr<forge::RigidBodyComponent> m_levelPhysicsBody; // Collision
+  forge::LevelData m_levelData; // parsed entities
+
+  std::vector<std::unique_ptr<forge::TriggerVolume>> m_triggerVolumes;
+
+  std::unique_ptr<forge::MapScene> m_mapScene;
+  std::shared_ptr<forge::Shader> m_brushShader;
+  forge::EntityAssembler m_assembler;
+  std::vector<forge::EntityInstance> m_mapEntities;
 
   // Input
   
