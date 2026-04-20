@@ -293,6 +293,7 @@ void ForgeGame::setupPlayer() {
   };
 
   getCombat().registerCombatant(m_player.combat.get());
+  m_player.combat->setGhostObject(m_player.controller->getGhostObject());
   getLua().get()["playerCombat"] = m_player.combat.get();
   getLua().get()["playerTransform"] = m_player.transform.get();
   getLua().get()["playerAnim"] = &m_player.animator->getParams();
@@ -380,6 +381,7 @@ void ForgeGame::setupEnemy() {
   };
 
   getCombat().registerCombatant(m_enemy.combat.get());
+  m_enemy.combat->setGhostObject(m_enemy.controller->getGhostObject());
   getDebugUI().registerAnimator(m_enemy.animator.get(), "Enemy");
   getDebugUI().registerAIComponent(m_enemy.ai.get());
 
@@ -817,6 +819,13 @@ void ForgeGame::onUpdate(float dt) {
       m_player.transform->getModelMatrix(),
       m_player.animator->getGlobalTransforms(),
       m_player.skinnedModel);
+
+    if (m_player.combat->hasActiveHitbox()) {
+      const forge::WeaponDef* wpnDef = m_player.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND);
+      glm::mat4 wpnWorld = m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
+      glm::vec3 halfExt = wpnDef ? wpnDef->hitboxHalfExtents : glm::vec3(0.08f, 0.45f, 0.08f);
+      m_player.combat->setHitboxTransform(wpnWorld, halfExt);
+    }
   }
   m_player.controller->syncTransform();
 
@@ -832,6 +841,14 @@ void ForgeGame::onUpdate(float dt) {
         m_enemy.transform->getModelMatrix(),
         m_enemy.animator->getGlobalTransforms(),
         m_enemy.skinnedModel);
+
+
+      if (m_enemy.combat->hasActiveHitbox()) {
+        const forge::WeaponDef* wpnDef = m_enemy.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND);
+        glm::mat4 wpnWorld = m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
+        glm::vec3 halfExt = wpnDef ? wpnDef->hitboxHalfExtents : glm::vec3(0.08f, 0.45f, 0.08f);
+        m_enemy.combat->setHitboxTransform(wpnWorld, halfExt);
+      }
     }
 
     m_enemy.controller->syncTransform();
@@ -939,15 +956,23 @@ void ForgeGame::onRender() {
       { 0.0f, 1.0f, 0.0f } // green
     );
 
+    if (m_player.combat->hasActiveHitbox()) {
+      glm::vec3 hitCenter = glm::vec3(m_player.combat->getHitboxTransform()[3]);
+      forge::DebugDraw::box(hitCenter, m_player.combat->getHitboxHalfExtents(), { 1.0f, 0.5f, 0.0f });
+    }
+
     if (m_enemy.active) {
-      {
-        constexpr float kR = 0.3f;
-        constexpr float kH = 0.45f;
-        forge::DebugDraw::capsule(
-          m_enemy.controller->getCapsuleCenter(), 
-          kR, kH,
-          { 1.0f, 0.3f, 0.3f }
-        );
+      constexpr float kR = 0.3f;
+      constexpr float kH = 0.45f;
+      forge::DebugDraw::capsule(
+        m_enemy.controller->getCapsuleCenter(), 
+        kR, kH,
+        { 1.0f, 0.3f, 0.3f }
+      );
+
+      if (m_enemy.combat->hasActiveHitbox()) {
+        glm::vec3 hitCenter = glm::vec3(m_enemy.combat->getHitboxTransform()[3]);
+        forge::DebugDraw::box(hitCenter, m_enemy.combat->getHitboxHalfExtents(), { 1.0f, 0.2f, 0.2f });
       }
     }
 

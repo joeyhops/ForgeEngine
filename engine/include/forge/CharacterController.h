@@ -46,6 +46,8 @@ public:
   float getRadius() const { return m_radius; }
   float getCylinderHalfHeight() const { return m_cylinderHalfHeight; }
   float getTotalHalfHeight() const { return m_radius + m_cylinderHalfHeight; }
+
+  btPairCachingGhostObject* getGhostObject() const { return m_ghost.get(); }
 private:
   PhysicsWorld& m_world;
   Transform& m_transform;

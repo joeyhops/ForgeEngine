@@ -6,10 +6,13 @@
 namespace forge {
 
 class CombatComponent;
+class PhysicsWorld;
 
 class CombatSystem {
 public:
   CombatSystem() = default;
+
+  void setPhysicsWorld(PhysicsWorld* world) { m_physicsWorld = world; }
 
   // Register a combatant - must be called before update
   void registerCombatant(CombatComponent* component);
@@ -29,6 +32,7 @@ private:
   void resolveHit(CombatComponent& attacker, CombatComponent& defender);
 
   std::vector<CombatComponent*> m_combatants;
+  PhysicsWorld* m_physicsWorld = nullptr;
 };
 
 }

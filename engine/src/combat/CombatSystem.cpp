@@ -1,10 +1,19 @@
 #include <forge/CombatSystem.h>
 #include <forge/CombatComponent.h>
 #include <forge/Logger.h>
+#include <forge/PhysicsWorld.h>
+#include <forge/Events.h>
+#include <forge/EventBus.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include <algorithm>
+
+#include <btBulletDynamicsCommon.h>
+#include <BulletCollision/CollisionDispatch/btGhostObject.h>
+#include <BulletCollision/CollisionShapes/btBoxShape.h>
 
 namespace forge {
 
@@ -49,6 +58,45 @@ void CombatSystem::update(float dt) {
 bool CombatSystem::checkHit(const CombatComponent& attacker,
                             const CombatComponent& defender) const
 {
+  if (m_physicsWorld && attacker.getGhostObject() != nullptr && defender.getGhostObject() != nullptr) {
+    const glm::mat4& wpnMat = attacker.getHitboxTransform();
+    const glm::vec3& halfExt = attacker.getHitboxHalfExtents();
+
+    btBoxShape hitboxShape(btVector3(
+      static_cast<btScalar>(halfExt.x),
+      static_cast<btScalar>(halfExt.y),
+      static_cast<btScalar>(halfExt.z)
+    ));
+
+    btTransform hitboxBT;
+    hitboxBT.setFromOpenGLMatrix(glm::value_ptr(wpnMat));
+
+    btCollisionObject hitboxObj;
+    hitboxObj.setCollisionShape(&hitboxShape);
+    hitboxObj.setWorldTransform(hitboxBT);
+
+    struct HitCallback : public btCollisionWorld::ContactResultCallback {
+      bool hit = false;
+      btScalar addSingleResult(btManifoldPoint&,
+                               const btCollisionObjectWrapper*, int, int,
+                               const btCollisionObjectWrapper*, int, int) override
+      {
+        hit = true;
+        return btScalar(0);
+      }
+    } cb;
+
+    m_physicsWorld->getBulletWorld()->contactPairTest(
+      &hitboxObj,
+      defender.getGhostObject(),
+      cb
+    );
+
+    LOG_TRACE("[CombatSystem] checkHit (box): {} vs {} -> {}",
+              attacker.getName(), defender.getName(), cb.hit ? "HIT" : "MISS");
+    return cb.hit;
+  }
+
   const AttackData& atk = attacker.getCurrentAttack();
 
   // 1. range check
@@ -105,6 +153,13 @@ void CombatSystem::resolveHit(CombatComponent& attacker,
     .direction = hitDir,
     .damageType = atk.damageType
   };
+
+  EventBus::publish(EntityHitEvent{
+    .attackerName = attacker.getName(),
+    .defenderName = defender.getName(),
+    .damage = atk.damage,
+    .damageType = atk.damageType
+  });
 
   LOG_INFO("[CombatSystem] {} hit {} with {}",
            attacker.getName(), defender.getName(), atk.name);

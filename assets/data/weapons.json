@@ -5,6 +5,7 @@
       "mesh":       "models/weapons/longsword.glb",
       "attachSocket": "weapon_r",
       "hitSocket": "weapon_r",
+      "hitboxHalfExtents": [0.08, 0.45, 0.08],
       "attacks": {
         "r1": {
           "name":         "r1",

@@ -1,5 +1,8 @@
 #pragma once
 #include <forge/AttackData.h>
+
+#include <glm/glm.hpp>
+
 #include <string>
 #include <unordered_map>
 
@@ -18,6 +21,8 @@ struct WeaponDef {
   std::string attachSocket; // bone name in chars skeleton
   std::string hitSocket;
   std::unordered_map<std::string, AttackData> attacks;
+
+  glm::vec3 hitboxHalfExtents = { 0.08f, 0.45f, 0.08f };
 };
 
 }

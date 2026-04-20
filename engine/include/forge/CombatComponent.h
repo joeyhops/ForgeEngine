@@ -7,6 +7,8 @@
 #include <string>
 #include <memory>
 
+class btPairCachingGhostObject;
+
 namespace forge {
 
 class Animator;
@@ -106,6 +108,18 @@ public:
   const glm::vec3& getWorldPos() const { return m_worldPos; }
   const glm::vec3& getWorldForward() const { return m_worldForward; }
 
+  void setGhostObject(btPairCachingGhostObject* ghost) { m_ghostObject = ghost; }
+  btPairCachingGhostObject* getGhostObject() const { return m_ghostObject; }
+
+  // Per-frame hitbox transform - setby game during active attack window
+  void setHitboxTransform(const glm::mat4& worldTransform,
+                          const glm::vec3& halfExtents) {
+    m_hitboxTransform = worldTransform;
+    m_hitboxHalfExtents = halfExtents;
+  }
+  const glm::mat4& getHitboxTransform() const { return m_hitboxTransform; }
+  const glm::vec3& getHitboxHalfExtents() const { return m_hitboxHalfExtents; }
+
   // Callback - set from Lua or C++ to react to being hit
   std::function<void(const HitEvent&)> onHit;
   std::function<void()> onDeath;
@@ -157,6 +171,13 @@ private:
   // World data
   glm::vec3 m_worldPos = { 0,0,0 };
   glm::vec3 m_worldForward = { 0,0,1 };
+
+  // Bone attached hitbox (set by ForgeGame during active attack window)
+  glm::mat4 m_hitboxTransform = glm::mat4(1.0f);
+  glm::vec3 m_hitboxHalfExtents = { 0.08f, 0.45f, 0.08f };
+
+  // non-owning pointer to entities phys ghost obj
+  btPairCachingGhostObject* m_ghostObject = nullptr;
 
   // Stamina Regen constants
   static constexpr float STAMINA_REGEN_RATE = 30.0f; // per second
