@@ -82,6 +82,9 @@ public:
 
   static std::shared_ptr<Texture> loadMapTexture(const std::string& bareName);
   static std::shared_ptr<Texture> loadMapNormalTexture(const std::string& bareName);
+  static std::shared_ptr<Texture> loadMapRoughnessTexture(const std::string& bareName);
+  static std::shared_ptr<Texture> loadMapMetallicTexture(const std::string& bareName);
+  static std::shared_ptr<Texture> loadMapAOTexture(const std::string& bareName);
 
   // Load weapon defs
   // reads weapons.json file and populates internal def table.

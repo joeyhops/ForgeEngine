@@ -91,6 +91,26 @@ void ForgeGame::onInit() {
                                 return inst;
                               });
 
+  m_assembler.registerFactory("trigger_multiple", 
+                              [this](const forge::LevelEntity& ent,
+                                     const forge::EntityGeometry& geom,
+                                     forge::PhysicsWorld& physics,
+                                     forge::LuaState& lua) {
+                                forge::EntityInstance inst;
+                                if (!geom.collisionPositions.empty()) {
+                                  std::string target = ent.getProperty("target");
+                                  inst.trigger = std::make_unique<forge::TriggerVolume>(
+                                    physics, geom.collisionPositions,
+                                    [target]() {
+                                      LOG_INFO("[Trigger] trigger_multiple entered! Firing target: {}", target);
+                                      forge::EventBus::publish(forge::ScriptEvent{ "triggerActivated", target });
+                                    }
+                                  ); 
+                                }
+                                return inst;
+                              });
+
+                             
   // Basic point entities
   auto pointFactory = [](const forge::LevelEntity& ent,
                          const forge::EntityGeometry& geom,
@@ -188,6 +208,9 @@ std::vector<forge::MapRenderObject> ForgeGame::buildRenderObjects(const forge::E
     ro.mesh = std::make_shared<forge::Mesh>(meshVerts, surf.indices);
     ro.albedo = forge::AssetManager::loadMapTexture(surf.textureName);
     ro.normalMap = forge::AssetManager::loadMapNormalTexture(surf.textureName);
+    ro.roughnessMap = forge::AssetManager::loadMapRoughnessTexture(surf.textureName);
+    ro.metallicMap = forge::AssetManager::loadMapMetallicTexture(surf.textureName);
+    ro.aoMap = forge::AssetManager::loadMapAOTexture(surf.textureName);
     objects.push_back(ro);
   }
   return objects;

@@ -1,3 +1,4 @@
+#include <BulletCollision/CollisionDispatch/btCollisionObject.h>
 #include <forge/TriggerVolume.h>
 #include <forge/PhysicsWorld.h>
 #include <forge/Logger.h>
@@ -82,6 +83,7 @@ void TriggerVolume::init(PhysicsWorld& physics, const glm::vec3& center, btColli
   // Group 2 (sensor), mask -1 (collide with everything)
   physics.addGhostObject(m_ghost, 2, -1);
 
+  m_ghost->setActivationState(DISABLE_DEACTIVATION);
   LOG_INFO("[TriggerVolume] Created at ({:.1f},{:.1f},{:.1f})",
            center.x, center.y, center.z);
 }
@@ -96,6 +98,15 @@ void TriggerVolume::update() {
   if (!m_enabled) return;
 
   bool nowOverlapping = (m_ghost->getOverlappingPairCache()->getNumOverlappingPairs() > 0);
+
+  for (int i = 0; i < m_ghost->getNumOverlappingObjects(); i++) {
+    btCollisionObject* obj = m_ghost->getOverlappingObject(i);
+
+    if (obj->getCollisionFlags() & btCollisionObject::CF_CHARACTER_OBJECT) {
+      nowOverlapping = true;
+      break;
+    }
+  }
 
   if (nowOverlapping && !m_isOverlapping) {
     if (m_onEnter) m_onEnter();

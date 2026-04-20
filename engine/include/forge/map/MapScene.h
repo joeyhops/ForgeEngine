@@ -13,6 +13,9 @@ struct MapRenderObject {
   std::shared_ptr<Mesh> mesh;
   std::shared_ptr<Texture> albedo;
   std::shared_ptr<Texture> normalMap; // can be nullptr
+  std::shared_ptr<Texture> roughnessMap; // can be nullptr
+  std::shared_ptr<Texture> metallicMap; // can be nullptr
+  std::shared_ptr<Texture> aoMap; // can be nullptr
 };
 
 class MapScene {

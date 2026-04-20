@@ -48,6 +48,34 @@ std::unordered_map<std::string, std::shared_ptr<Shader>> AssetManager::s_shaders
 std::unordered_map<std::string, std::shared_ptr<Texture>> AssetManager::s_textures;
 std::unordered_map<std::string, WeaponDef> AssetManager::s_weaponDefs;
 
+// Helpers
+
+// Helper: Convert Assimp row-major matrix to GLM column-major
+static glm::mat4 aiMat4ToGlm(const aiMatrix4x4& m) {
+  // aiMatrix4x4 is row-major; glm:mat4 constructor takes columns
+  return glm::mat4(
+    m.a1, m.b1, m.c1, m.d1,
+    m.a2, m.b2, m.c2, m.d2,
+    m.a3, m.b3, m.c3, m.d3,
+    m.a4, m.b4, m.c4, m.d4
+  );
+}
+
+// Helper:
+static std::shared_ptr<Texture> loadMapTextureWithSuffix(const std::string& bareName, const std::string& suffix) {
+  if (bareName == "__TB_empty") return nullptr;
+
+  std::vector<std::string> exts = { ".png", ".jpg", ".tga" };
+  for (const auto& ext : exts) {
+    std::string path = AssetManager::resolvePath("textures/" + bareName + suffix + ext);
+    if (fs::exists(path)) {
+      return AssetManager::loadTextureAbsolute(path);
+    }
+  }
+
+  return nullptr;
+}
+
 // Config
 void AssetManager::setAssetRoot(const std::string& root) {
   s_assetRoot = root;
@@ -137,18 +165,17 @@ std::shared_ptr<Texture> AssetManager::loadTexture(const std::string& path) {
 std::shared_ptr<Texture> AssetManager::loadMapTexture(const std::string& bareName) {
   if (bareName == "__TB_empty") return nullptr; // Special TrenchBroom editor texture
 
-  std::vector<std::string> exts = { ".png", ".jpg", ".tga" };
-  for (const auto& ext : exts) {
-    std::string path = resolvePath("textures/" + bareName + ext);
-    if (fs::exists(path))
-      return loadTextureAbsolute(path);
-  }
+  auto tex = loadMapTextureWithSuffix(bareName, "");
+  if (tex) return tex;
+
+  tex = loadMapTextureWithSuffix(bareName, "_color");
+  if (tex) return tex;
 
   // Fallback: gen a 2x2 magenta/black checkerboard
   std::string fallbackKey = "__fallback_magenta";
   if (s_textures.find(fallbackKey) != s_textures.end()) return s_textures[fallbackKey];
 
-  auto tex = std::make_shared<Texture>();
+  tex = std::make_shared<Texture>();
   tex->width = 2; tex->height = 2; tex->path = fallbackKey;
   unsigned char data[16] = {
     255, 0, 255, 255,  0, 0, 0, 255,
@@ -167,16 +194,21 @@ std::shared_ptr<Texture> AssetManager::loadMapTexture(const std::string& bareNam
 }
 
 std::shared_ptr<Texture> AssetManager::loadMapNormalTexture(const std::string& bareName) {
-  if (bareName == "__TB_empty") return nullptr;
+  auto tex = loadMapTextureWithSuffix(bareName, "_normal");
+  if (tex) return tex;
+  return loadMapTextureWithSuffix(bareName, "_normalgl");
+}
 
-  std::vector<std::string> exts = { ".png", ".jpg", ".tga" };
-  for (const auto& ext : exts) {
-    std::string path = resolvePath("textures/" + bareName + "_normal" + ext);
-    if (fs::exists(path))
-      return loadTextureAbsolute(path);
-  }
+std::shared_ptr<Texture> AssetManager::loadMapRoughnessTexture(const std::string& bareName) {
+  return loadMapTextureWithSuffix(bareName, "_roughness");
+}
 
-  return nullptr;
+std::shared_ptr<Texture> AssetManager::loadMapMetallicTexture(const std::string& bareName) {
+  return loadMapTextureWithSuffix(bareName, "_metallic");
+}
+
+std::shared_ptr<Texture> AssetManager::loadMapAOTexture(const std::string& bareName) {
+  return loadMapTextureWithSuffix(bareName, "_ao");
 }
 
 ModelData AssetManager::loadModel(const std::string& path) {
@@ -315,17 +347,6 @@ ModelData AssetManager::loadModel(const std::string& path) {
 
   s_models[path] = result;
   return result;
-}
-
-// Helper: Convert Assimp row-major matrix to GLM column-major
-static glm::mat4 aiMat4ToGlm(const aiMatrix4x4& m) {
-  // aiMatrix4x4 is row-major; glm:mat4 constructor takes columns
-  return glm::mat4(
-    m.a1, m.b1, m.c1, m.d1,
-    m.a2, m.b2, m.c2, m.d2,
-    m.a3, m.b3, m.c3, m.d3,
-    m.a4, m.b4, m.c4, m.d4
-  );
 }
 
 SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
