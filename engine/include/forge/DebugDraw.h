@@ -39,6 +39,20 @@ public:
   static void line(const glm::vec3& a, const glm::vec3& b,
                    const glm::vec3& color = { 1.0f, 1.0f, 1.0f });
 
+  // Oriented bounding box - uses full transform matrix, not just translation
+  static void boxOBB(const glm::mat4& transform,
+                     const glm::vec3& halfExtents,
+                     const glm::vec3& color = { 1.0f, 1.0f, 1.0f });
+
+  // Helper: draw small sphere
+  static void sphere(const glm::vec3& center,
+                     float radius,
+                     const glm::vec3& color = { 1.0f, 1.0f, 1.0f },
+                     int segments = 12);
+
+  // Draw XYZ axes at a transform (red=x, green=y, blue=z)
+  static void axes(const glm::mat4& transform, float size = 0.1f);
+
   static void flush(const glm::mat4& viewProjection);
 
 private:

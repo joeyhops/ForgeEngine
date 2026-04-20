@@ -895,6 +895,14 @@ void ForgeGame::onRender() {
 
   m_skinnedShader->unbind();
 
+  static constexpr glm::vec3 kHitboxColors[] = {
+    { 1.0f, 1.0f, 0.2f }, // Startup - yellow
+    { 1.0f, 0.5f, 0.0f }, // Active - orange
+    { 0.6f, 0.6f, 0.6f }, // Recovery - gray
+    { 0.0f, 0.0f, 0.0f }, // None - n/a
+  };
+  static constexpr glm::vec3 kHitFlashColor = { 0.0f, 1.0f, 0.2f }; // green
+
   // Physics debug
   if (getDebugUI().isPhysicsDebugEnabled()) {
     // Player capsule - CharacterController gives the true phys center
@@ -906,9 +914,16 @@ void ForgeGame::onRender() {
       { 0.0f, 1.0f, 0.0f } // green
     );
 
-    if (m_player.combat->hasActiveHitbox()) {
-      glm::vec3 hitCenter = glm::vec3(m_player.combat->getHitboxTransform()[3]);
-      forge::DebugDraw::box(hitCenter, m_player.combat->getHitboxHalfExtents(), { 1.0f, 0.5f, 0.0f });
+    auto phase = m_player.combat->getAttackPhase();
+    if (phase != forge::CombatComponent::AttackPhase::None) {
+      glm::vec3 col = m_player.combat->getHitFlash()
+        ? kHitFlashColor
+        : kHitboxColors[static_cast<int>(phase)];
+      forge::DebugDraw::boxOBB(
+        m_player.combat->getHitboxTransform(),
+        m_player.combat->getHitboxHalfExtents(),
+        col
+      );
     }
 
     if (m_enemy.active) {
@@ -920,9 +935,16 @@ void ForgeGame::onRender() {
         { 1.0f, 0.3f, 0.3f }
       );
 
-      if (m_enemy.combat->hasActiveHitbox()) {
-        glm::vec3 hitCenter = glm::vec3(m_enemy.combat->getHitboxTransform()[3]);
-        forge::DebugDraw::box(hitCenter, m_enemy.combat->getHitboxHalfExtents(), { 1.0f, 0.2f, 0.2f });
+      auto phase = m_enemy.combat->getAttackPhase();
+      if (phase != forge::CombatComponent::AttackPhase::None) {
+        glm::vec3 col = m_enemy.combat->getHitFlash()
+          ? kHitFlashColor
+          : kHitboxColors[static_cast<int>(phase)];
+        forge::DebugDraw::boxOBB(
+          m_enemy.combat->getHitboxTransform(),
+          m_enemy.combat->getHitboxHalfExtents(),
+          col
+        );
       }
     }
 

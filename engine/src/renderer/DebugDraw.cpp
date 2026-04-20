@@ -158,6 +158,47 @@ void DebugDraw::line(const glm::vec3& a, const glm::vec3& b, const glm::vec3& co
   pushLine(a, b, color);
 }
 
+void DebugDraw::boxOBB(const glm::mat4& t, const glm::vec3& h, const glm::vec3& col) {
+  glm::vec3 ax = glm::vec3(t[0]) * h.x; 
+  glm::vec3 ay = glm::vec3(t[1]) * h.y; 
+  glm::vec3 az = glm::vec3(t[2]) * h.z; 
+  glm::vec3 c = glm::vec3(t[3]); 
+
+  // Enumerate 8 corners using sign combinations of the three axes
+  glm::vec3 v[8] = {
+    c + ax + ay + az, // 0: +++
+    c + ax + ay - az, // 1: ++-
+    c + ax - ay + az, // 2: +-+
+    c + ax - ay - az, // 3: +--
+    c - ax + ay + az, // 4: -++
+    c - ax + ay - az, // 5: -+-
+    c - ax - ay + az, // 6: --+
+    c - ax - ay - az, // 7: ---
+  };
+
+  pushLine(v[0], v[1], col); pushLine(v[2], v[3], col);
+  pushLine(v[4], v[5], col); pushLine(v[6], v[7], col);
+  // 4 along Y (top/bottom pairs)
+  pushLine(v[0], v[2], col); pushLine(v[1], v[3], col);
+  pushLine(v[4], v[6], col); pushLine(v[5], v[7], col);
+  // 4 along X (left/right pairs)
+  pushLine(v[0], v[4], col); pushLine(v[1], v[5], col);
+  pushLine(v[2], v[6], col); pushLine(v[3], v[7], col);
+}
+
+void DebugDraw::sphere(const glm::vec3& c, float r, const glm::vec3& col, int seg) {
+  pushCircleXZ(c, r, col, seg);
+  pushArcXY(c, r, 0.0f, glm::two_pi<float>(), col, seg);
+  pushArcZY(c, r, 0.0f, glm::two_pi<float>(), col, seg);
+}
+
+void DebugDraw::axes(const glm::mat4& t, float size) {
+  glm::vec3 origin = glm::vec3(t[3]);
+  pushLine(origin, origin + glm::vec3(t[0]) * size, { 1, 0, 0}); // X red
+  pushLine(origin, origin + glm::vec3(t[1]) * size, { 0, 1, 0}); // Y red
+  pushLine(origin, origin + glm::vec3(t[3]) * size, { 0, 0, 1}); // X red
+}
+
 void DebugDraw::flush(const glm::mat4& viewProjection) {
   if (!s_initialized || !s_shader || s_commands.empty()) return;
 

@@ -192,6 +192,10 @@ void CombatComponent::setupFSM() {
 void CombatComponent::update(float dt) {
   if (!isAlive()) return;
   m_fsm.update(dt);
+  if (m_hitFlash) {
+    m_hitFlashTimer -= dt;
+    if (m_hitFlashTimer <= 0.0f) m_hitFlash = false;
+  }
 }
 
 // Attack
@@ -348,6 +352,20 @@ std::string CombatComponent::getStateName() const {
     case CombatState::Dead: return "Dead";
     default: return "Unknown";
   }
+}
+
+CombatComponent::AttackPhase CombatComponent::getAttackPhase() const {
+  if (m_fsm.isIn(CombatState::Attacking)) {
+    if (m_attackTimer < m_currentAttack.startupTime) return AttackPhase::Startup;
+    return AttackPhase::Active; // timer is in active window if hitbox is live
+  }
+  if (m_fsm.isIn(CombatState::Recovering)) return AttackPhase::Recovery;
+  return AttackPhase::None;
+}
+
+void CombatComponent::notifyHitLanded() {
+  m_hitFlash = true;
+  m_hitFlashTimer = HIT_FLASH_DURATION;
 }
 
 }

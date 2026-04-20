@@ -165,5 +165,6 @@ void CombatSystem::resolveHit(CombatComponent& attacker,
            attacker.getName(), defender.getName(), atk.name);
 
   defender.applyHit(hit);
+  attacker.notifyHitLanded();
 }
 }

@@ -35,6 +35,8 @@ struct HitEvent {
 
 class CombatComponent {
 public:
+  enum class AttackPhase { None, Startup, Active, Recovery };
+
   CombatComponent(const std::string& ownerName,
                   float maxHp, float maxStamina, float maxPoise);
 
@@ -137,6 +139,12 @@ public:
   // without touching any kind of timer logic
   void setHitboxActive(bool active) { m_hitboxActive = true; }
 
+  AttackPhase getAttackPhase() const;
+  float getAttackTimer() const { return m_attackTimer; }
+
+  // Hit-flash support: set by the game when hit is confirmed
+  void notifyHitLanded();
+  bool getHitFlash() const { return m_hitFlash; }
 private:
   void setupFSM();
   void tickAttack(float dt);
@@ -193,6 +201,11 @@ private:
 
   static const AttackData k_bareHandR1;
   static const AttackData k_bareHandR2;
+
+  // Hit flash
+  bool m_hitFlash = false;
+  float m_hitFlashTimer = 0.0f;
+  static constexpr float HIT_FLASH_DURATION = 0.12f;
 };
 
 }
