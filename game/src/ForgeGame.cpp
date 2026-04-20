@@ -44,6 +44,68 @@ void ForgeGame::onInit() {
   
   setupPlayer();
   setupEnemy();
+
+  auto staticSolidFactory = [this](const forge::LevelEntity& ent,
+                                   const forge::EntityGeometry& geom,
+                                   forge::PhysicsWorld& physics,
+                                   forge::LuaState& lua) {
+    forge::EntityInstance inst;
+    inst.renderObjects = buildRenderObjects(geom);
+    if (!geom.collisionPositions.empty()) {
+      forge::Transform ident; // Static identity transform
+      inst.rigidBody = std::make_unique<forge::RigidBodyComponent>(
+        physics, ident, geom.collisionPositions, geom.collisionIndices, 0.0f
+      );
+    }
+    return inst;
+  };
+  m_assembler.registerFactory("worldspawn", staticSolidFactory);
+  m_assembler.registerFactory("func_wall", staticSolidFactory);
+  m_assembler.registerFactory("func_group", staticSolidFactory);
+
+  m_assembler.registerFactory("func_illusionary", [this](const forge::LevelEntity& ent,
+                                                         const forge::EntityGeometry& geom,
+                                                         forge::PhysicsWorld& physics,
+                                                         forge::LuaState& lua) {
+    forge::EntityInstance inst;
+    inst.renderObjects = buildRenderObjects(geom);                          
+    LOG_INFO("[Factory] Loaded func_illusionary");
+    return inst;                          
+  });
+
+  m_assembler.registerFactory("trigger_once", [this](const forge::LevelEntity& ent,
+                                                         const forge::EntityGeometry& geom,
+                                                         forge::PhysicsWorld& physics,
+                                                         forge::LuaState& lua) {
+                                forge::EntityInstance inst;
+                                if (!geom.collisionPositions.empty()) {
+                                  std::string target = ent.getProperty("target");
+                                  inst.trigger = std::make_unique<forge::TriggerVolume>(
+                                    physics, geom.collisionPositions,
+                                    [target]() { // onEnter
+                                      LOG_INFO("[Trigger] trigger_once entered! Firing target: {}", target);
+                                      forge::EventBus::publish(forge::ScriptEvent{ "triggerActivated", target });
+                                    }
+                                  );
+                                }
+                                return inst;
+                              });
+
+  // Basic point entities
+  auto pointFactory = [](const forge::LevelEntity& ent,
+                         const forge::EntityGeometry& geom,
+                         forge::PhysicsWorld& physics,
+                         forge::LuaState& lua) {
+    return forge::EntityInstance();
+  };
+  m_assembler.registerFactory("info_player_start", pointFactory);
+  m_assembler.registerFactory("enemy_spawn", pointFactory);
+  m_assembler.registerFactory("bonfire", pointFactory);
+  m_assembler.registerFactory("weapon_pickup", pointFactory);
+  m_assembler.registerFactory("fog_gate", pointFactory);
+  m_assembler.registerFactory("flag_trigger", pointFactory);
+  m_assembler.registerFactory("patrol_waypoint", pointFactory);
+
   setupLevel("bonfire");
   setupScripts();
 
@@ -106,6 +168,29 @@ void ForgeGame::setupRenderer() {
   // Hide and capture cursor so all mouse mvmt drives the camera
   // ImGui panels remain accessible via F-key toggles and keyboard nav
   glfwSetInputMode(getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+}
+
+std::vector<forge::MapRenderObject> ForgeGame::buildRenderObjects(const forge::EntityGeometry& geom) {
+  std::vector<forge::MapRenderObject> objects;
+  for (const auto& surf : geom.surfaces) {
+    std::vector<forge::Vertex> meshVerts;
+    meshVerts.reserve(surf.vertices.size());
+    for (const auto& mv : surf.vertices) {
+      forge::Vertex v;
+      v.position[0] = mv.position.x; v.position[1] = mv.position.y; v.position[2] = mv.position.z;
+      v.normal[0] = mv.normal.x; v.normal[1] = mv.normal.y; v.normal[2] = mv.normal.z;
+      v.texCoord[0] = mv.texCoord.x; v.texCoord[1] = mv.texCoord.y;
+      v.tangent[0] = mv.tangent.x; v.tangent[1] = mv.tangent.y; v.tangent[2] = mv.tangent.z;
+        v.tangent[3] = mv.tangent.w;
+      meshVerts.push_back(v);
+    }
+    forge::MapRenderObject ro;
+    ro.mesh = std::make_shared<forge::Mesh>(meshVerts, surf.indices);
+    ro.albedo = forge::AssetManager::loadMapTexture(surf.textureName);
+    ro.normalMap = forge::AssetManager::loadMapNormalTexture(surf.textureName);
+    objects.push_back(ro);
+  }
+  return objects;
 }
 
 static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
@@ -406,11 +491,6 @@ void ForgeGame::setupLevel(const std::string& levelName) {
   const std::string root = forge::AssetManager::getAssetRoot();
   const std::string mapPath = root + "levels/" + levelName + ".map";
 
-  // Identity transform map (scale handled by parser)
-  m_levelTransform = std::make_unique<forge::Transform>();
-  m_levelTransform->setPosition({ 0.0f, 0.0f, 0.0f });
-  m_levelTransform->setScale({ 1.0f, 1.0f, 1.0f });
-
   m_levelData = forge::LevelLoader::load(mapPath);
   m_enemy.active = false;
 
@@ -419,189 +499,146 @@ void ForgeGame::setupLevel(const std::string& levelName) {
   }
 
   m_mapScene = std::make_unique<forge::MapScene>();
+  m_mapEntities.clear(); // Clear entities from previous level
+
   forge::GeometryGenerator gen;
   forge::GeometrySettings settings;
 
-  // compile worldspawn
-  if (const forge::LevelEntity* ws = m_levelData.findFirst("worldspawn")) {
-    forge::EntityGeometry geom = gen.processEntity(*ws, settings);
-
-    // build render objects
-    for (const auto& surf : geom.surfaces) {
-      std::vector<forge::Vertex> meshVerts;
-      meshVerts.reserve(surf.vertices.size());
-      for (const auto& mv : surf.vertices) {
-        forge::Vertex v;
-        v.position[0] = mv.position.x; v.position[1] = mv.position.y; v.position[2] = mv.position.z;
-        v.normal[0] = mv.normal.x; v.normal[1] = mv.normal.y; v.normal[2] = mv.normal.z;
-        v.texCoord[0] = mv.texCoord.x; v.texCoord[1] = mv.texCoord.y;
-        v.tangent[0] = mv.tangent.x; v.tangent[1] = mv.tangent.y; v.tangent[2] = mv.tangent.z;
-          v.tangent[3] = mv.tangent.w;
-        meshVerts.push_back(v);
+  // The master assembly loop
+  for (const auto& ent : m_levelData.entities) {
+    if (!m_assembler.hasFactory(ent.classname)) {
+      if (ent.classname != "worldspawn" && ent.classname.find("func_") != 0) {
+        LOG_WARN("[Game] No factory registered for entity: {}", ent.classname);
       }
+      continue;
+    }
 
-      forge::MapRenderObject ro;
-      ro.mesh = std::make_shared<forge::Mesh>(meshVerts, surf.indices);
-      ro.albedo = forge::AssetManager::loadMapTexture(surf.textureName);
-      ro.normalMap = forge::AssetManager::loadMapNormalTexture(surf.textureName);
+    // 1. Generate geometry
+    forge::EntityGeometry geom;
+    if (!ent.brushes.empty()) {
+      geom = gen.processEntity(ent, settings);
+    }
+
+    // 2. Assemble the Entity (Render objects + Phys + Triggers)
+    forge::EntityInstance inst = m_assembler.assemble(ent,
+                                                      geom,
+                                                      getPhysics(),
+                                                      getLua());
+    // 3. Push render objects to the MapScene so they're drawn
+    for (auto& ro : inst.renderObjects)
       m_mapScene->renderObjects.push_back(ro);
-    }
 
-    // Save collision data!
-    if (!geom.collisionPositions.empty()) {
-      m_levelPhysicsBody = std::make_unique<forge::RigidBodyComponent>(
-        getPhysics(),
-        *m_levelTransform,
-        geom.collisionPositions,
-        geom.collisionIndices,
-        0.0f
+    // 4. Game specific Routing (point entities)
+    if (inst.classname == "info_player_start") {
+      glm::vec3 origin = inst.origin;
+      constexpr float k_playerCapsuleHalfHeight = 0.9f;
+      origin.y += k_playerCapsuleHalfHeight;
+      m_player.controller->warp(origin);
+      if (ent.angle != 0.0f) {
+        float rad = glm::radians(ent.angle);
+        m_player.forward = glm::normalize(glm::vec3(sinf(rad), 0.0f, cosf(rad)));
+        m_player.transform->setEulerAngles({ 90.0f, ent.angle, 0.0f });
+      }
+      LOG_INFO("[Game] Player spawned at {:.2f},{:.2f},{:.2f}", origin.x, origin.y, origin.z);
+      if (m_player.equipment) {
+        m_player.equipment->equip(forge::EquipmentComponent::RIGHT_HAND,
+                                  "longsword");
+      }
+    } else if (inst.classname == "enemy_spawn") {
+      m_enemy.active = true;
+      glm::vec3 spawnPos = inst.origin;
+
+      constexpr float k_capsuleHalfHeight = 0.75f;
+      constexpr float k_rayStart = 2.0f;
+      constexpr float k_rayLength = 10.0f;
+
+      glm::vec3 rayFrom = spawnPos + glm::vec3(0.0f, k_rayStart, 0.0f);
+      glm::vec3 rayTo = spawnPos + glm::vec3(0.0f, -k_rayLength, 0.0f);
+
+      forge::RaycastHit hit = getPhysics().raycast(rayFrom, rayTo);
+      if (hit.hit) {
+        spawnPos.y = hit.point.y + k_capsuleHalfHeight;
+      } else {
+        spawnPos.y -= k_capsuleHalfHeight;
+      }
+      m_enemy.controller->warp(spawnPos);
+
+      // Patrol waypoints
+      std::string group = ent.getProperty("patrol_group", "");
+      if (!group.empty()) {
+        m_enemy.ai->clearWaypoints();
+        for (const auto* wp : m_levelData.getByClass("patrol_waypoint")) {
+          if (wp->props.count("patrol_group") && wp->props.at("patrol_group") == group)
+            m_enemy.ai->addWaypoint(wp->origin);
+        }
+      }
+
+      // Equipment/Weapons
+      std::string wepId = ent.getProperty("weaponId", "");
+      bool dropOwn = (ent.getProperty("dropWeapon", "1") == "1");
+      std::string otherWepId = !dropOwn ? ent.getProperty("dropId", "") : "";
+
+      if (!dropOwn && !otherWepId.empty()) {
+        m_enemy.ai->setWeaponConfig(wepId, false, otherWepId);
+      } else {
+        m_enemy.ai->setWeaponConfig(wepId, dropOwn);
+      }
+
+      if (!wepId.empty())
+        m_enemy.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, wepId);
+
+      auto existingOnDeath = std::move(m_enemy.combat->onDeath);
+      m_enemy.combat->onDeath = [this, existingOnDeath]() {
+        if (existingOnDeath) existingOnDeath();
+        if (m_enemy.ai->shouldDropWeapon()) {
+          glm::vec3 dropPos = m_enemy.transform->getPosition();
+          if (m_enemy.ai->dropsOwnWeapon()) {
+            spawnWeaponPickup(dropPos, m_enemy.ai->getWeaponId(), false);
+          } else if (!m_enemy.ai->getDropId().empty()) {
+            spawnWeaponPickup(dropPos, m_enemy.ai->getDropId(), false);
+          }
+        }
+      };
+      LOG_INFO("[Game] Enemy spawned at {:.2f},{:.2f},{:.2f}", spawnPos.x, spawnPos.y, spawnPos.z);
+    } else if (inst.classname == "bonfire") {
+      BonfireVolume bf;
+      bf.bonfireId = ent.getInt("bonfire_id", 0);
+      bf.targetFlag = ent.getInt("targetFlag", 0);
+      float radius = ent.getFloat("radius", 1.5f);
+
+      bf.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), inst.origin, radius);
+      m_bonfires.push_back(std::move(bf));
+    } else if (inst.classname == "fog_gate") {
+      glm::vec3 pos = inst.origin;
+      int requiredFlag = ent.getInt("requiredFlag", 0);
+      float width = ent.getFloat("width", 2.0f);
+      float height = ent.getFloat("height", 3.0f);
+      glm::vec3 halfExtents(width * 0.5f, height * 0.5f, 0.3f);
+
+      auto vol = std::make_unique<forge::TriggerVolume>(
+          getPhysics(), pos, halfExtents,
+          [this, requiredFlag, pos]() {
+              if (requiredFlag == 0 || getFlags().get(requiredFlag)) return;
+
+              glm::vec3 playerPos = m_player.transform->getPosition();
+              glm::vec3 pushBack = glm::normalize(playerPos - pos) * 2.0f;
+              m_player.controller->warp(playerPos + pushBack);
+
+              forge::EventBus::publish(forge::ScriptEvent{ "fogGateLocked", "" });
+          }
       );
-      LOG_INFO("[Game] Map physics built natively! {} collision triangles",
-               geom.collisionIndices.size() / 3);
-    }
-  }
-
-  // Player start
-  if (const auto& start = m_levelData.findFirst("info_player_start")) {
-    glm::vec3 origin = start->origin;
-    constexpr float k_playerCapsuleHalfHeight = 0.9f;
-    origin.y += k_playerCapsuleHalfHeight;
-    m_player.controller->warp(origin);
-    if (start->angle != 0.0f) {
-      float rad = glm::radians(start->angle);
-      m_player.forward = glm::normalize(glm::vec3(sinf(rad), 0.0f, cosf(rad)));
-      m_player.transform->setEulerAngles({ 90.0f, start->angle, 0.0f });
-    }
-    LOG_INFO("[Game] Player spawned at {:.2f},{:.2f},{:.2f}", origin.x, origin.y, origin.z);
-    if (m_player.equipment) {
-      m_player.equipment->equip(forge::EquipmentComponent::RIGHT_HAND,
-                                "longsword");
-    }
-  }
-
-  // Enemy Spawns
-  const auto enemySpawns = m_levelData.getByClass("enemy_spawn");
-  if (!enemySpawns.empty()) {
-    m_enemy.active = true;
-    const forge::LevelEntity* spawnEnt = enemySpawns[0];
-    glm::vec3 spawnPos = spawnEnt->origin;
-
-    constexpr float k_capsuleHalfHeight = 0.75f;
-    constexpr float k_rayStart = 2.0f;
-    constexpr float k_rayLength = 10.0f;
-
-    glm::vec3 rayFrom = spawnPos + glm::vec3(0.0f, k_rayStart, 0.0f);
-    glm::vec3 rayTo = spawnPos + glm::vec3(0.0f, -k_rayLength, 0.0f);
-
-    forge::RaycastHit hit = getPhysics().raycast(rayFrom, rayTo);
-    if (hit.hit) {
-      spawnPos.y = hit.point.y + k_capsuleHalfHeight;
-    } else {
-      spawnPos.y -= k_capsuleHalfHeight;
-    }
-    m_enemy.controller->warp(spawnPos);
-
-    // Patrol waypoints
-    std::string group = spawnEnt->props.count("patrol_group")
-      ? spawnEnt->props.at("patrol_group")
-      : "";
-    if (!group.empty()) {
-      m_enemy.ai->clearWaypoints();
-      for (const auto* wp : m_levelData.getByClass("patrol_waypoint")) {
-        if (wp->props.count("patrol_group") && wp->props.at("patrol_group") == group)
-          m_enemy.ai->addWaypoint(wp->origin);
-      }
+      m_triggerVolumes.push_back(std::move(vol));
+    } else if (inst.classname == "weapon_pickup") {
+      std::string wepId = ent.getProperty("weaponId", "");
+      bool respawns = ent.getBool("respawns", false);
+      if (!wepId.empty())
+        spawnWeaponPickup(inst.origin, wepId, respawns);
     }
 
-    // Equipment/Weapons
-    std::string wepId = spawnEnt->getProperty("weaponId", "");
-    bool dropOwn = (spawnEnt->getProperty("dropWeapon", "1") == "1");
-    std::string otherWepId = !dropOwn ? spawnEnt->getProperty("dropId", "") : "";
-
-    if (!dropOwn && !otherWepId.empty()) {
-      m_enemy.ai->setWeaponConfig(wepId, false, otherWepId);
-    } else {
-      m_enemy.ai->setWeaponConfig(wepId, dropOwn);
-    }
-
-    if (!wepId.empty())
-      m_enemy.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, wepId);
-
-    auto existingOnDeath = std::move(m_enemy.combat->onDeath);
-    m_enemy.combat->onDeath = [this, existingOnDeath]() {
-      if (existingOnDeath) existingOnDeath();
-      if (m_enemy.ai->shouldDropWeapon()) {
-        glm::vec3 dropPos = m_enemy.transform->getPosition();
-        if (m_enemy.ai->dropsOwnWeapon()) {
-          spawnWeaponPickup(dropPos, m_enemy.ai->getWeaponId(), false);
-        } else if (!m_enemy.ai->getDropId().empty()) {
-          spawnWeaponPickup(dropPos, m_enemy.ai->getDropId(), false);
-        }
-      }
-    };
+    m_mapEntities.push_back(std::move(inst));
   }
 
-  // Flag Triggers
-  for (const auto* t : m_levelData.getByClass("flag_trigger")) {
-    int flagId = t->getInt("flag_id", -1);
-    bool triggerOnce = t->getBool("trigger_once", true);
-    float radius = t->getFloat("radius", 2.0f);
-  }
-
-  // Bonfires
-  for (const auto* ent : m_levelData.getByClass("bonfire")) {
-    glm::vec3 pos = ent->origin;
-    int bonfireId = std::stoi(ent->getProperty("bonfire_id", "0"));
-    int targetFlag = std::stoi(ent->getProperty("targetFlag", "0"));
-    float radius = std::stof(ent->getProperty("radius", "1.5"));
-
-    BonfireVolume bf;
-    bf.bonfireId = bonfireId;
-    bf.targetFlag = targetFlag;
-    bf.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), pos, radius);
-    m_bonfires.push_back(std::move(bf));
-  }
-
-  // Fog gates
-  for (const auto* ent : m_levelData.getByClass("fog_gate")) {
-    glm::vec3 pos = ent->origin;
-    int requiredFlag = std::stoi(ent->getProperty("requiredFlag", "0"));
-    float width = std::stof(ent->getProperty("width", "2.0"));
-    float height = std::stof(ent->getProperty("height", "3.0"));
-
-    glm::vec3 halfExtents(width * 0.5f, height * 0.5f, 0.3f);
-
-    auto vol = std::make_unique<forge::TriggerVolume>(
-      getPhysics(), pos, halfExtents,
-      [this, requiredFlag, pos]() {
-        if (requiredFlag == 0 || getFlags().get(requiredFlag)) {
-          return;
-        }
-
-        glm::vec3 playerPos = m_player.transform->getPosition();
-        glm::vec3 pushBack = glm::normalize(playerPos - pos) * 2.0f;
-        m_player.controller->warp(playerPos + pushBack);
-
-        forge::EventBus::publish(forge::ScriptEvent{ "fogGateLocked", "" });
-        LOG_INFO("[Level] Fog gate blocked (requiredFlag {} not set)", requiredFlag);
-      }
-    );
-
-    m_triggerVolumes.push_back(std::move(vol));
-  }
-
-  // Weapon pickups
-  for (const auto* ent : m_levelData.getByClass("weapon_pickup")) {
-    glm::vec3 pos = ent->origin;
-    std::string wepId = ent->getProperty("weaponId", "");
-    bool respawns = (ent->getProperty("respawns", "0") == "1");
-
-    if (!wepId.empty()) {
-      spawnWeaponPickup(pos, wepId, respawns);
-    }
-  }
-
-  LOG_INFO("[Game] Map entities loaded: {} total", m_levelData.entities.size());
+  LOG_INFO("[Game] Map assembly complete: {} entities active", m_mapEntities.size());
 }
 
 void ForgeGame::setupScripts() {
@@ -645,6 +682,12 @@ void ForgeGame::onUpdate(float dt) {
 
   for (auto& bf : m_bonfires) {
     bf.trigger->update();
+  }
+
+  // Update factory assembled triggers
+  for (auto& inst : m_mapEntities) {
+    if (inst.trigger)
+      inst.trigger->update();
   }
 
   // Bonfire interaction

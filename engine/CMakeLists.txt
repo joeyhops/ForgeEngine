@@ -5,6 +5,7 @@ add_library(forge_engine STATIC
   src/core/LevelLoader.cpp
   src/map/GeometryGenerator.cpp
   src/map/MapScene.cpp
+  src/map/EntityAssembler.cpp
   src/renderer/Shader.cpp
   src/renderer/DebugDraw.cpp
   src/renderer/Mesh.cpp

@@ -5,6 +5,7 @@
 #include <BulletCollision/CollisionDispatch/btGhostObject.h>
 #include <BulletCollision/CollisionShapes/btSphereShape.h>
 #include <BulletCollision/CollisionShapes/btBoxShape.h>
+#include <BulletCollision/CollisionShapes/btConvexHullShape.h>
 #include <BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h>
 
 #include <glm/gtc/type_ptr.hpp>
@@ -44,6 +45,26 @@ TriggerVolume::TriggerVolume(PhysicsWorld& physics,
 {
   init(physics, center,
        new btBoxShape(btVector3(halfExtents.x, halfExtents.y, halfExtents.z)));
+}
+
+TriggerVolume::TriggerVolume(PhysicsWorld& physics,
+                             const std::vector<glm::vec3>& hullVertices,
+                             std::function<void()> onEnter,
+                             std::function<void()> onExit)
+    : m_physics(physics)
+    , m_onEnter(std::move(onEnter))
+    , m_onExit(std::move(onExit))
+{
+  auto* hull = new btConvexHullShape();
+
+  for (const auto& v : hullVertices) {
+    hull->addPoint(btVector3(v.x, v.y, v.z), false);
+  }
+
+  hull->recalcLocalAabb();
+  hull->optimizeConvexHull();
+
+  init(physics, glm::vec3(0.0f, 0.0f, 0.0f), hull);
 }
 
 // Shared init

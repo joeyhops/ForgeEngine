@@ -16,6 +16,7 @@
 #include <forge/WeaponDef.h>
 #include <forge/EquipmentComponent.h>
 #include <forge/map/MapScene.h>
+#include <forge/map/EntityAssembler.h>
 
 #include <memory>
 #include <unordered_map>
@@ -47,6 +48,8 @@ private:
   void drawSkinnedModel(const forge::SkinnedModelData& model,
                         const forge::Transform& transform,
                         const forge::Animator& animator);
+
+  std::vector<forge::MapRenderObject> buildRenderObjects(const forge::EntityGeometry& geom);
 
   // Rendering
   std::shared_ptr<forge::Shader> m_shader; // basic.vert/frag
@@ -87,6 +90,9 @@ private:
   std::unique_ptr<forge::Transform> m_levelTransform; 
   std::unique_ptr<forge::RigidBodyComponent> m_levelPhysicsBody; // Collision
   forge::LevelData m_levelData; // parsed entities
+
+  forge::EntityAssembler m_assembler;
+  std::vector<forge::EntityInstance> m_mapEntities;
 
   std::vector<std::unique_ptr<forge::TriggerVolume>> m_triggerVolumes;
 
