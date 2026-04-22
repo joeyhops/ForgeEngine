@@ -159,9 +159,9 @@ void DebugDraw::line(const glm::vec3& a, const glm::vec3& b, const glm::vec3& co
 }
 
 void DebugDraw::boxOBB(const glm::mat4& t, const glm::vec3& h, const glm::vec3& col) {
-  glm::vec3 ax = glm::vec3(t[0]) * h.x; 
-  glm::vec3 ay = glm::vec3(t[1]) * h.y; 
-  glm::vec3 az = glm::vec3(t[2]) * h.z; 
+  glm::vec3 ax = glm::normalize(glm::vec3(t[0])) * h.x; 
+  glm::vec3 ay = glm::normalize(glm::vec3(t[1])) * h.y; 
+  glm::vec3 az = glm::normalize(glm::vec3(t[2])) * h.z; 
   glm::vec3 c = glm::vec3(t[3]); 
 
   // Enumerate 8 corners using sign combinations of the three axes
@@ -194,9 +194,9 @@ void DebugDraw::sphere(const glm::vec3& c, float r, const glm::vec3& col, int se
 
 void DebugDraw::axes(const glm::mat4& t, float size) {
   glm::vec3 origin = glm::vec3(t[3]);
-  pushLine(origin, origin + glm::vec3(t[0]) * size, { 1, 0, 0}); // X red
-  pushLine(origin, origin + glm::vec3(t[1]) * size, { 0, 1, 0}); // Y red
-  pushLine(origin, origin + glm::vec3(t[3]) * size, { 0, 0, 1}); // X red
+  pushLine(origin, origin + glm::normalize(glm::vec3(t[0])) * size, { 1, 0, 0}); // X red
+  pushLine(origin, origin + glm::normalize(glm::vec3(t[1])) * size, { 0, 1, 0}); // Y red
+  pushLine(origin, origin + glm::normalize(glm::vec3(t[2])) * size, { 0, 0, 1}); // X red
 }
 
 void DebugDraw::flush(const glm::mat4& viewProjection) {

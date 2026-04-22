@@ -145,7 +145,7 @@ void ForgeGame::onInit() {
   m_assembler.registerFactory("fog_gate", pointFactory);
   m_assembler.registerFactory("patrol_waypoint", pointFactory);
 
-  setupLevel("bonfire");
+  setupLevel(m_initialMap);
   setupScripts();
 
 #ifdef __APPLE__
@@ -773,12 +773,43 @@ void ForgeGame::onUpdate(float dt) {
       m_player.transform->getModelMatrix(),
       m_player.animator->getGlobalTransforms(),
       m_player.skinnedModel);
+    
+    auto playerPhase = m_player.combat->getAttackPhase();
+    auto enemyPhase  = m_enemy.active ? m_enemy.combat->getAttackPhase()
+                                      : forge::CombatComponent::AttackPhase::None;
 
-    if (m_player.combat->hasActiveHitbox()) {
+    // Clear trails on new attack
+    if (m_prevPlayerPhase == forge::CombatComponent::AttackPhase::None &&
+        playerPhase       == forge::CombatComponent::AttackPhase::Startup)
+        m_playerTrail.clear();
+
+    if (m_prevEnemyPhase == forge::CombatComponent::AttackPhase::None &&
+        enemyPhase       == forge::CombatComponent::AttackPhase::Startup)
+        m_enemyTrail.clear();
+
+    // Push to trail during active window
+    if (playerPhase == forge::CombatComponent::AttackPhase::Active)
+        m_playerTrail.push(m_player.combat->getHitboxTransform(),
+                           m_player.combat->getHitboxHalfExtents());
+    if (enemyPhase == forge::CombatComponent::AttackPhase::Active)
+        m_enemyTrail.push(m_enemy.combat->getHitboxTransform(),
+                          m_enemy.combat->getHitboxHalfExtents());
+
+    // Store for next frame
+    m_prevPlayerPhase = playerPhase;
+    m_prevEnemyPhase  = enemyPhase;
+    
+    if (m_player.combat->getAttackPhase() != forge::CombatComponent::AttackPhase::None) {
       const forge::WeaponDef* wpnDef = m_player.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND);
       glm::mat4 wpnWorld = m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
       glm::vec3 halfExt = wpnDef ? wpnDef->hitboxHalfExtents : glm::vec3(0.08f, 0.45f, 0.08f);
+      if (wpnDef && wpnDef->hitboxOffset != glm::vec3(0.0f))
+        wpnWorld = glm::translate(wpnWorld, wpnDef->hitboxOffset);
       m_player.combat->setHitboxTransform(wpnWorld, halfExt);
+      m_playerTrail.push(
+        m_player.combat->getHitboxTransform(),
+        m_player.combat->getHitboxHalfExtents()
+      );
     }
   }
   m_player.controller->syncTransform();
@@ -797,10 +828,12 @@ void ForgeGame::onUpdate(float dt) {
         m_enemy.skinnedModel);
 
 
-      if (m_enemy.combat->hasActiveHitbox()) {
+      if (m_enemy.combat->getAttackPhase() != forge::CombatComponent::AttackPhase::None) {
         const forge::WeaponDef* wpnDef = m_enemy.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND);
         glm::mat4 wpnWorld = m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
         glm::vec3 halfExt = wpnDef ? wpnDef->hitboxHalfExtents : glm::vec3(0.08f, 0.45f, 0.08f);
+        if (wpnDef && wpnDef->hitboxOffset != glm::vec3(0.0f))
+          wpnWorld = glm::translate(wpnWorld, wpnDef->hitboxOffset);
         m_enemy.combat->setHitboxTransform(wpnWorld, halfExt);
       }
     }
@@ -914,6 +947,11 @@ void ForgeGame::onRender() {
       { 0.0f, 1.0f, 0.0f } // green
     );
 
+    glm::mat4 socketT = m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
+    glm::vec3 socketPos = glm::vec3(socketT[3]);
+    forge::DebugDraw::sphere(socketPos, 0.04f, { 0.0f, 0.8f, 1.0f });
+    forge::DebugDraw::axes(socketT, 0.12f);
+
     auto phase = m_player.combat->getAttackPhase();
     if (phase != forge::CombatComponent::AttackPhase::None) {
       glm::vec3 col = m_player.combat->getHitFlash()
@@ -924,7 +962,20 @@ void ForgeGame::onRender() {
         m_player.combat->getHitboxHalfExtents(),
         col
       );
+      #ifdef SHOW_HITBOX_TRAILS
+      for (int i = 0; i < m_playerTrail.count; i++) {
+        int idx = (m_playerTrail.head - 1 - i + HitboxTrail::N) % HitboxTrail::N;
+        float brightness = 1.0f - (float)i / (float)m_playerTrail.N;
+        glm::vec3 trailCol = glm::vec3(1.0f, 0.5f, 0.0f) * brightness;
+        forge::DebugDraw::boxOBB(
+          m_playerTrail.transforms[idx],
+          m_playerTrail.halfExtents[idx],
+          trailCol
+        );
+      }
+      #endif
     }
+
 
     if (m_enemy.active) {
       constexpr float kR = 0.3f;
@@ -934,6 +985,7 @@ void ForgeGame::onRender() {
         kR, kH,
         { 1.0f, 0.3f, 0.3f }
       );
+
 
       auto phase = m_enemy.combat->getAttackPhase();
       if (phase != forge::CombatComponent::AttackPhase::None) {
@@ -945,6 +997,18 @@ void ForgeGame::onRender() {
           m_enemy.combat->getHitboxHalfExtents(),
           col
         );
+        #ifdef SHOW_HITBOX_TRAILS
+        for (int i = 0; i < m_enemyTrail.count; i++) {
+          int idx = (m_enemyTrail.head - 1 - i + HitboxTrail::N) % HitboxTrail::N;
+          float brightness = 1.0f - (float)i / (float)m_enemyTrail.N;
+          glm::vec3 trailCol = glm::vec3(1.0f, 0.5f, 0.0f) * brightness;
+          forge::DebugDraw::boxOBB(
+            m_enemyTrail.transforms[idx],
+            m_enemyTrail.halfExtents[idx],
+            trailCol
+          );
+        }
+        #endif
       }
     }
 

@@ -23,6 +23,7 @@ struct WeaponDef {
   std::unordered_map<std::string, AttackData> attacks;
 
   glm::vec3 hitboxHalfExtents = { 0.08f, 0.45f, 0.08f };
+  glm::vec3 hitboxOffset = { 0.0f, 0.0f, 0.0f };
 };
 
 }

@@ -713,6 +713,15 @@ void AssetManager::loadWeponDefs(const std::string& relativePath) {
     else
       def.hitSocket = def.attachSocket; // default: hit origin = attack
 
+    if (w.contains("hitboxHalfExtents")) {
+      auto& h = w.at("hitboxHalfExtents");
+      def.hitboxHalfExtents = { h[0], h[1], h[2] };
+    }
+    if (w.contains("hitboxOffset")) {
+      auto& o = w.at("hitboxOffset");
+      def.hitboxOffset = { o[0], o[1], o[2] };
+    }
+
     for (const auto& [atkName, atkData] : w.at("attacks").items()) {
       AttackData atk;
       atk.name = atkName;

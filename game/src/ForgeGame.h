@@ -25,6 +25,7 @@
 class ForgeGame : public forge::Application {
 public:
   ForgeGame();
+  void setInitialMap(const std::string& mapName) { m_initialMap = mapName; }
 
 protected:
   void onInit() override;
@@ -33,6 +34,8 @@ protected:
   void onShutdown() override;
 
 private:
+  std::string m_initialMap = "bonfire";
+
   void setupRenderer();
   void setupPlayer();
   void setupEnemy();
@@ -138,4 +141,28 @@ private:
   struct InputState { bool j, k, l; } m_prevInput = {};
 
   static constexpr const char* k_saveFilePath = "saves/flags.json";
+  
+  // Debugging
+
+  struct HitboxTrail {
+    static constexpr int N = 10;
+    glm::mat4 transforms[N];
+    glm::vec3 halfExtents[N];
+    int head = 0;
+    int count = 0;
+
+    void push(const glm::mat4& t, const glm::vec3& h) {
+      transforms[head] = t;
+      halfExtents[head] = h;
+      head = (head + 1) % N;
+      if (count < N) count++;
+    }
+
+    void clear() { head = 0; count = 0; }
+  };
+  HitboxTrail m_playerTrail;
+  HitboxTrail m_enemyTrail;
+
+  forge::CombatComponent::AttackPhase m_prevPlayerPhase = forge::CombatComponent::AttackPhase::None;
+  forge::CombatComponent::AttackPhase m_prevEnemyPhase = forge::CombatComponent::AttackPhase::None;
 };

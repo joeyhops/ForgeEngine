@@ -35,7 +35,7 @@ struct HitEvent {
 
 class CombatComponent {
 public:
-  enum class AttackPhase { None, Startup, Active, Recovery };
+  enum class AttackPhase { Startup, Active, Recovery, None };
 
   CombatComponent(const std::string& ownerName,
                   float maxHp, float maxStamina, float maxPoise);
@@ -137,7 +137,7 @@ public:
 
   // Called from TAE eventbus subscription - sets m_hitboxActive
   // without touching any kind of timer logic
-  void setHitboxActive(bool active) { m_hitboxActive = true; }
+  void setHitboxActive(bool active) { m_hitboxActive = active; }
 
   AttackPhase getAttackPhase() const;
   float getAttackTimer() const { return m_attackTimer; }

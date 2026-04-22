@@ -3,7 +3,7 @@
     "weapon_r": {
       "bone": "mixamorig:RightHand",
       "offset": {
-        "pos":   [0.1, 0.1, 0.0],
+        "pos":   [0.0, 0.1, 0.0],
         "rot":   [0.0, 0.0,-90.0],
         "scale": [0.5, 0.5, 0.5]
       }
