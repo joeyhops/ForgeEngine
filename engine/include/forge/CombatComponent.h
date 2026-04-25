@@ -33,6 +33,8 @@ struct HitEvent {
   std::string damageType;
 };
 
+enum class ReceptiveHitWindowType { None, Parry, Deflect };
+
 class CombatComponent {
 public:
   enum class AttackPhase { Startup, Active, Recovery, None };
@@ -145,6 +147,18 @@ public:
   // Hit-flash support: set by the game when hit is confirmed
   void notifyHitLanded();
   bool getHitFlash() const { return m_hitFlash; }
+
+  // Combo window -- called by lua when attack input arrives during a window
+  void bufferCombo(const std::string& actionKey);
+  bool isInComboWindow() const { return m_inComboWindow; }
+  const std::string& getComboWindowAction() const { return m_comboWindowAction; }
+
+  // Receptive window -- read by combat system
+  bool isInReceptiveWindow() const { return m_inReceptiveWindow; }
+  ReceptiveHitWindowType getReceptiveWindowType() const { return m_receptiveWindowType; }
+
+  // Perilous Mark
+  bool isCurrentHitPerilous() const { return m_activeHitPerilous; }
 private:
   void setupFSM();
   void tickAttack(float dt);
@@ -152,6 +166,7 @@ private:
   void tickPoise(float dt);
   void subscribeToTAEEvents();
   void writeTriggerForAttack(const std::string& attackName);
+  void startCombo(const std::string& actionKey);
 
   std::string m_ownerName;
   Animator* m_animator = nullptr;
@@ -206,6 +221,18 @@ private:
   bool m_hitFlash = false;
   float m_hitFlashTimer = 0.0f;
   static constexpr float HIT_FLASH_DURATION = 0.12f;
+
+  // Combo input buffer
+  bool m_inComboWindow = false;
+  std::string m_comboWindowAction; // action key accepted by window
+  std::string m_comboBuffer; // set when input arrives during window
+
+  // Receptive window
+  bool m_inReceptiveWindow = false;
+  ReceptiveHitWindowType m_receptiveWindowType = ReceptiveHitWindowType::None;
+
+  // Perilous mark
+  bool m_activeHitPerilous = false;
 };
 
 }

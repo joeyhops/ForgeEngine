@@ -2,6 +2,7 @@
 #include <forge/AttackData.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <string>
 #include <unordered_map>
@@ -18,12 +19,13 @@ namespace forge {
 struct WeaponDef {
   std::string id;
   std::string meshPath;
-  std::string attachSocket; // bone name in chars skeleton
-  std::string hitSocket;
+  std::string boneAttach;
   std::unordered_map<std::string, AttackData> attacks;
 
-  glm::vec3 hitboxHalfExtents = { 0.08f, 0.45f, 0.08f };
-  glm::vec3 hitboxOffset = { 0.0f, 0.0f, 0.0f };
+  glm::mat4 meshOffset = glm::mat4(1.0f);
+
+  std::string movesetId;
+  std::string weaponArtId;
 };
 
 }

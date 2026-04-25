@@ -75,6 +75,11 @@ public:
 
   // debugui
   virtual std::string getDebugStateInfo() const { return "AnimGraphNode"; }
+
+  // Traverse graph and replace clip in clip node when action key matches
+  virtual void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
+    (void)key; (void)clip;
+  }
 };
 
 // ClipNode
@@ -96,6 +101,11 @@ public:
   bool isFinished() const override;
   void setSkeleton(const std::vector<Bone>* skeleton) override { m_skeleton = skeleton; }
 
+  void setActionKey(const std::string& key) { m_actionKey = key; }
+  // Direct clip replacement -- resets playback state
+  void setClip(std::shared_ptr<AnimationClip> clip);
+  void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
+
   std::string getDebugStateInfo() const override;
 
   float getActiveClipTime() const override { return m_time; }
@@ -113,6 +123,7 @@ private:
   float m_time = 0.0f;
   float m_prevTime = 0.0f;
   std::string m_ownerName;
+  std::string m_actionKey;
   const std::vector<Bone>* m_skeleton = nullptr;
 
   mutable std::vector<glm::mat4> m_pose;
@@ -134,6 +145,8 @@ public:
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const  override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
+
+  void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
 
   std::string getDebugStateInfo() const override;
   float getActiveClipTime() const override {
@@ -190,6 +203,8 @@ public:
   void evaluate(std::vector<glm::mat4>& outPose) const override;
   bool isFinished() const override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
+
+  void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
 
   std::string getDebugStateInfo() const override;
 

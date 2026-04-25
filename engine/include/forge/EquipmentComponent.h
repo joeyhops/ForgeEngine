@@ -12,6 +12,7 @@ namespace forge {
 struct SkinnedModelData;
 
 class AssetManager;
+class Animator;
 
 // Per entity weapon slot manager.
 // Tracks which WeaponDef is equipped in each slot, computes the
@@ -43,6 +44,8 @@ public:
               const std::vector<glm::mat4>& globalTransforms,
               const SkinnedModelData& model);
 
+  void setAnimator(Animator* animator) { m_animator = animator; }
+
   // Callbacks - wired into main game class to notify combat component
   std::function<void(Slot, const WeaponDef*)> onEquip;
   std::function<void(Slot)> onUnequip;
@@ -56,6 +59,7 @@ private:
   };
 
   std::string m_ownerName;
+  Animator* m_animator = nullptr;
   const WeaponDef* m_equipped[SLOT_COUNT] = {};
   SlotBinding m_binding[SLOT_COUNT] = {};
   glm::mat4 m_weaponTransforms[SLOT_COUNT] = {};

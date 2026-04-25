@@ -3,6 +3,7 @@ add_library(forge_engine STATIC
   src/core/Application.cpp
   src/core/Logger.cpp
   src/core/LevelLoader.cpp
+  src/core/TAESerialization.cpp
   src/map/GeometryGenerator.cpp
   src/map/MapScene.cpp
   src/map/EntityAssembler.cpp

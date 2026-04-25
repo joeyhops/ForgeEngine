@@ -7,6 +7,7 @@
 #include <forge/SkinnedVertex.h>
 #include <forge/Bone.h>
 #include <forge/AnimationClip.h>
+#include <forge/TAESerialization.h>
 
 // Assimp
 #include <assimp/Importer.hpp>
@@ -47,6 +48,7 @@ std::unordered_map<std::string, std::shared_ptr<AnimationClip>> AssetManager::s_
 std::unordered_map<std::string, std::shared_ptr<Shader>> AssetManager::s_shaders;
 std::unordered_map<std::string, std::shared_ptr<Texture>> AssetManager::s_textures;
 std::unordered_map<std::string, WeaponDef> AssetManager::s_weaponDefs;
+std::unordered_map<std::string, MovesetDef> AssetManager::s_movesetDefs;
 
 // Helpers
 
@@ -550,19 +552,20 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
   result.skeleton = std::move(skeleton);
   result.texture = texture;
 
-  loadSocketsFor(result, path);
-
   s_skinnedModels[path] = result;
   return result;
 }
 
 std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
     const std::string& path,
-    const std::string& clipName)
+    const std::string& clipName,
+    const std::string& taeKey)
 {
   // Cache key combines path + clip name so the same file can yield
   // multiple named clips without reloading.
   std::string cacheKey = path + "|" + clipName;
+  if (!taeKey.empty()) cacheKey += "|" + taeKey;
+
   auto it = s_clips.find(cacheKey);
   if (it != s_clips.end()) return it->second;
  
@@ -600,23 +603,6 @@ std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
  
   for (unsigned int c = 0; c < anim->mNumChannels; c++) {
     aiNodeAnim* channel = anim->mChannels[c];
-
-    // Temp diagnostic code
-    if (std::string(channel->mNodeName.C_Str()) == "mixamorig:LeftArm") {
-      LOG_INFO("[DEBUG] LeftArm keys: {} pos {} rot {} scale",
-               channel->mNumPositionKeys,
-               channel->mNumRotationKeys,
-               channel->mNumScalingKeys);
-
-      if (channel->mNumRotationKeys > 1) {
-        auto& r0 = channel->mRotationKeys[0];
-        auto& r1 = channel->mRotationKeys[channel->mNumRotationKeys - 1];
-        LOG_INFO("[DEBUG] LeftArm rot[0]: t={:.4f} q=({:.3f},{:.3f},{:.3f},{:.3f})",
-                 r0.mTime, r0.mValue.w, r0.mValue.x, r0.mValue.y, r0.mValue.z);
-        LOG_INFO("[DEBUG] LeftArm rot[last]: t={:.4f} q=({:.3f},{:.3f},{:.3f},{:.3f})",
-                 r1.mTime, r1.mValue.w, r1.mValue.x, r1.mValue.y, r1.mValue.z);
-      }
-    }
 
     BoneTrack track;
     track.boneName = channel->mNodeName.C_Str();
@@ -667,17 +653,28 @@ std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
     clip->trackIndex[track.boneName] = (int)clip->tracks.size();
     clip->tracks.push_back(std::move(track));
   }
- 
   LOG_INFO("[Assets] Animation '{}' — {:.2f}s  {} tracks  ({} tps)",
            clip->name, clip->duration, clip->tracks.size(), (int)ticksPerSec);
-  for (auto& track : clip->tracks)
-    LOG_INFO(" track: {}", track.boneName);
- 
+
+  fs::path clipFsPath(path);
+  std::string sidecarStem = taeKey.empty() ? clipFsPath.stem().string() : taeKey;
+  std::string sidecarRel = (clipFsPath.parent_path()
+                            / "tae"
+                            / (sidecarStem + ".tae.json"))
+    .generic_string();
+
+  std::string sidecarAbs = resolvePath(sidecarRel);
+
+  if (fs::exists(sidecarAbs)) {
+    std::string rootBone;
+    bool extractY = false;
+    clip->events = TAESerialization::load(sidecarAbs, rootBone, extractY);
+  }
   s_clips[cacheKey] = clip;
   return clip;
 }
 
-void AssetManager::loadWeponDefs(const std::string& relativePath) {
+void AssetManager::loadWeaponDefs(const std::string& relativePath) {
   std::string fullPath = resolvePath(relativePath);
   std::ifstream file(fullPath);
   if (!file.is_open()) {
@@ -698,29 +695,39 @@ void AssetManager::loadWeponDefs(const std::string& relativePath) {
     def.id = w.at("id").get<std::string>();
     def.meshPath = w.value("mesh", "");
 
-    if (w.contains("attachSocket"))
-      def.attachSocket = w.at("attachSocket").get<std::string>();
-    else if (w.contains("attachBone"))
-      def.attachSocket = w.at("attachBone").get<std::string>();
+    if (w.contains("boneAttach"))
+      def.boneAttach = w.at("boneAttach").get<std::string>();
     else
       throw std::runtime_error(
-        "WeaponDef '" + def.id + "': missing attachSocket (or legacy attachBone)");
+        "WeaponDef '" + def.id + "': missing boneAttach");
 
-    if (w.contains("hitSocket"))
-      def.hitSocket = w.at("hitSocket").get<std::string>();
-    else if (w.contains("hitboxBone"))
-      def.hitSocket = w.at("hitboxBone").get<std::string>();
-    else
-      def.hitSocket = def.attachSocket; // default: hit origin = attack
+    if (w.contains("meshOffset")) {
+      const auto& mo = w.at("meshOffset");
+      glm::vec3 pos(0.0f), scale(1.0f);
+      glm::quat rot = glm::quat(1.0f, 1.0f, 0.0f, 0.0f);
 
-    if (w.contains("hitboxHalfExtents")) {
-      auto& h = w.at("hitboxHalfExtents");
-      def.hitboxHalfExtents = { h[0], h[1], h[2] };
+      if (mo.contains("pos")) {
+        auto& p = mo.at("pos");
+        pos = { p[0], p[1], p[2] };
+      }
+      if (mo.contains("rot")) {
+        auto& r = mo.at("rot");
+        glm::vec3 euler(r[0], r[1], r[2]);
+        rot = glm::quat(glm::radians(euler));
+      }
+      if (mo.contains("scale")) {
+        auto& s = mo.at("scale");
+        scale = { s[0], s[1], s[2] };
+      }
+
+      glm::mat4 T = glm::translate(glm::mat4(1.0f), pos);
+      glm::mat4 R = glm::mat4_cast(rot);
+      glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
+      def.meshOffset = T * R * S;
     }
-    if (w.contains("hitboxOffset")) {
-      auto& o = w.at("hitboxOffset");
-      def.hitboxOffset = { o[0], o[1], o[2] };
-    }
+
+    def.movesetId = w.value("movesetId", "");
+    def.weaponArtId = w.value("weaponArtId", "");
 
     for (const auto& [atkName, atkData] : w.at("attacks").items()) {
       AttackData atk;
@@ -737,8 +744,9 @@ void AssetManager::loadWeponDefs(const std::string& relativePath) {
       def.attacks[atkName] = atk;
     }
 
-    s_weaponDefs[def.id] = std::move(def);
-    LOG_INFO("[AssetManager] Loaded weapon def '{}'", s_weaponDefs.begin()->first);
+    std::string defId = def.id;
+    s_weaponDefs[defId] = std::move(def);
+    LOG_INFO("[AssetManager] Loaded weapon def '{}'", defId);
   }
 
   LOG_INFO("[AssetManager] loadedWeaponDefs: {} weapons loaded from '{}'", s_weaponDefs.size(), relativePath);
@@ -749,6 +757,45 @@ const WeaponDef* AssetManager::getWeaponDef(const std::string& weaponId) {
   return (it != s_weaponDefs.end()) ? &it->second : nullptr;
 }
 
+void AssetManager::loadMovesetDefs(const std::string& relativePath) {
+  std::string fullPath = resolvePath(relativePath);
+  std::ifstream file(fullPath);
+  if (!file.is_open()) {
+    LOG_ERROR("[AssetManager] loadMovesetDefs: cannot open '{}'", fullPath);
+    return;
+  }
+
+  nlohmann::json j;
+  try {
+    file >> j;
+  } catch (const nlohmann::json::exception& e) {
+    LOG_ERROR("[AssetManager] loadMovesetDefs: JSON parse error: {}", e.what());
+    return;
+  }
+
+  for (const auto& m : j.at("movesets")) {
+    MovesetDef def;
+    def.id = m.at("id").get<std::string>();
+
+    if (m.contains("clips")) {
+      for (const auto& [key, path] : m.at("clips").items())
+        def.clips[key] = path.get<std::string>();
+    }
+
+    std::string defId = def.id;
+    s_movesetDefs[defId] = std::move(def);
+    LOG_INFO("[AssetManager] Loaded moveset def '{}' ({} clips)",
+             defId, s_movesetDefs[defId].clips.size());
+  }
+  LOG_INFO("[AssetManager] loadMovesetDefs: {} movesets loaded from '{}'",
+           s_movesetDefs.size(), relativePath);
+}
+
+const MovesetDef* AssetManager::getMovesetDef(const std::string& movesetId) {
+  auto it = s_movesetDefs.find(movesetId);
+  return (it != s_movesetDefs.end()) ? &it->second : nullptr;
+}
+
 void AssetManager::clear() {
   s_skinnedModels.clear();
   s_clips.clear();
@@ -756,6 +803,7 @@ void AssetManager::clear() {
   s_textures.clear();
   s_shaders.clear();
   s_weaponDefs.clear();
+  s_movesetDefs.clear();
   LOG_INFO("[Assets] Cache cleared");
 }
 
@@ -764,112 +812,4 @@ void AssetManager::printStats() {
            s_models.size(), s_textures.size(), s_shaders.size());
 }
 
-void AssetManager::loadSocketsFor(SkinnedModelData& model, const std::string& modelRelativePath) {
-  fs::path rel = modelRelativePath;
-  rel.replace_extension(".sockets.json");
-  std::string socketsRel = rel.generic_string();
-  std::string socketsAbs = resolvePath(socketsRel);
-
-  std::ifstream file(socketsAbs);
-  if (!file.is_open()) {
-    LOG_INFO("[Sockets] No sockets file for '{}' (looked for '{}')",
-             modelRelativePath, socketsRel);
-    return;
-  }
-
-  nlohmann::json j;
-  try {
-    file >> j;
-  } catch (const nlohmann::json::exception& e) {
-    LOG_ERROR("[Sockets] JSON parse error in '{}': {}", socketsRel, e.what());
-    return;
-  }
-
-  if (!j.contains("sockets") || !j["sockets"].is_object()) {
-    LOG_ERROR("[Sockets] '{}' missing top-level 'sockets' object", socketsRel);
-    return;
-  }
-
-  // Build bone-name -> index lookup to start so we don't need
-  // a linear skeleton scan per socket.
-  std::unordered_map<std::string, int> boneIndex;
-  boneIndex.reserve(model.skeleton.size());
-  for (int i = 0; i < static_cast<int>(model.skeleton.size()); ++i) {
-    boneIndex.emplace(model.skeleton[i].name, i);
-  }
-
-  int loaded = 0;
-  int skipped = 0;
-  for (auto it = j["sockets"].begin(); it != j["sockets"].end(); ++it) {
-    const std::string& socketName = it.key();
-    const auto& entry = it.value();
-
-    // Required bone field (str)
-    if (!entry.contains("bone") || !entry["bone"].is_string()) {
-      LOG_ERROR("[Sockets] '{}' socket '{}' missing required 'bone' string",
-                socketsRel, socketName);
-      ++skipped;
-      continue;
-    }
-    std::string boneName = entry["bone"].get<std::string>();
-
-    // resolve bone name to skeleton index
-    auto bi = boneIndex.find(boneName);
-    if (bi == boneIndex.end()) {
-      LOG_ERROR("[Sockets] '{}' socket '{}' → bone '{}' not found in skeleton "
-                "(skeleton has {} bones)", socketsRel, socketName, boneName,
-                model.skeleton.size());
-      ++skipped;
-      continue;
-    }
-
-    // Optional offset object. Individual sub-fields (pos/rot/scale)
-    // are also optional and default to identity components
-    glm::vec3 pos (0.0f, 0.0f, 0.0f);
-    glm::vec3 rotD (0.0f, 0.0f, 0.0f);
-    glm::vec3 scale (1.0f, 1.0f, 1.0f);
-
-    if (entry.contains("offset") && entry["offset"].is_object()) {
-      const auto& off = entry["offset"];
-
-      auto readVec3 = [&](const char* key, glm::vec3& out) {
-        if (!off.contains(key)) return;
-        const auto& arr = off[key];
-        if (!arr.is_array() || arr.size() != 3) {
-          LOG_ERROR("[Sockets] '{}' socket '{}' offset.{} must be a 3-element "
-                    "number array; using default", socketsRel, socketName, key);
-          return;
-        }
-        out = glm::vec3(
-          arr[0].get<float>(),
-          arr[1].get<float>(),
-          arr[2].get<float>()
-        );
-      };
-
-      readVec3("pos", pos);
-      readVec3("rot", rotD);
-      readVec3("scale", scale);
-    }
-
-    // Compose local offset matrix as T * R * S to match
-    // Transform::getModelMatrix()
-    // Consistency matters, socket offset and Transform must use
-    // same convention so authored values behave identically
-    // in both places
-    const glm::mat4 T = glm::translate(glm::mat4(1.0f), pos);
-    const glm::mat4 R = glm::toMat4(glm::quat(glm::radians(rotD)));
-    const glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
-    const glm::mat4 localOffset = T * R * S;
-
-    Socket socket;
-    socket.boneIndex = bi->second;
-    socket.localOffset = localOffset;
-    model.sockets.emplace(socketName, socket);
-    ++loaded;
-  }
-
-  LOG_INFO("[Sockets] '{}' loaded {} sockets ({} skipped)",
-           modelRelativePath, loaded, skipped);
-}
 }

@@ -135,7 +135,11 @@ void LuaState::registerCombat() {
                                       "tryGuard", &CombatComponent::tryGuard,
                                       "releaseGuard", &CombatComponent::releaseGuard,
                                       "takeDamage", &CombatComponent::takeDamage,
-                                      "getAttackData", &CombatComponent::getAttackData
+                                      "getAttackData", &CombatComponent::getAttackData,
+                                      "isInComboWindow", &CombatComponent::isInComboWindow,
+                                      "getComboWindowAction", &CombatComponent::getComboWindowAction,
+                                      "bufferCombo", &CombatComponent::bufferCombo,
+                                      "isInReceptiveWindow", &CombatComponent::isInReceptiveWindow
                                       );
 }
 

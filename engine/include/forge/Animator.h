@@ -2,9 +2,11 @@
 #include <forge/AnimationClip.h>
 #include <forge/AnimGraph.h>
 #include <glm/glm.hpp>
+
 #include <vector>
 #include <string>
 #include <memory>
+#include <unordered_map>
 
 namespace forge {
 
@@ -22,6 +24,11 @@ public:
   // Animation Graph (replaces play())
   // Attach a graph to drive all animation via the param table
   void setGraph(std::shared_ptr<AnimGraphNode> graph);
+
+  // Load each clip in clipPaths and swap it into any ClipNode in the graph
+  // where key == map key Called by EquipmentComponent on equip
+  // clipPaths: action key("r1") -> asset-root-relative path to anim
+  void swapMovesetClips(const std::unordered_map<std::string, std::string>& clipPaths);
 
   AnimParamTable& getParams() { return m_params; }
   const AnimParamTable& getParams() const { return m_params; }

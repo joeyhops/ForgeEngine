@@ -3,15 +3,18 @@ Log.info("Player combat script loaded")
 function onCombatUpdate(dt, input)
   if not playerCombat:isAlive() then return end
 
-  if input.attackLight and not playerCombat:isAttacking() then
-    -- getAttackData("r1") returns longsword R1 if equipped, bare-hand fallback otherwise.
-    if playerCombat:tryAttack(playerCombat:getAttackData("r1")) then
-      local wep = playerEquipment:getEquipped(EquipSlot.RIGHT)
-      Log.info("R1 Swing! [" .. (wep ~= "" and wep or "bare hand") .. "]")
+  if input.attackLight then
+    if playerCombat:isInComboWindow() then
+      playerCombat:bufferCombo(playerCombat:getComboWindowAction())
+    elseif not playerCombat:isAttacking() then
+      if playerCombat:tryAttack(playerCombat:getAttackData("r1")) then
+        local wep = playerEquipment:getEquipped(EquipSlot.RIGHT)
+        Log.info("R1 Swing! [" .. (wep ~= "" and wep or "bare hand") .. "]")
+      end
     end
   end
 
-  if input.attackHeavy and not playerCombat:isAttacking() then
+  if input.attackHeavy and not playerCombat:isAttacking() and not playerCombat:isInComboWindow() then
     if playerCombat:tryAttack(playerCombat:getAttackData("r2")) then
       local wep = playerEquipment:getEquipped(EquipSlot.RIGHT)
       Log.info("R2 Heavy! [" .. (wep ~= "" and wep or "bare hand") .. "]")

@@ -19,6 +19,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui.h>
 #include <sol/forward.hpp>
 
 #include <memory>
@@ -40,8 +41,9 @@ void ForgeGame::onInit() {
 
   setupRenderer();
 
-  forge::AssetManager::loadWeponDefs("data/weapons.json");
-  
+  forge::AssetManager::loadWeaponDefs("data/weapons.json");
+  forge::AssetManager::loadMovesetDefs("data/movesets.json");
+
   setupPlayer();
   setupEnemy();
 
@@ -170,6 +172,29 @@ void ForgeGame::onInit() {
 
   forge::DebugDraw::init(m_debugLineShader.get());
 
+  forge::EventBus::subscribe<forge::EntityHitEvent>([this](const forge::EntityHitEvent& e) {
+    bool playerWasHit = (e.defenderName == "player");
+    bool heavyHit = (e.damage >= 150.0f);
+
+    float stopDuration = heavyHit ? k_hitStopHeavy : k_hitStopLight;
+    m_hitStopTimer = std::max(m_hitStopTimer, stopDuration);
+
+    if (playerWasHit)
+      m_hitFlashAlpha = 1.0f;
+
+    if (heavyHit) {
+      m_shakeTimer = k_shakeDuration;
+      m_shakeMagnitude = k_shakeMag;
+    }
+
+    glm::vec3 spawnPos = e.hitPosition + glm::vec3(0.0f, 1.2f, 0.0f);
+    m_damageNumbers.push_back({
+      spawnPos,
+      e.damage,
+      k_damNumberLifetime,
+      heavyHit 
+    });
+  });
   // Try loading previous save
   getFlags().loadFromFile(k_saveFilePath);
   LOG_INFO("[Game] init complete");
@@ -268,6 +293,7 @@ static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
   // atk
   auto attackNode = std::make_shared<ClipNode>(attackClip, false);
   attackNode->setOwnerName(ownerName);
+  attackNode->setActionKey("r1");
 
   // death
   auto deathNode = std::make_shared<ClipNode>(deathClip, false);
@@ -327,11 +353,11 @@ static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
 }
 
 void ForgeGame::setupPlayer() {
-  m_player.skinnedModel = forge::AssetManager::loadSkinnedModel("models/characters/anim/ybot_idle.glb"); 
+  m_player.skinnedModel = forge::AssetManager::loadSkinnedModel("models/characters/anim/base_skeleton.glb"); 
   m_player.transform = std::make_unique<forge::Transform>();
   m_player.transform->setPosition({ 0.0f, 0.0f, 0.0f });
   m_player.transform->setScale({ 0.01f, 0.01f, 0.01f });
-  m_player.transform->setEulerAngles({ 90.0f, 180.0f, 0.0f });
+  m_player.transform->setEulerAngles({ 0.0f, 180.0f, 0.0f });
 
   m_player.controller = std::make_unique<forge::CharacterController>(getPhysics(), *m_player.transform, 0.3f, 0.9f);
 
@@ -342,12 +368,12 @@ void ForgeGame::setupPlayer() {
 
   // Load anim clips
   // Idle is embadded in the base model - load the first animation from it
-  m_player.clips["idle"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_idle.glb", "idle");
-  m_player.clips["walk"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_walk.glb", "walk");
-  m_player.clips["sprint"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_sprint.glb", "sprint");
+  m_player.clips["idle"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/idle.glb", "idle");
+  m_player.clips["walk"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/walk_f_2.glb", "walk");
+  m_player.clips["sprint"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/sprint_f_rm.glb", "sprint");
   m_player.clips["attack_r1"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash");
   m_player.clips["death"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death");
-  m_player.clips["dodge"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_dodge.glb", "dodge");
+  m_player.clips["dodge"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/roll_f_rm.glb", "dodge");
   
   if (m_player.clips["attack_r1"]) {
     auto& clip = m_player.clips["attack_r1"];
@@ -392,7 +418,7 @@ void ForgeGame::setupPlayer() {
   m_player.animator->setGraph(graph);
 
   m_player.combat = std::make_unique<forge::CombatComponent>(
-    "Player",
+    "player",
     500.0f,
     100.0f,
     80.0f
@@ -410,6 +436,7 @@ void ForgeGame::setupPlayer() {
   };
 
   m_player.equipment = std::make_unique<forge::EquipmentComponent>("player");
+  m_player.equipment->setAnimator(m_player.animator.get());
 
   // CombatComponent onEquip
   m_player.equipment->onEquip = [this](forge::EquipmentComponent::Slot slot, const forge::WeaponDef* def) {
@@ -499,6 +526,7 @@ void ForgeGame::setupEnemy() {
     "enemy", *m_enemy.transform, *m_enemy.combat);
 
   m_enemy.equipment = std::make_unique<forge::EquipmentComponent>("enemy");
+  m_enemy.equipment->setAnimator(m_enemy.animator.get());
  
   m_enemy.equipment->onEquip = [this](forge::EquipmentComponent::Slot slot, const forge::WeaponDef* def) {
     if (slot == forge::EquipmentComponent::RIGHT_HAND) {
@@ -715,6 +743,33 @@ void ForgeGame::setupScripts() {
 }
 
 void ForgeGame::onUpdate(float dt) {
+  if (m_shakeTimer > 0.0f) {
+    m_shakeTimer -= dt;
+    float t = m_shakeTimer / k_shakeDuration;
+    float mag = m_shakeMagnitude * t * t;
+
+    // Random offset on X and Y only
+    float ox = ((rand() % 1000) / 1000.0f - 0.5f) * 2.0f * mag;
+    float oy = ((rand() % 1000) / 1000.0f - 0.5f) * 2.0f * mag;
+
+    m_tpCamera->setTraumaOffset({ ox, oy, 0.0f });
+  } else {
+    m_tpCamera->setTraumaOffset({ 0.0f, 0.0f, 0.0f });
+  }
+  if (m_hitStopTimer > 0.0f) {
+    m_hitStopTimer -= dt;
+    return;
+  }
+  for (auto& dn : m_damageNumbers) {
+    dn.worldPos.y += k_damNumberRiseSpeed * dt;
+    dn.lifetime -= dt;
+  }
+  // Remove expired numbers
+  m_damageNumbers.erase(
+    std::remove_if(m_damageNumbers.begin(), m_damageNumbers.end(),
+                   [](const DamageNumber& d) { return d.lifetime <= 0.0f; }),
+    m_damageNumbers.end()
+  );
   handleInput(dt);
 
   // Physics
@@ -802,14 +857,8 @@ void ForgeGame::onUpdate(float dt) {
     if (m_player.combat->getAttackPhase() != forge::CombatComponent::AttackPhase::None) {
       const forge::WeaponDef* wpnDef = m_player.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND);
       glm::mat4 wpnWorld = m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
-      glm::vec3 halfExt = wpnDef ? wpnDef->hitboxHalfExtents : glm::vec3(0.08f, 0.45f, 0.08f);
-      if (wpnDef && wpnDef->hitboxOffset != glm::vec3(0.0f))
-        wpnWorld = glm::translate(wpnWorld, wpnDef->hitboxOffset);
+      glm::vec3 halfExt(0.3f, 0.8f, 0.15f);
       m_player.combat->setHitboxTransform(wpnWorld, halfExt);
-      m_playerTrail.push(
-        m_player.combat->getHitboxTransform(),
-        m_player.combat->getHitboxHalfExtents()
-      );
     }
   }
   m_player.controller->syncTransform();
@@ -831,9 +880,7 @@ void ForgeGame::onUpdate(float dt) {
       if (m_enemy.combat->getAttackPhase() != forge::CombatComponent::AttackPhase::None) {
         const forge::WeaponDef* wpnDef = m_enemy.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND);
         glm::mat4 wpnWorld = m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
-        glm::vec3 halfExt = wpnDef ? wpnDef->hitboxHalfExtents : glm::vec3(0.08f, 0.45f, 0.08f);
-        if (wpnDef && wpnDef->hitboxOffset != glm::vec3(0.0f))
-          wpnWorld = glm::translate(wpnWorld, wpnDef->hitboxOffset);
+        glm::vec3 halfExt(0.3f, 0.8f, 0.15f);
         m_enemy.combat->setHitboxTransform(wpnWorld, halfExt);
       }
     }
@@ -1012,7 +1059,42 @@ void ForgeGame::onRender() {
       }
     }
 
+
     forge::DebugDraw::flush(m_camera->getViewProjection());
+  }
+
+  if (!m_damageNumbers.empty()) {
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    float sw = (float)getWidth();
+    float sh = (float)getHeight();
+    glm::mat4 vp = m_camera->getViewProjection();
+
+    for (const auto& dn : m_damageNumbers) {
+      // Project to clip space
+      glm::vec4 clip = vp * glm::vec4(dn.worldPos, 1.0f);
+      if (clip.w <= 0.0f) continue; // behind camera
+
+      // NDC
+      glm::vec3 ndc = glm::vec3(clip) / clip.w;
+      if (std::abs(ndc.x) > 1.0f || std::abs(ndc.y) > 1.0f) continue;
+
+      // Screen pix (Y is flipped, NDC + 1 = top, screen 0 = top)
+      float px = (ndc.x + 1.0f) * 0.5f * sw;
+      float py = (1.0f - ndc.y) * 0.5f * sh;
+
+      // Alpha fades over lifetime
+      float alpha = std::clamp(dn.lifetime / k_damNumberLifetime, 0.0f, 1.0f);
+
+      ImU32 col = dn.heavy
+        ? IM_COL32(255, 210,40, (int)(255 * alpha))
+        : IM_COL32(255, 255, 255, (int)(255 * alpha));
+
+      char buff[16];
+      std::snprintf(buff, sizeof(buff), "%.0f", dn.damage);
+
+      float fontSize = dn.heavy ? 22.0f : 16.0f;
+      dl->AddText(ImGui::GetFont(), fontSize, ImVec2(px, py), col, buff);
+    }
   }
 }
 
@@ -1221,7 +1303,7 @@ void ForgeGame::handleInput(float dt) {
     faceDir.y = 0.0f;
     if (glm::length(faceDir) > 0.001f) {
       float angle = atan2f(faceDir.x, faceDir.z);
-      m_player.transform->setEulerAngles({ 90.0f, glm::degrees(angle), 0.0f });
+      m_player.transform->setEulerAngles({ 0.0f, glm::degrees(angle), 0.0f });
       m_player.forward = glm::normalize(glm::vec3(faceDir.x, 0.0f, faceDir.z));
     }
 

@@ -1,5 +1,7 @@
 #include <forge/EquipmentComponent.h>
 #include <forge/AssetManager.h>
+#include <forge/Animator.h>
+#include <forge/MovesetDef.h>
 #include <forge/Logger.h>
 
 #include <glm/glm.hpp>
@@ -18,6 +20,16 @@ bool EquipmentComponent::equip(Slot slot, const std::string& weaponId) {
     LOG_ERROR("[Equipment] '{}' equip('{}') - weapon not found in loaded defs",
               m_ownerName, weaponId);
     return false;
+  }
+
+  // Swap attacks in the AnimGraph before notifying game
+  if (m_animator && !def->movesetId.empty()) {
+    const MovesetDef* moveset = AssetManager::getMovesetDef(def->movesetId);
+    if (moveset)
+      m_animator->swapMovesetClips(moveset->clips);
+    else
+      LOG_WARN("[Equipment] '{}': weapon '{}' references unknown moveset '{}'",
+               m_ownerName, weaponId, def->movesetId);
   }
 
   m_equipped[slot] = def;
@@ -54,28 +66,19 @@ void EquipmentComponent::update(const glm::mat4& ownerModelMatrix,
     SlotBinding& b = m_binding[s];
 
     if (!b.resolved) {
-      const std::string& socketName = m_equipped[s]->attachSocket;
-      auto it = model.sockets.find(socketName)    ;
-
-      if (it != model.sockets.end()) {
-        b.boneIndex = it->second.boneIndex;
-        b.localOffset = it->second.localOffset;
-      } else if (!b.logged) {
-        // Build a compact summary of available sockets so the error log
-        // is directly actionable — tells you which sockets DO exist.
-        std::string available;
-        available.reserve(model.sockets.size() * 12);
-        bool first = true;
-        for (const auto& kv : model.sockets) {
-          if (!first) available += ", ";
-          available += kv.first;
-          first = false;
+      const std::string& boneName = m_equipped[s]->boneAttach;
+      const auto& skeleton = model.skeleton;
+      
+      for (int i = 0; i < static_cast<int>(skeleton.size()); ++i) {
+        if (skeleton[i].name == boneName) {
+          b.boneIndex = i;
+          break;
         }
-        if (available.empty()) available = "<none>";
+      }
 
-        LOG_ERROR("[Equipment] '{}' socket '{}' not found on skeleton "
-                  "(available sockets: {})",
-                  m_ownerName, socketName, available);
+      if (b.boneIndex < 0 && !b.logged) {
+        LOG_ERROR("[Equipment] '{}' attach bone '{}' not found in skeleton ({} bones)",
+                  m_ownerName, boneName, skeleton.size());
         b.logged = true;
       }
       b.resolved = true;
@@ -94,7 +97,7 @@ void EquipmentComponent::update(const glm::mat4& ownerModelMatrix,
       if (sy > 1e-6f) boneAttach[1] /= sy;
       if (sz > 1e-6f) boneAttach[2] /= sz;
 
-      m_weaponTransforms[s] = boneAttach * b.localOffset;
+      m_weaponTransforms[s] = boneAttach * m_equipped[s]->meshOffset;
     }
     // visible failure
   }

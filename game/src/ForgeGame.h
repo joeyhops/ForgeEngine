@@ -138,6 +138,29 @@ private:
   glm::vec3 m_dodgeDir = { 0.0f, 0.0f, -1.0f }; // direction frozen at start of dodge
   float m_dodgeDuration = 0.45f;
 
+  // Damage feedback
+  float m_hitStopTimer = 0.0f;
+  static constexpr float k_hitStopLight = 0.050f; // 4 frames
+  static constexpr float k_hitStopHeavy = 0.100f; // 6frames
+
+  float m_hitFlashAlpha = 0.0f;
+  static constexpr float k_hitFlashDecayRate = 2.2f;
+
+  float m_shakeTimer = 0.0f;
+  float m_shakeMagnitude = 0.0f;
+  static constexpr float k_shakeDuration = 0.28f; //seconds
+  static constexpr float k_shakeMag = 0.10f;
+
+  struct DamageNumber {
+    glm::vec3 worldPos;
+    float damage;
+    float lifetime; // seconds remaining
+    bool heavy;
+  };
+  std::vector<DamageNumber> m_damageNumbers;
+  static constexpr float k_damNumberLifetime = 1.0f; // seconds visible
+  static constexpr float k_damNumberRiseSpeed = 1.2f; // m/s upward drift
+
   struct InputState { bool j, k, l; } m_prevInput = {};
 
   static constexpr const char* k_saveFilePath = "saves/flags.json";

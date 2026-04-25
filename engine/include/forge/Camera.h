@@ -21,6 +21,8 @@ public:
   // combined with the model matrix from Transform)
   glm::mat4 getViewProjection() const;
 
+  glm::vec3 getPosition() const { return m_position; }
+
 private:
   float m_fov;
   float m_aspect;

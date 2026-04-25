@@ -6,8 +6,8 @@
 #include <forge/AnimationClip.h>
 #include <forge/Texture.h>
 #include <forge/Shader.h>
-#include <forge/Socket.h>
 #include <forge/WeaponDef.h>
+#include <forge/MovesetDef.h>
 #include <string>
 #include <memory>
 #include <unordered_map>
@@ -41,7 +41,6 @@ struct ModelData {
 struct SkinnedModelData {
   std::shared_ptr<SkinnedMesh> mesh;
   std::vector<Bone> skeleton; // Full bone hierarchy, parent indices set
-  std::unordered_map<std::string, Socket> sockets;
   std::shared_ptr<Texture> texture;
 
   bool hasTexture() const { return texture != nullptr; }
@@ -73,7 +72,8 @@ public:
   // Load a single animation from a file
   static std::shared_ptr<AnimationClip> loadAnimationClip(
     const std::string& path,
-    const std::string& clipName
+    const std::string& clipName,
+    const std::string& taeKey = ""
   );
 
   // Textures
@@ -89,18 +89,20 @@ public:
   // Load weapon defs
   // reads weapons.json file and populates internal def table.
   // Called once at startup. Path is relative to asset root.
-  static void loadWeponDefs(const std::string& relativePath);
+  static void loadWeaponDefs(const std::string& relativePath);
 
   // returns nullptr if weaponId is not found. Does not log, caller logs
   static const WeaponDef* getWeaponDef(const std::string& weaponId);
+
+  // Load Moveset defs - reads movesets.json
+  static void loadMovesetDefs(const std::string& relativePath);
+  static const MovesetDef* getMovesetDef(const std::string& movesetId);
 
   // Release everything - call on shutdown or scene change
   static void clear();
   static void printStats();
 
 private:
-  static void loadSocketsFor(SkinnedModelData& model, const std::string& modelRelativePath);
-
   static std::string s_assetRoot;
   static std::unordered_map<std::string, ModelData> s_models;
   static std::unordered_map<std::string, SkinnedModelData> s_skinnedModels;
@@ -108,6 +110,7 @@ private:
   static std::unordered_map<std::string, std::shared_ptr<Shader>> s_shaders;
   static std::unordered_map<std::string, std::shared_ptr<Texture>> s_textures;
   static std::unordered_map<std::string, WeaponDef> s_weaponDefs;
+  static std::unordered_map<std::string, MovesetDef> s_movesetDefs;
 };
 
 }

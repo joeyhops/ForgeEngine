@@ -114,6 +114,18 @@ void ClipNode::deactivateAllEvents() {
   m_activeEventIndices.clear();
 }
 
+void ClipNode::setClip(std::shared_ptr<AnimationClip> clip) {
+  m_clip = std::move(clip);
+  m_time = 0.0f;
+  m_prevTime = 0.0f;
+  deactivateAllEvents();
+}
+
+void ClipNode::swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
+  if (m_actionKey == key)
+    setClip(std::move(clip));
+}
+
 Blend1DNode::Blend1DNode(std::string paramName)
   : m_paramName(std::move(paramName))
 {}
@@ -222,6 +234,13 @@ std::string Blend1DNode::getDebugStateInfo() const {
   int pct = static_cast<int>(m_localAlpha * 100.0f);
   return "Blend1D(" + m_paramName + "=" + std::to_string(m_param).substr(0, 4) + " "
           + lower + "->" + upper + " " + std::to_string(pct) + "%)";
+}
+
+void Blend1DNode::swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
+  for (auto& entry : m_entries) {
+    if (entry.node)
+      entry.node->swapClipByKey(key, clip);
+  }
 }
 
 void StateMachineNode::addState(const std::string& name, std::shared_ptr<AnimGraphNode> node) {
@@ -343,5 +362,12 @@ std::string StateMachineNode::getDebugStateInfo() const {
     return m_currentState + " | " + it->second->getDebugStateInfo();
   return m_currentState;
 }
+
+void StateMachineNode::swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
+  for (auto& [name, node] : m_states) {
+    if (node)
+      node->swapClipByKey(key, clip);
+  }
+} 
 
 }

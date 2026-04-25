@@ -1,0 +1,17 @@
+{
+  "movesets": [
+    {
+      "id": "sword",
+      "clips": {
+        "r1": "anim/movesets/sword/slash_1.glb",
+        "r1_2": "anim/movesets/sword/stab_1.glb"
+      }
+    },
+    {
+      "id": "dagger",
+      "clips": {
+        "r1": "anim/movesets/dagger/ybot_slash.glb"
+      }
+    }
+  ]
+}

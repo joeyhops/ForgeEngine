@@ -48,6 +48,9 @@ public:
   void setDistance(float d) { m_distance = d; }
   void setSensitivity(float s) { m_sensitivity = s; }
 
+  // Damage feedback
+  void setTraumaOffset(const glm::vec3& offset) { m_traumaOffset = offset; }
+
 private:
   Camera& m_camera;
   PhysicsWorld& m_physics;
@@ -69,6 +72,9 @@ private:
   // lock on state
   const glm::vec3* m_lockTarget = nullptr;
   float m_lockYaw = 180.0f;
+
+  // Camera shake
+  glm::vec3 m_traumaOffset = {};
 };
 
 }

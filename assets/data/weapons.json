@@ -3,10 +3,8 @@
     {
       "id":         "longsword",
       "mesh":       "models/weapons/longsword.glb",
-      "attachSocket": "weapon_r",
-      "hitSocket": "weapon_r",
-      "hitboxHalfExtents": [0.08, 0.45, 0.08],
-      "hitboxOffset": [0.0, 0.25, 0.0],
+      "boneAttach": "weapon_r",
+      "movesetId": "sword",
       "attacks": {
         "r1": {
           "name":         "r1",
@@ -25,7 +23,7 @@
           "damage":       200.0,
           "poiseDamage":  60.0,
           "staminaCost":  40.0,
-          "startupTime":  1.45,
+          "startupTime":  0.45,
           "activeTime":   0.25,
           "recoveryTime": 0.70,
           "range":        2.0,
@@ -37,10 +35,8 @@
     {
       "id":         "dagger",
       "mesh":       "models/weapons/dagger.glb",
-      "attachSocket": "weapon_r",
-      "hitSocket": "weapon_r",
-      "hitboxHalfExtents": [0.08, 0.45, 0.08],
-      "hitboxOffset": [0.0, 0.25, 0.0],
+      "boneAttach": "weapon_r",
+      "movesetId": "dagger",
       "attacks": {
         "r1": {
           "name":         "r1",

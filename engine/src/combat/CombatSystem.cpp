@@ -158,7 +158,8 @@ void CombatSystem::resolveHit(CombatComponent& attacker,
     .attackerName = attacker.getName(),
     .defenderName = defender.getName(),
     .damage = atk.damage,
-    .damageType = atk.damageType
+    .damageType = atk.damageType,
+    .hitPosition = defender.getWorldPos()
   });
 
   LOG_INFO("[CombatSystem] {} hit {} with {}",

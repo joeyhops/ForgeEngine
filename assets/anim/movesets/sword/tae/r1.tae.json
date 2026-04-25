@@ -1,0 +1,19 @@
+{
+  "rootBone": "",
+  "extractRootY": false,
+  "events": [
+    {
+      "type": "SpawnHitbox",
+      "startTime": 0.23,
+      "endTime": 0.37,
+      "payload": "weapon_r",
+      "hitboxExtents": [0.30, 0.80, 0.15]
+    },
+    {
+      "type": "ComboWindow",
+      "startTime": 0.45,
+      "endTime": 0.60,
+      "payload": "r1_2"
+    }
+  ]
+}

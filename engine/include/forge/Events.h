@@ -17,6 +17,7 @@ struct EntityHitEvent {
   std::string defenderName;
   float damage;
   std::string damageType;
+  glm::vec3 hitPosition;
 };
 
 // Fired by FlagManager when any flag changes

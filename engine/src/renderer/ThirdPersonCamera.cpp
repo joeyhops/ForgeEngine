@@ -79,6 +79,9 @@ void ThirdPersonCamera::update(const glm::vec3& playerPos) {
   }
 
   m_camera.setPosition(finalPos);
+  if (m_traumaOffset != glm::vec3(0.0f)) {
+    m_camera.setPosition(m_camera.getPosition() + m_traumaOffset);
+  }
   m_camera.setTarget(lookTarget);
 }
 

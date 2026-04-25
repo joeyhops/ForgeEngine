@@ -69,22 +69,70 @@ void CombatComponent::writeTriggerForAttack(const std::string& attackName) {
 void CombatComponent::subscribeToTAEEvents() {
   EventBus::subscribe<AnimEventActivated>([this](const AnimEventActivated& e){
     if (e.ownerName != m_ownerName) return; // Only reacts to own events
-    if (e.type == AnimEventType::SpawnHitbox) {
-      m_hitboxActive = true;
-      m_hitLanded = false;
-      m_usingTAEHitboxes = true;
-      LOG_TRACE("[Combat] {} TAE Hitbox ACTIVE", m_ownerName);
-    }
-  });
+      switch(e.type) {
+        case AnimEventType::SpawnHitbox:
+          m_hitboxActive = true;
+          m_hitLanded = false;
+          m_usingTAEHitboxes = true;
+          LOG_TRACE("[Combat] {} TAE Hitbox ACTIVE", m_ownerName);
+          break;
+        case AnimEventType::ComboWindow:
+          m_inComboWindow = true;
+          m_comboWindowAction = e.payload;
+          LOG_TRACE("[Combat] {} ComboWindow OPEN for '{}'", m_ownerName, e.payload);
+          break;
+        case AnimEventType::ParryWindow:
+          m_inReceptiveWindow = true;
+          m_receptiveWindowType = ReceptiveHitWindowType::Parry;
+          LOG_TRACE("[Combat] {} ParryWindow OPEN", m_ownerName);
+          break;
+        case AnimEventType::DeflectWindow:
+          m_inReceptiveWindow = true;
+          m_receptiveWindowType = ReceptiveHitWindowType::Deflect;
+          LOG_TRACE("[Combat] {} DeflectWindow OPEN", m_ownerName);
+          break;
+        case AnimEventType::PerilousMark:
+          m_activeHitPerilous = true;
+          LOG_TRACE("[Combat] {} PerilousMark ACTIVE", m_ownerName);
+          break;
+        default:
+          break;
+      }
+    });
 
   EventBus::subscribe<AnimEventDeactivated>([this](const AnimEventDeactivated& e) {
     if (e.ownerName != m_ownerName) return;
-
-    if (e.type == AnimEventType::SpawnHitbox) {
-      m_hitboxActive = false;
-      m_taeAttackComplete = true;
-      LOG_TRACE("[Combat] {} TAE hitbox CLOSED");
-    }
+      switch(e.type) {
+        case AnimEventType::SpawnHitbox:
+          m_hitboxActive = false;
+          m_taeAttackComplete = true;
+          LOG_TRACE("[Combat] {} SpawnHitbox CLOSED", m_ownerName);
+          break;
+        case AnimEventType::ComboWindow: {
+          // Fire buffered combo if input in window detected
+          std::string buffered = m_comboBuffer;
+          if (!buffered.empty())
+            startCombo(buffered);
+          m_comboBuffer.clear();
+          m_comboWindowAction.clear();
+          m_inComboWindow = false;
+          LOG_TRACE("[Combat] {} ComboWindow CLOSED (buffer: {})", m_ownerName,
+                    buffered.empty() ? "none" : buffered);
+          break;
+        }
+        case AnimEventType::ParryWindow:
+        case AnimEventType::DeflectWindow:
+          m_inReceptiveWindow = false;
+          m_receptiveWindowType = ReceptiveHitWindowType::None;
+          LOG_TRACE("[Combat] {} receptive window CLOSED", m_ownerName);
+          break;
+        case AnimEventType::PerilousMark:
+          m_activeHitPerilous = false;
+          LOG_TRACE("[Combat] {} PerilousMark CLEARED", m_ownerName);
+          break;
+        default:
+          break;
+      }
   });
 }
 
@@ -366,6 +414,26 @@ CombatComponent::AttackPhase CombatComponent::getAttackPhase() const {
 void CombatComponent::notifyHitLanded() {
   m_hitFlash = true;
   m_hitFlashTimer = HIT_FLASH_DURATION;
+}
+
+void CombatComponent::bufferCombo(const std::string& actionKey) {
+  if (!m_inComboWindow) return;
+  if (actionKey != m_comboWindowAction) return;
+  m_comboBuffer = actionKey;
+  LOG_TRACE("[Combat] {} buffered combo '{}'", m_ownerName, actionKey);
+}
+
+void CombatComponent::startCombo(const std::string& actionKey) {
+  if (!m_paramTable) return;
+
+  m_paramTable->setTrigger(actionKey);
+
+  m_hitboxActive = false;
+  m_hitLanded = false;
+  m_taeAttackComplete = false;
+  m_usingTAEHitboxes = true;
+
+  LOG_TRACE("[Combat] {} started combo '{}'", m_ownerName, actionKey);
 }
 
 }

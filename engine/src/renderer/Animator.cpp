@@ -2,6 +2,8 @@
 #include <forge/Events.h>
 #include <forge/EventBus.h>
 #include <forge/Logger.h>
+#include <forge/AssetManager.h>
+
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
@@ -22,6 +24,22 @@ void Animator::setGraph(std::shared_ptr<AnimGraphNode> graph) {
   if (m_graph && !m_skeleton.empty())
     m_graph->setSkeleton(&m_skeleton);
   LOG_INFO("[Animator] '{}' graph attached", m_ownerName);
+}
+
+void Animator::swapMovesetClips(const std::unordered_map<std::string, std::string>& clipPaths) {
+  if (!m_graph) return;
+
+  for (const auto& [actionKey, path] : clipPaths) {
+    auto clip = AssetManager::loadAnimationClip(path, "", actionKey);
+    if (!clip) {
+      LOG_WARN("[Animator] swapMovesetClips: failed to load clip '{}' for key '{}'",
+               path, actionKey);
+      continue;
+    }
+    clip->looping = false;
+    m_graph->swapClipByKey(actionKey, clip);
+    LOG_INFO("[Animator] '{}' swapped clip for action key: '{}'", m_ownerName, actionKey);
+  }
 }
 
 void Animator::update(float dt) {
