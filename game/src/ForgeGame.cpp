@@ -720,6 +720,7 @@ void ForgeGame::setupScripts() {
   const std::string root = forge::AssetManager::getAssetRoot();
   getLua().loadScript(root + "scripts/events/flags.lua");
   getLua().loadScript(root + "scripts/combat/attacks.lua");
+  getLua().loadScript(root + "scripts/combat/combat_rules.lua");
   getLua().loadScript(root + "scripts/equipment.lua");
   getLua().loadScript(root + "scripts/combat/player_combat.lua");
   getLua().loadScript(root + "scripts/ai/enemy_ai.lua");
