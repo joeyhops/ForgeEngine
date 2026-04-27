@@ -33,10 +33,10 @@ ForgeGame::ForgeGame()
 
 void ForgeGame::onInit() {
   LOG_INFO("[Game] Initializing ForgeGame");
-#ifdef __APPLE__
-  forge::AssetManager::setAssetRoot("assets/");
-#else
+#ifdef __WIN32__
   forge::AssetManager::setAssetRoot("../../../../assets/");
+#else
+  forge::AssetManager::setAssetRoot("assets/");
 #endif
 
   setupRenderer();

@@ -51,6 +51,9 @@ void Application::initWindow() {
 #else
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 #endif
+#ifdef __linux__
+  glfwWindowHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+#endif
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
   m_window = glfwCreateWindow(m_width, m_height, "Forge Engine", nullptr, nullptr);
