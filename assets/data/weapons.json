@@ -5,6 +5,9 @@
       "mesh":       "models/weapons/longsword.glb",
       "boneAttach": "weapon_r",
       "movesetId": "sword",
+      "meshOffset": {
+        "rot": [0, 0, -20.0]
+      },
       "attacks": {
         "r1": {
           "name":         "r1",

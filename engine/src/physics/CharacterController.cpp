@@ -78,6 +78,10 @@ void CharacterController::setWalkDirection(const glm::vec3& displacement) {
   m_controller->setWalkDirection(toBt(displacement));
 }
 
+void CharacterController::setGravity(float gravity) {
+  m_controller->setGravity(btVector3(0.0f, gravity, 0.0f));
+}
+
 void CharacterController::syncTransform() {
   const btTransform& t = m_ghost->getWorldTransform();
   glm::vec3 capsuleCenter = toGlm(t.getOrigin());

@@ -34,6 +34,8 @@ public:
   // Set displacement for next physics step
   void setWalkDirection(const glm::vec3& displacement);
 
+  void setGravity(float gravity);
+
   // write the capsule foot position (btm) into Transform
   void syncTransform();
 

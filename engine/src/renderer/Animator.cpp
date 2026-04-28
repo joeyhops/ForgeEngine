@@ -47,9 +47,16 @@ void Animator::update(float dt) {
     LOG_ERROR("[Animator] '{}' update() called without graph attached.", m_ownerName);
     return;
   }
+
+  m_rootMotionDelta = glm::vec3(0.0f);
+  m_rootMotionActive = false;
+
   m_graph->update(dt, m_params);
   m_graph->evaluate(m_localTransforms);
   computeBoneMatrices();
+
+  m_rootMotionDelta = m_graph->getRootMotionDelta();
+  m_rootMotionActive = glm::length(m_rootMotionDelta) > 0.001f;
 }
 
 bool Animator::isFinished() const {
@@ -65,6 +72,13 @@ float Animator::getActiveClipTime() const {
 float Animator::getActiveClipDuration() const {
   if (!m_graph) return 0.0f; 
   return m_graph->getActiveClipDuration();
+}
+
+std::string Animator::getCurrentStateName() const {
+  if (!m_graph) return "";
+  auto* sm = dynamic_cast<StateMachineNode*>(m_graph.get());
+  if (!sm) return "";
+  return sm->getCurrentState();
 }
 
 std::string Animator::getStateInfo() const {
@@ -144,10 +158,44 @@ void AnimationClip::sample(float t,
       glm::mat4 R = glm::toMat4(frame.rotation);
       glm::mat4 S = glm::scale(glm::mat4(1.0f), frame.scale);
       local = T * R * S;
+
+      if (useRootMotion && skeleton[i].name == rootBoneName) {
+        glm::mat4 RS = R * S;
+        RS[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        local = RS;
+      }
     }
 
     out[i] = local;
   }
+}
+
+glm::vec3 AnimationClip::sampleRootDelta(float tPrev, float tNow) const {
+  if (!useRootMotion) return glm::vec3(0.0f);
+
+  auto it = trackIndex.find(rootBoneName);
+  if (it == trackIndex.end()) return glm::vec3(0.0f);
+
+  const BoneTrack& track = tracks[it->second];
+
+  glm::vec3 delta;
+  if (tNow >= tPrev) {
+    delta = track.sample(tNow).position - track.sample(tPrev).position;
+    if (glm::length(delta) > 0.001f)
+      LOG_INFO("[RM] delta: ({:.3f},{:.3f},{:.3f})", delta.x, delta.y, delta.z);
+    return delta;
+  }
+
+  // Loop seam, clips wraps around to this frame
+  // Delta = (end of clip pos - prev pos) + (curr pos + start of clip pos)
+  float endT = duration - 0.0001;
+  glm::vec3 toEnd = track.sample(endT).position - track.sample(tPrev).position;
+  glm::vec3 fromStart = track.sample(tNow).position - track.sample(0.0f).position;
+  delta = toEnd + fromStart;
+  if (glm::length(delta) > 0.001f)
+    LOG_INFO("[RM] delta: ({:.3f},{:.3f},{:.3f})", delta.x, delta.y, delta.z);
+
+  return delta;
 }
 
 }

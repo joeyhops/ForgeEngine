@@ -669,6 +669,11 @@ std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
     std::string rootBone;
     bool extractY = false;
     clip->events = TAESerialization::load(sidecarAbs, rootBone, extractY);
+    if (!rootBone.empty()) {
+      clip->useRootMotion = true;
+      clip->rootBoneName = rootBone;
+      clip->extractRootY = extractY;
+    }
   }
   s_clips[cacheKey] = clip;
   return clip;

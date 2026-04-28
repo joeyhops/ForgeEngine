@@ -44,7 +44,17 @@ public:
 
   float getActiveClipTime() const;
   float getActiveClipDuration() const;
+  std::string getCurrentStateName() const;
   std::string getStateInfo() const; 
+
+  // root motion delta for curr frame (in anim local space). zeroed on update().
+  // Y is already masked per the active clips extractRootY flag
+  glm::vec3 getRootMotionDelta() const { return m_rootMotionDelta; }
+
+  // true when current active leaf clip has useRootMotion == true
+  // use to decide whether to drive the character from the delta
+  // or from the physics engine
+  bool isRootMotionActive() const { return m_rootMotionActive; }
 private:
   void computeBoneMatrices();
   
@@ -58,6 +68,9 @@ private:
   // Graph
   std::shared_ptr<AnimGraphNode> m_graph;
   AnimParamTable m_params;
+
+  glm::vec3 m_rootMotionDelta = glm::vec3(0.0f);
+  bool m_rootMotionActive = false;
 };
 
 }

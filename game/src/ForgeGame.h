@@ -42,6 +42,7 @@ private:
   void setupLevel(const std::string& levelName = "level_01");
   void setupScripts();
   void handleInput(float dt);
+  void applyMovement(float dt);
   void spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns);
   void drawModelAtMatrix(const forge::ModelData& model, const glm::mat4& matrix);
 
@@ -134,9 +135,16 @@ private:
   bool m_lockedOn = false;
 
   // Dodge state
-  float m_dodgeTimer = 0.0f; // Counts down; > 0 == currently dodging
-  glm::vec3 m_dodgeDir = { 0.0f, 0.0f, -1.0f }; // direction frozen at start of dodge
-  float m_dodgeDuration = 0.45f;
+  glm::vec3 m_moveDir = { 0.0f, 0.0f, 0.0f }; // desired direction, unit or zero
+  float m_moveSpeed = 0.0f;
+  bool m_dodgePending = false;
+  float m_dodgeFacingAngle = 0.0f;
+  bool m_inputLocked = false; // set by LockInput TAE event
+
+  bool m_rmOverride = false;
+  float m_rmScale = 1.0f;
+  glm::bvec3 m_rmAxes = { true, false, true };
+  bool m_kinematicMode = false;
 
   // Damage feedback
   float m_hitStopTimer = 0.0f;

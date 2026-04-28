@@ -6,7 +6,11 @@
       "Bash(awk '{x=$2;y=$3;z=$4} {if\\(NR==1||x<xmin\\)xmin=x; if\\(NR==1||x>xmax\\)xmax=x; if\\(NR==1||y<ymin\\)ymin=y; if\\(NR==1||y>ymax\\)ymax=y; if\\(NR==1||z<zmin\\)zmin=z; if\\(NR==1||z>zmax\\)zmax=z} END{printf \"X: %.1f to %.1f\\\\nY: %.1f to %.1f\\\\nZ: %.1f to %.1f\\\\n\", xmin,xmax,ymin,ymax,zmin,zmax}')",
       "Bash(grep -E \"\\\\.\\(cpp|h\\)$\")",
       "Bash(grep -E \"\\\\.\\(h|cpp\\)$\")",
-      "Bash(grep -E \"\\\\.\\(json|fgd\\)$\")"
+      "Bash(grep -E \"\\\\.\\(json|fgd\\)$\")",
+      "Bash(git -C /home/joeyhops/workspace/forgeengine log --oneline -10)",
+      "Bash(git -C /home/joeyhops/workspace/forgeengine diff HEAD~1 HEAD -- game/src/ForgeGame.cpp)",
+      "Bash(git -C /home/joeyhops/workspace/forgeengine diff HEAD~2 HEAD~1 -- game/src/ForgeGame.cpp)",
+      "Bash(pkg-config --modversion glfw3)"
     ]
   }
 }

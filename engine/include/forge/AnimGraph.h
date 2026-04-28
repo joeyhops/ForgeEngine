@@ -80,6 +80,10 @@ public:
   virtual void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
     (void)key; (void)clip;
   }
+
+  // returns this nodes root motion displacement for the current frame
+  // non-root-motion node return vec3(0) blend nodes return weighted avg
+  virtual glm::vec3 getRootMotionDelta() const { return glm::vec3(0.0f); }
 };
 
 // ClipNode
@@ -114,6 +118,7 @@ public:
   float getCurrentTime() const { return m_time; }
   float getDuration() const { return m_clip ? m_clip->duration : 0.0f; }
   const std::shared_ptr<AnimationClip>& getClip() const { return m_clip; }
+  glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
 private:
   void tickTAEEvents(float prevTime, float curTime);
   void deactivateAllEvents();
@@ -129,6 +134,7 @@ private:
   mutable std::vector<glm::mat4> m_pose;
 
   std::unordered_set<int> m_activeEventIndices;
+  glm::vec3 m_rootDelta = glm::vec3(0.0f);
 };
 
 // Blend1DNode
@@ -161,6 +167,7 @@ public:
     return 0.0f;
   }
   
+  glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
 private:
   struct Entry {
     float threshold = 0.0f;
@@ -174,6 +181,8 @@ private:
   float m_param = 0.0f;
   int m_lowerIdx = 0; // Index of lower bracketing entry
   float m_localAlpha = 0.0f; 
+
+  glm::vec3 m_rootDelta = glm::vec3(0.0f);
 };
 
 // StateMachineNode
@@ -223,6 +232,8 @@ public:
   }
 
   const std::string& getCurrentState() const { return m_currentState; }
+
+  glm::vec3 getRootMotionDelta() const override;
 private:
   void transitionTo(const std::string& toState, float blendTime, AnimParamTable& params);
 

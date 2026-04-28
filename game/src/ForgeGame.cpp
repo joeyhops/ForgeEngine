@@ -24,6 +24,7 @@
 
 #include <memory>
 #include <algorithm>
+#include <sstream>
 #include "GameFlags.h"
 #include "forge/CombatComponent.h"
 
@@ -331,7 +332,7 @@ static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
     root->addTransition({
       "Locomotion", "Dodging",
       [](AnimParamTable& p) { return p.consumeTrigger("dodge"); },
-      0.05f
+      0.0f
     });
 
     root->addTransition({
@@ -400,7 +401,63 @@ void ForgeGame::setupPlayer() {
       std::sort(dodgeClip->events.begin(), dodgeClip->events.end(),
                 [](const forge::AnimEvent& a, const forge::AnimEvent& b){ return a.startTime < b.startTime; });
     }
-    m_dodgeDuration = dodgeClip->duration;
+
+    forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
+      if (e.ownerName != "player") return;
+      if (e.type != forge::AnimEventType::RootMotionBegin) return;
+
+      m_rmOverride = true;
+      m_rmScale = 1.0f;
+      m_rmAxes = { true, false, true };
+
+      // Parse payload: "scale;axes;maxVel"
+      if (!e.payload.empty()) {
+        std::istringstream ss(e.payload);
+        std::string token;
+        int idx = 0;
+        while (std::getline(ss, token, ';')) {
+          if (idx == 0 && !token.empty()) m_rmScale = std::stof(token);
+          if (idx == 1 && !token.empty()) {
+            m_rmAxes.x = token.find('x') != std::string::npos;
+            m_rmAxes.y = token.find('y') != std::string::npos;
+            m_rmAxes.z = token.find('z') != std::string::npos;
+          }
+          idx++;
+        }
+      }
+      LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{}", m_rmScale,
+               m_rmAxes.x ? "x" : "",m_rmAxes.y ? "y" : "",m_rmAxes.z ? "z" : "");
+    });
+
+    forge::EventBus::subscribe<forge::AnimEventDeactivated>([this](const forge::AnimEventDeactivated& e) {
+      if (e.ownerName != "player") return;
+      if (e.type != forge::AnimEventType::RootMotionEnd) return;
+      m_rmOverride = false;
+      m_rmScale = 1.0f;
+      m_rmAxes = { true, false, true };
+      LOG_INFO("[RM] RootMotionEnd");
+    });
+
+    forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
+      if (e.ownerName != "player") return;
+      if (e.type != forge::AnimEventType::RootMotionScale) return;
+      if (!e.payload.empty()) m_rmScale = std::stof(e.payload);
+    });
+
+    forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
+      if (e.ownerName != "player") return;
+      if (e.type == forge::AnimEventType::SetKinematic) {
+        m_kinematicMode = true;
+        m_player.controller->setGravity(0.0f);
+      } else if (e.type == forge::AnimEventType::RestorePhysics) {
+        m_kinematicMode = false;
+        m_player.controller->setGravity(-20.0f);
+      } else if (e.type == forge::AnimEventType::LockInput) {
+        m_inputLocked = true;
+      } else if (e.type == forge::AnimEventType::UnlockInput) {
+        m_inputLocked = false;
+      }
+    });
   }
 
   if (m_player.clips["death"])
@@ -609,7 +666,7 @@ void ForgeGame::setupLevel(const std::string& levelName) {
       if (ent.angle != 0.0f) {
         float rad = glm::radians(ent.angle);
         m_player.forward = glm::normalize(glm::vec3(sinf(rad), 0.0f, cosf(rad)));
-        m_player.transform->setEulerAngles({ 90.0f, ent.angle, 0.0f });
+        m_player.transform->setEulerAngles({ 0.0f, ent.angle, 0.0f });
       }
       LOG_INFO("[Game] Player spawned at {:.2f},{:.2f},{:.2f}", origin.x, origin.y, origin.z);
       if (m_player.equipment) {
@@ -773,6 +830,12 @@ void ForgeGame::onUpdate(float dt) {
   );
   handleInput(dt);
 
+  m_player.animator->update(dt);
+  if (m_enemy.active)
+    m_enemy.animator->update(dt);
+
+  applyMovement(dt);
+
   // Physics
   getPhysics().step(dt);
 
@@ -868,7 +931,6 @@ void ForgeGame::onUpdate(float dt) {
 
   glm::vec3 playerPos = m_player.transform->getPosition();
   m_player.combat->setWorldData(playerPos, m_player.forward);
-  m_player.animator->update(dt);
 
   if (m_enemy.active) {
     if (m_enemy.equipment && m_enemy.combat->isAlive()) {
@@ -910,7 +972,6 @@ void ForgeGame::onUpdate(float dt) {
     float enemyMoveSpeed = (glm::length(displacement) > 0.0001f) ? 1.0f : 0.0f;
     m_enemy.animator->getParams().setFloat("moveSpeed", enemyMoveSpeed);
 
-    m_enemy.animator->update(dt);
   }
   // Input -> Lua
   bool j = isKeyDown(GLFW_KEY_J);
@@ -1201,7 +1262,8 @@ void ForgeGame::handleInput(float dt) {
     LOG_INFO("[Game] UI Mouse Mode: {}", m_uiMouseMode ? "ON" : "OFF");
   }
   if (!m_player.combat->isAlive()) {
-    m_player.controller->setWalkDirection({ 0.0f, 0.0f, 0.0f });
+    m_moveDir = glm::vec3(0.0f);
+    m_moveSpeed = 0.0f;
     return;
   }
 
@@ -1239,6 +1301,14 @@ void ForgeGame::handleInput(float dt) {
 
   glm::vec3   move  = { 0, 0, 0 };
 
+  bool isDodging = (m_player.animator->getCurrentStateName() == "Dodging");
+  if (isDodging){
+    m_player.animator->getParams().setFloat("moveSpeed", 0.0f);
+    m_moveDir = glm::vec3(0.0f);
+    m_moveSpeed = 0.0f;
+    return;
+  }
+
   if (!m_lockedOn) {
     glm::vec3 camFwd = m_tpCamera->getHorizontalForward();
     glm::vec3 camRight = m_tpCamera->getHorizontalRight();
@@ -1268,49 +1338,36 @@ void ForgeGame::handleInput(float dt) {
   float speed = sprinting ? sprintSpeed : walkSpeed;
 
   // Dodge
-  bool currentlyDodging = (m_dodgeTimer > 0.0f);
 
-  if (isKeyPressed(GLFW_KEY_SPACE)&& !currentlyDodging && !m_player.combat->isAttacking()) {
-    // Lock-in the dodge direction: movement dir if moving else player forward
-    m_dodgeDir = (glm::length(move) > 0.001f)
+  if (isKeyPressed(GLFW_KEY_SPACE)&& !m_inputLocked && !m_player.combat->isAttacking()) {
+    glm::vec3 dodgeDir = (glm::length(move) > 0.001f)
       ? glm::normalize(move)
       : m_player.forward;
-
-    m_dodgeTimer = m_dodgeDuration;
+    m_dodgeFacingAngle = atan2f(dodgeDir.x, dodgeDir.z);
+    m_dodgePending = true;
     m_player.animator->getParams().setTrigger("dodge");
-    LOG_INFO("[Game] Dodge initiated");
+    LOG_INFO("[Game] Dodge initiated.");
   }
 
-  // Final velocity
-  glm::vec3 velocity = { 0.0f, 0.0f, 0.0f };
+  if (glm::length(move) > 0.001f) {
+    m_moveDir = glm::normalize(move);
+    m_moveSpeed = sprinting ? m_playerSprintSpeed : m_playerWalkSpeed;
 
-  if (m_dodgeTimer > 0.0f) {
-    m_dodgeTimer -= dt;
-    float t = m_dodgeTimer / m_dodgeDuration;
-    float dodgeSpeed = 10.0f * glm::smoothstep(0.0f, 0.25f, t); 
-    //float dodgeSpeed = glm::mix(5.0f, 10.0f, t); // starts fast, eases out
-    velocity = m_dodgeDir * dodgeSpeed;
-  } else if (glm::length(move) > 0.001f) {
-    move = glm::normalize(move);
-    velocity = move * speed;
-
-    glm::vec3 faceDir;
-    if (m_lockedOn) {
-      // face towards locked enemy regardless of mvmt dir
-      faceDir = m_lockOnEnemyPos - m_player.transform->getPosition();
-    } else {
-      faceDir = move;
-    }
+    glm::vec3 faceDir = m_lockedOn
+      ? (m_lockOnEnemyPos - m_player.transform->getPosition())
+      : glm::vec3(move);
     faceDir.y = 0.0f;
     if (glm::length(faceDir) > 0.001f) {
       float angle = atan2f(faceDir.x, faceDir.z);
       m_player.transform->setEulerAngles({ 0.0f, glm::degrees(angle), 0.0f });
-      m_player.forward = glm::normalize(glm::vec3(faceDir.x, 0.0f, faceDir.z));
+      m_player.forward = glm::normalize(faceDir);
     }
 
-    float moveSpeedParam = sprinting ? 2.0f : (glm::length(velocity) / walkSpeed);
+    float moveSpeedParam = sprinting ? 2.0f : 1.0f;
     m_player.animator->getParams().setFloat("moveSpeed", moveSpeedParam);
   } else {
+    m_moveDir = glm::vec3(0.0f);
+    m_moveSpeed = 0.0f;
     m_player.animator->getParams().setFloat("moveSpeed", 0.0f);
 
     if (m_lockedOn) {
@@ -1318,16 +1375,53 @@ void ForgeGame::handleInput(float dt) {
       faceDir.y = 0.0f;
       if (glm::length(faceDir) > 0.001f) {
         float angle = atan2f(faceDir.x, faceDir.z);
-        m_player.transform->setEulerAngles({ 90.0f, glm::degrees(angle), 0.0f });
-        m_player.forward = glm::normalize(glm::vec3(faceDir.x, 0.0f, faceDir.z));
+        m_player.transform->setEulerAngles({ 0.0f, glm::degrees(angle), 0.0f });
+        m_player.forward = glm::normalize(faceDir);
       }
     }
   }
+}
 
-  constexpr float physStep = 1.0f / 60.0f;
-  m_player.controller->setWalkDirection(velocity * physStep);
+void ForgeGame::applyMovement(float dt) {
+  if (m_rmOverride && m_player.animator->getCurrentStateName() != "Dodging") {
+    m_rmOverride = false;
+    m_rmScale = 1.0f;
+    m_rmAxes = { true, false, true };
+  }
+  if (!m_player.combat->isAlive()) {
+    m_player.controller->setWalkDirection(glm::vec3(0.0f));
+    return;
+  }
 
-  m_player.combat->setWorldData(m_player.transform->getPosition(), m_player.forward);
+  glm::vec3 displacement(0.0f);
+
+  bool isDodging = (m_player.animator->getCurrentStateName() == "Dodging");
+  bool useRM = m_player.animator->isRootMotionActive() || m_rmOverride || isDodging;
+
+  if (useRM) {
+    glm::vec3 localDelta = m_player.animator->getRootMotionDelta();
+    localDelta *= m_player.transform->getScale().x;
+
+    if (m_rmOverride) {
+      if (!m_rmAxes.x) localDelta.x = 0.0f;
+      if (!m_rmAxes.y) localDelta.y = 0.0f;
+      if (!m_rmAxes.z) localDelta.z = 0.0f;
+      localDelta *= m_rmScale;
+    }
+
+    float facingAngle = atan2f(m_player.forward.x, m_player.forward.z);
+
+    if (isDodging)
+      facingAngle = m_dodgeFacingAngle;
+
+    glm::quat facing = glm::angleAxis(facingAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+    displacement = facing * localDelta;
+  } else {
+    displacement = m_moveDir * m_moveSpeed * dt;
+  }
+
+  m_player.controller->setWalkDirection(displacement);
+  m_dodgePending = false;
 }
 
 void ForgeGame::spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns) {

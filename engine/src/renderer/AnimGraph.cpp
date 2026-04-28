@@ -57,6 +57,11 @@ void ClipNode::update(float dt, AnimParamTable& params) {
   if (m_skeleton && !m_skeleton->empty()) {
     m_clip->sample(m_time, *m_skeleton, m_pose);
   }
+
+  // Extract root delta and apply per-clip y mask
+  m_rootDelta = m_clip->sampleRootDelta(m_prevTime, m_time);
+  if (!m_clip->extractRootY)
+    m_rootDelta.y = 0.0f;
 }
 
 void ClipNode::evaluate(std::vector<glm::mat4>& outPose) const {
@@ -180,6 +185,16 @@ void Blend1DNode::update(float dt, AnimParamTable& params) {
   int upperIdx = m_lowerIdx + 1;
   if (upperIdx < static_cast<int>(m_entries.size()) && m_entries[upperIdx].node)
     m_entries[upperIdx].node->update(dt, params);
+
+  glm::vec3 lowerDelta = m_entries[m_lowerIdx].node
+    ? m_entries[m_lowerIdx].node->getRootMotionDelta()
+    : glm::vec3(0.0f);
+
+  glm::vec3 upperDelta = (upperIdx < static_cast<int>(m_entries.size()) && m_entries[upperIdx].node)
+    ? m_entries[upperIdx].node->getRootMotionDelta()
+    : glm::vec3(0.0f);
+
+  m_rootDelta = glm::mix(lowerDelta, upperDelta, m_localAlpha);
 }
 
 void Blend1DNode::evaluate(std::vector<glm::mat4>& outPose) const {
@@ -353,6 +368,23 @@ bool StateMachineNode::isFinished() const {
   return it->second->isFinished();
 }
 
+glm::vec3 StateMachineNode::getRootMotionDelta() const {
+  auto it = m_states.find(m_currentState);
+  if (it == m_states.end() || !it->second) return glm::vec3(0.0f);
+
+  glm::vec3 currDelta = it->second->getRootMotionDelta();
+
+  if (m_blendAlpha >= 1.0f || m_previousState.empty())
+    return currDelta;
+
+  auto prevIt = m_states.find(m_previousState);
+  glm::vec3 prevDelta = (prevIt != m_states.end() && prevIt->second)
+    ? prevIt->second->getRootMotionDelta()
+    : glm::vec3(0.0f);
+
+  return glm::mix(prevDelta, currDelta, m_blendAlpha);
+}
+
 std::string StateMachineNode::getDebugStateInfo() const {
   if (m_blendAlpha < 1.0f && !m_previousState.empty())
     return m_previousState + " -> " + m_currentState + " ("
@@ -369,5 +401,7 @@ void StateMachineNode::swapClipByKey(const std::string& key, std::shared_ptr<Ani
       node->swapClipByKey(key, clip);
   }
 } 
+
+
 
 }

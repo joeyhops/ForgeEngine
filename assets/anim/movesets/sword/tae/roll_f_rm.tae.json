@@ -1,0 +1,18 @@
+{
+  "rootBone": "root",
+  "extractRootY": false,
+  "events": [
+    {
+      "type": "RootMotionBegin",
+      "startTime": 0.08,
+      "endTime": 0.30,
+      "payload": "0.6;xz;6.0"
+    },
+    {
+      "type": "RootMotionEnd",
+      "startTime": 0.30,
+      "endTime": 0.30,
+      "payload": ""
+    }
+  ]
+}

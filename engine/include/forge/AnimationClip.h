@@ -79,6 +79,8 @@ public:
   void sample(float t,
               const std::vector<Bone>& skeleton,
               std::vector<glm::mat4>& outLocalTransforms) const;
+
+  glm::vec3 sampleRootDelta(float tPrev, float tNow) const;
 };
 
 }
