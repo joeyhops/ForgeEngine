@@ -1,5 +1,6 @@
 add_executable(game
   src/main.cpp
+  src/stb_impl.cpp
   src/ForgeGame.cpp
 )
 

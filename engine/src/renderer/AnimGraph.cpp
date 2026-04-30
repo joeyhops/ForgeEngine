@@ -113,8 +113,10 @@ void ClipNode::deactivateAllEvents() {
   if (!m_clip) return;
   const auto& events = m_clip->events;
   for (int i : m_activeEventIndices) {
-    if (i < (int)events.size())
-        EventBus::publish(AnimEventDeactivated{ m_ownerName, events[i].type, events[i].payload });
+    if (i >= (int)events.size()) continue;
+    const auto& ev = events[i];
+    if (ev.startTime == ev.endTime) continue;
+    EventBus::publish(AnimEventDeactivated{ m_ownerName, ev.type, ev.payload });
   }
   m_activeEventIndices.clear();
 }

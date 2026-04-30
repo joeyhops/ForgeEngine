@@ -97,10 +97,22 @@ void EquipmentComponent::update(const glm::mat4& ownerModelMatrix,
       if (sy > 1e-6f) boneAttach[1] /= sy;
       if (sz > 1e-6f) boneAttach[2] /= sz;
 
-      m_weaponTransforms[s] = boneAttach * m_equipped[s]->meshOffset;
+      const glm::mat4& effectiveOffset = m_overrideActive[s]
+        ? m_meshOffsetOverride[s]
+        : m_equipped[s]->meshOffset;
+      m_weaponTransforms[s] = boneAttach * effectiveOffset;
     }
     // visible failure
   }
+}
+
+void EquipmentComponent::setMeshOffsetOverride(Slot slot, const glm::mat4& offset) {
+  m_meshOffsetOverride[slot] = offset;
+  m_overrideActive[slot] = true;
+}
+
+void EquipmentComponent::clearMeshOffsetOverride(Slot slot) {
+  m_overrideActive[slot] = false;
 }
 
 }

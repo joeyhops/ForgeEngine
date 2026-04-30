@@ -50,6 +50,10 @@ public:
   std::function<void(Slot, const WeaponDef*)> onEquip;
   std::function<void(Slot)> onUnequip;
 
+  void setMeshOffsetOverride(Slot slot, const glm::mat4& offset);
+  void clearMeshOffsetOverride(Slot slot);
+  bool hasMeshOffsetOverride(Slot slot) const { return m_overrideActive[slot]; }
+
 private:
   struct SlotBinding {
     int boneIndex = -1;
@@ -63,6 +67,8 @@ private:
   const WeaponDef* m_equipped[SLOT_COUNT] = {};
   SlotBinding m_binding[SLOT_COUNT] = {};
   glm::mat4 m_weaponTransforms[SLOT_COUNT] = {};
+  glm::mat4 m_meshOffsetOverride[SLOT_COUNT];
+  bool m_overrideActive[SLOT_COUNT] = {};
 };
 
 }

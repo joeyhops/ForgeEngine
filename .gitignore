@@ -4,6 +4,7 @@ save.json
 compile_commands.json
 .DS_Store
 .clangd
+.claude
 trenchbroom/
 radiant/
 netradiant/

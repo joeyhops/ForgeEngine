@@ -18,6 +18,8 @@
 #include <forge/map/MapScene.h>
 #include <forge/map/EntityAssembler.h>
 
+#include <stb_truetype.h>
+
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -34,6 +36,7 @@ protected:
   void onShutdown() override;
 
 private:
+  enum class GameState { Playing, DeathSequence, YouDied, Respawning };
   std::string m_initialMap = "bonfire";
 
   void setupRenderer();
@@ -54,14 +57,38 @@ private:
                         const forge::Animator& animator);
 
   std::vector<forge::MapRenderObject> buildRenderObjects(const forge::EntityGeometry& geom);
+  
+  void initHUD();
+  void drawHUDRect(float x, float y, float w, float h,
+                   float r, float g, float b, float a);
+  void drawHUDBar(float x, float y, float w, float h,
+                  float fill, float r, float g, float b);
 
   // Rendering
   std::shared_ptr<forge::Shader> m_shader; // basic.vert/frag
   std::shared_ptr<forge::Shader> m_skinnedShader; // skinned.vert/basic.frag
   std::shared_ptr<forge::Shader> m_debugLineShader;
+  std::shared_ptr<forge::Shader> m_hudShader;
+  std::shared_ptr<forge::Shader> m_hudTextShader;
   std::unique_ptr<forge::Camera> m_camera;
   std::unique_ptr<forge::ThirdPersonCamera> m_tpCamera;
   
+  unsigned int m_hudVAO = 0;
+  unsigned int m_hudVBO = 0;
+  unsigned int m_textVAO = 0;
+  unsigned int m_textVBO = 0;
+  unsigned int m_fontAtlasTexture = 0;
+
+  static constexpr int k_fontAtlasW = 512;
+  static constexpr int k_fontAtlasH = 512;
+  static constexpr int k_fontFirstChar = 32; // ascii space
+  static constexpr int k_fontNumChars = 96; // space - tilde
+
+  stbtt_bakedchar m_glyphData[96]; // one entry per baked char
+
+  void drawHUDText(float x, float y, float pixelHeight,
+                   const char* text, float r, float g, float b, float a);
+
   // Player
   struct PlayerEntity {
     forge::SkinnedModelData skinnedModel;
@@ -79,6 +106,8 @@ private:
   // Enemy
   struct EnemyEntity {
     bool active = false;
+    bool respawns = true;
+    int deathFlag = -1;
     forge::SkinnedModelData skinnedModel;
     std::unique_ptr<forge::Transform> transform;
     std::unique_ptr<forge::CharacterController> controller;
@@ -95,6 +124,7 @@ private:
     std::unique_ptr<forge::TriggerVolume> trigger;
     int bonfireId = 0;
     int targetFlag = 0;
+    glm::vec3 position = { 0.0f, 0.0f, 0.0f };
   };
   std::vector<BonfireVolume> m_bonfires;
 
@@ -140,6 +170,18 @@ private:
   bool m_dodgePending = false;
   float m_dodgeFacingAngle = 0.0f;
   bool m_inputLocked = false; // set by LockInput TAE event
+
+  // Death and Respawn
+  GameState m_gameState = GameState::Playing;
+  float m_gameStateTimer = 0.0f;
+  float m_gameStateDuration = 0.0f;
+
+  glm::vec3 m_lastBonfirePos = { 0.0f, 1.0f, 0.0f }; // updated on bonfire rest
+  glm::vec3 m_enemySpawnPos = { 0.0f, 0.0f, -4.0f }; // Saved at level load
+
+  void enterDeathSequence();
+  void enterYouDied();
+  void respawnPlayer();
 
   bool m_rmOverride = false;
   float m_rmScale = 1.0f;
@@ -196,4 +238,13 @@ private:
 
   forge::CombatComponent::AttackPhase m_prevPlayerPhase = forge::CombatComponent::AttackPhase::None;
   forge::CombatComponent::AttackPhase m_prevEnemyPhase = forge::CombatComponent::AttackPhase::None;
+
+  struct WeaponSocketDebug {
+    glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
+    glm::vec3 euler = { 0.0f, 0.0f, 0.0f };
+    glm::vec3 scale = { 1.0f, 1.0f, 1.0f };
+    bool active = false;
+  } m_socketDebug;
+
+  void drawWeaponSocketEditor();
 };

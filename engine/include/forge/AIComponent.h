@@ -28,6 +28,7 @@ public:
   
   // Call every frame - playerPos comes from APplicaiton
   void update(float dt, const glm::vec3& playerPos);
+  void reset();
 
   // Config
   void addWaypoint(const glm::vec3& point);

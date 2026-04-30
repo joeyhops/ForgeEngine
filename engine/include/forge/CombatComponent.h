@@ -70,6 +70,8 @@ public:
   }
 
   void healToFull() { m_hp = m_maxHp; }
+
+  void revive();
   
   // incoming Hit
   void applyHit(const HitEvent& hit);

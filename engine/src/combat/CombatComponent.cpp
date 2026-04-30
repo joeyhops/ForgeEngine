@@ -273,6 +273,36 @@ void CombatComponent::setWeapon(const WeaponDef* weapon) {
   }
 }
 
+void CombatComponent::revive() {
+  m_hp = m_maxHp;
+  m_stamina = m_maxStamina;
+  m_poise = m_maxPoise;
+
+  // Clear all transient attack state
+  m_hitboxActive = false;
+  m_hitLanded = false;
+  m_usingTAEHitboxes = false;
+  m_taeAttackComplete = false;
+  m_staggerTimer = 0.0f;
+  m_attackTimer = 0.0f;
+  m_hitFlash = false;
+  m_hitFlashTimer = 0.0f;
+
+  // Clear combat windows in case we died mid attack
+  m_inComboWindow = false;
+  m_comboWindowAction.clear();
+  m_comboBuffer.clear();
+  m_inReceptiveWindow = false;
+  m_receptiveWindowType = ReceptiveHitWindowType::None;
+  m_activeHitPerilous = false;
+
+  // Transition FSM then clear the param so graph can respond
+  m_fsm.transition(CombatState::Idle);
+  if (m_paramTable) m_paramTable->setBool("isDead", false);
+
+  LOG_INFO("[Combat] {} revived", m_ownerName);
+}
+
 const AttackData& CombatComponent::getAttackData(const std::string& name) const {
   if (m_weapon) {
     auto it = m_weapon->attacks.find(name);

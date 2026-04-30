@@ -25,8 +25,8 @@
 #include <memory>
 #include <algorithm>
 #include <sstream>
+#include <fstream>
 #include "GameFlags.h"
-#include "forge/CombatComponent.h"
 
 ForgeGame::ForgeGame()
   : forge::Application(1280, 720, "Forge Engine - Soulslike demo")
@@ -41,7 +41,7 @@ void ForgeGame::onInit() {
 #endif
 
   setupRenderer();
-
+  getFlags().loadFromFile(k_saveFilePath);
   forge::AssetManager::loadWeaponDefs("data/weapons.json");
   forge::AssetManager::loadMovesetDefs("data/movesets.json");
 
@@ -196,9 +196,170 @@ void ForgeGame::onInit() {
       heavyHit 
     });
   });
+  forge::EventBus::subscribe<forge::RestEvent>([this](const forge::RestEvent& e) {
+    for (const auto& bf : m_bonfires) {
+      if (bf.bonfireId == e.bonfireId) {
+        m_lastBonfirePos = bf.position;
+        break;
+      }
+    }
+    LOG_INFO("[Game] Bonfire {} rested - respawn pos updated", e.bonfireId);
+  });
   // Try loading previous save
-  getFlags().loadFromFile(k_saveFilePath);
   LOG_INFO("[Game] init complete");
+}
+
+void ForgeGame::initHUD() {
+#ifdef __APPLE__
+  m_hudShader = forge::AssetManager::loadShader("shaders/mac/hud.vert", "shaders/mac/hud.frag");
+#else
+  m_hudShader = forge::AssetManager::loadShader("shaders/win/hud.vert", "shaders/win/hud.frag");
+#endif
+
+  // Unit quad: btm-left origin, covers [0,1]x[0,1]
+  // The vertex shader maps it to pixel space via u_rect
+  const float verts[] = {
+    0.0f, 0.0f,
+    1.0f, 0.0f,
+    1.0f, 1.0f,
+    0.0f, 0.0f,
+    1.0f, 1.0f,
+    0.0f, 1.0f,
+  };
+
+  glGenVertexArrays(1, &m_hudVAO);
+  glGenBuffers(1, &m_hudVBO);
+
+  glBindVertexArray(m_hudVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, m_hudVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+
+  glBindVertexArray(0);
+
+  const std::string fontPath = forge::AssetManager::getAssetRoot() + "fonts/Lato-Regular.ttf";
+  std::ifstream fontFile(fontPath, std::ios::binary | std::ios::ate);
+  if (fontFile.is_open()) {
+    size_t size = fontFile.tellg();
+    fontFile.seekg(0);
+    std::vector<uint8_t> fontData(size);
+    fontFile.read(reinterpret_cast<char*>(fontData.data()), size);
+
+    // Bakle at 32PX - drawHUDText scales quads to the requested size at draw time
+    std::vector<uint8_t> bitmap(k_fontAtlasW * k_fontAtlasH);
+    stbtt_BakeFontBitmap(fontData.data(), 0, 32.0f,
+                         bitmap.data(), k_fontAtlasW, k_fontAtlasH, k_fontFirstChar, k_fontNumChars, m_glyphData);
+
+    glGenTextures(1, &m_fontAtlasTexture);
+    glBindTexture(GL_TEXTURE_2D, m_fontAtlasTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED,
+             k_fontAtlasW, k_fontAtlasH,
+             0, GL_RED, GL_UNSIGNED_BYTE, bitmap.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+  } else {
+    LOG_WARN("[HUD] Font not found at '{}' - text rendering disabled", fontPath);
+  }
+
+  // Dynamic text vbo (6 verts x 4 floats x up to 512 chars per draw call)
+  glGenVertexArrays(1, &m_textVAO);
+  glGenBuffers(1, &m_textVBO);
+  glBindVertexArray(m_textVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, m_textVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 4 * 6 * 512, nullptr, GL_DYNAMIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+  glBindVertexArray(0);
+
+#ifdef __APPLE__
+  m_hudTextShader = forge::AssetManager::loadShader("shaders/mac/hud_text.vert", "shaders/mac/hud_text.frag");
+#else
+  m_hudTextShader = forge::AssetManager::loadShader("shaders/win/hud_text.vert", "shaders/win/hud_text.frag");
+#endif
+}
+
+void ForgeGame::drawHUDText(float x, float y, float pixelHeight,
+                            const char* text, float r, float g, float b, float a)
+{
+  if (!m_fontAtlasTexture || !m_hudTextShader) return;
+
+  const float scale = pixelHeight /32.0f;
+
+  std::vector<float> verts;
+  verts.reserve(strlen(text) * 6 * 4);
+
+  float cx = x, cy = y;
+  while (*text) {
+    int c = (unsigned char)*text++;
+    if (c < k_fontFirstChar || c >= k_fontFirstChar + k_fontNumChars) continue;
+
+    stbtt_aligned_quad q;
+    stbtt_GetBakedQuad(m_glyphData, k_fontAtlasW, k_fontAtlasH,
+                       c - k_fontFirstChar, &cx, &cy, &q, 1);
+
+    auto sx = [&](float v) { return x + (v - x) * scale; };
+    auto sy = [&](float v) { return y + (v - y) * scale; };
+
+    // Two triangles per glyph (pos in screen space and UVs from atlas)
+    float quad[6][4] = {
+      { sx(q.x0), sy(q.y0), q.s0, q.t0 },
+      { sx(q.x1), sy(q.y0), q.s1, q.t0 },
+      { sx(q.x1), sy(q.y1), q.s1, q.t1 },
+      { sx(q.x0), sy(q.y0), q.s0, q.t0 },
+      { sx(q.x1), sy(q.y1), q.s1, q.t1 },
+      { sx(q.x0), sy(q.y1), q.s0, q.t1 },
+    };
+    for (auto& v : quad)
+      verts.insert(verts.end(), std::begin(v), std::end(v));
+  }
+
+  if (verts.empty()) return;
+
+  glm::mat4 proj = glm::ortho(0.0f, (float)getWidth(),
+                              (float)getHeight(), 0.0f);
+
+  m_hudTextShader->bind();
+  m_hudTextShader->setMat4("u_projection", proj);
+  m_hudTextShader->setVec4("u_color", glm::vec4(r, g, b, a));
+  m_hudTextShader->setInt("u_fontAtlas", 0);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, m_fontAtlasTexture);
+
+  glBindVertexArray(m_textVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, m_textVBO);
+  glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(float), verts.data());
+  glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(verts.size() / 4));
+  glBindVertexArray(0);
+
+  m_hudTextShader->unbind();
+}
+
+void ForgeGame::drawHUDRect(float x, float y, float w, float h,
+                            float r, float g, float b, float a) {
+  glm::mat4 proj = glm::ortho(
+    0.0f, (float)getWidth(),
+    (float)getHeight(), 0.0f
+  );
+  m_hudShader->setMat4("u_projection", proj);
+  m_hudShader->setVec4("u_rect", glm::vec4(x, y, w, h));
+  m_hudShader->setVec4("u_color", glm::vec4(r, g, b, a));
+
+  glBindVertexArray(m_hudVAO);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+  glBindVertexArray(0);
+}
+
+void ForgeGame::drawHUDBar(float x, float y, float w, float h,
+                           float fill, float r, float g, float b) {
+  drawHUDRect(x - 1.0f, y - 1.0f, w + 2.0f, h + 2.0f, 0.0f, 0.0f, 0.0f, 0.75f);
+  if (fill > 0.0f)
+    drawHUDRect(x, y, w * glm::clamp(fill, 0.0f, 1.0f), h, r, g, b, 0.85f);
 }
 
 void ForgeGame::onShutdown() {
@@ -230,6 +391,7 @@ void ForgeGame::setupRenderer() {
   m_camera = std::make_unique<forge::Camera>(60.0f, aspect, 0.1f, 300.0f);
   m_tpCamera = std::make_unique<forge::ThirdPersonCamera>(*m_camera, getPhysics());
 
+  initHUD();
   // Hide and capture cursor so all mouse mvmt drives the camera
   // ImGui panels remain accessible via F-key toggles and keyboard nav
   glfwSetInputMode(getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -338,7 +500,7 @@ static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
     root->addTransition({
       "Dodging", "Locomotion",
       [dodgeNode](AnimParamTable&) { return dodgeNode->isFinished(); },
-      0.15f 
+      0.5f 
     });
   }
 
@@ -347,6 +509,12 @@ static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
     "", "Dead",
     [](AnimParamTable& p) { return p.getBool("isDead"); },
     0.3f
+  });
+
+  root->addTransition({
+    "Dead", "Locomotion",
+    [](AnimParamTable& p) { return !p.getBool("isDead"); },
+    0.5f
   });
 
   root->setInitialState("Locomotion");
@@ -674,61 +842,75 @@ void ForgeGame::setupLevel(const std::string& levelName) {
                                   "longsword");
       }
     } else if (inst.classname == "enemy_spawn") {
-      m_enemy.active = true;
-      glm::vec3 spawnPos = inst.origin;
+      m_enemy.respawns = ent.getBool("respawns", true);
+      m_enemy.deathFlag = ent.getInt("death_flag", -1);
+      bool shouldSpawn = !(m_enemy.deathFlag > 0 && getFlags().get(m_enemy.deathFlag));
+      LOG_INFO("[FLAGS] Flags loaded for enemy: respawns:{} {} {}", m_enemy.respawns ? "true" : "false", m_enemy.deathFlag, getFlags().get(m_enemy.deathFlag) ? "true" : "false");
+      if (shouldSpawn) {
+        m_enemy.active = true;
+        glm::vec3 spawnPos = inst.origin;
 
-      constexpr float k_capsuleHalfHeight = 0.75f;
-      constexpr float k_rayStart = 2.0f;
-      constexpr float k_rayLength = 10.0f;
+        constexpr float k_capsuleHalfHeight = 0.75f;
+        constexpr float k_rayStart = 2.0f;
+        constexpr float k_rayLength = 10.0f;
 
-      glm::vec3 rayFrom = spawnPos + glm::vec3(0.0f, k_rayStart, 0.0f);
-      glm::vec3 rayTo = spawnPos + glm::vec3(0.0f, -k_rayLength, 0.0f);
+        glm::vec3 rayFrom = spawnPos + glm::vec3(0.0f, k_rayStart, 0.0f);
+        glm::vec3 rayTo = spawnPos + glm::vec3(0.0f, -k_rayLength, 0.0f);
 
-      forge::RaycastHit hit = getPhysics().raycast(rayFrom, rayTo);
-      if (hit.hit) {
-        spawnPos.y = hit.point.y + k_capsuleHalfHeight;
-      } else {
-        spawnPos.y -= k_capsuleHalfHeight;
-      }
-      m_enemy.controller->warp(spawnPos);
-
-      // Patrol waypoints
-      std::string group = ent.getProperty("patrol_group", "");
-      if (!group.empty()) {
-        m_enemy.ai->clearWaypoints();
-        for (const auto* wp : m_levelData.getByClass("patrol_waypoint")) {
-          if (wp->props.count("patrol_group") && wp->props.at("patrol_group") == group)
-            m_enemy.ai->addWaypoint(wp->origin);
+        forge::RaycastHit hit = getPhysics().raycast(rayFrom, rayTo);
+        if (hit.hit) {
+          spawnPos.y = hit.point.y + k_capsuleHalfHeight;
+        } else {
+          spawnPos.y -= k_capsuleHalfHeight;
         }
-      }
+        m_enemySpawnPos = spawnPos;
+        m_enemy.controller->warp(m_enemySpawnPos);
 
-      // Equipment/Weapons
-      std::string wepId = ent.getProperty("weaponId", "");
-      bool dropOwn = (ent.getProperty("dropWeapon", "1") == "1");
-      std::string otherWepId = !dropOwn ? ent.getProperty("dropId", "") : "";
-
-      if (!dropOwn && !otherWepId.empty()) {
-        m_enemy.ai->setWeaponConfig(wepId, false, otherWepId);
-      } else {
-        m_enemy.ai->setWeaponConfig(wepId, dropOwn);
-      }
-
-      if (!wepId.empty())
-        m_enemy.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, wepId);
-
-      auto existingOnDeath = std::move(m_enemy.combat->onDeath);
-      m_enemy.combat->onDeath = [this, existingOnDeath]() {
-        if (existingOnDeath) existingOnDeath();
-        if (m_enemy.ai->shouldDropWeapon()) {
-          glm::vec3 dropPos = m_enemy.transform->getPosition();
-          if (m_enemy.ai->dropsOwnWeapon()) {
-            spawnWeaponPickup(dropPos, m_enemy.ai->getWeaponId(), false);
-          } else if (!m_enemy.ai->getDropId().empty()) {
-            spawnWeaponPickup(dropPos, m_enemy.ai->getDropId(), false);
+        // Patrol waypoints
+        std::string group = ent.getProperty("patrol_group", "");
+        if (!group.empty()) {
+          m_enemy.ai->clearWaypoints();
+          for (const auto* wp : m_levelData.getByClass("patrol_waypoint")) {
+            if (wp->props.count("patrol_group") && wp->props.at("patrol_group") == group)
+              m_enemy.ai->addWaypoint(wp->origin);
           }
         }
-      };
-      LOG_INFO("[Game] Enemy spawned at {:.2f},{:.2f},{:.2f}", spawnPos.x, spawnPos.y, spawnPos.z);
+
+        // Equipment/Weapons
+        std::string wepId = ent.getProperty("weaponId", "");
+        bool dropOwn = (ent.getProperty("dropWeapon", "1") == "1");
+        std::string otherWepId = !dropOwn ? ent.getProperty("dropId", "") : "";
+
+        if (!dropOwn && !otherWepId.empty()) {
+          m_enemy.ai->setWeaponConfig(wepId, false, otherWepId);
+        } else {
+          m_enemy.ai->setWeaponConfig(wepId, dropOwn);
+        }
+
+        if (!wepId.empty())
+          m_enemy.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, wepId);
+
+        auto existingOnDeath = std::move(m_enemy.combat->onDeath);
+        m_enemy.combat->onDeath = [this, existingOnDeath]() {
+          if (existingOnDeath) existingOnDeath();
+          if (m_enemy.ai->shouldDropWeapon()) {
+            glm::vec3 dropPos = m_enemy.transform->getPosition();
+            if (m_enemy.ai->dropsOwnWeapon()) {
+              spawnWeaponPickup(dropPos, m_enemy.ai->getWeaponId(), false);
+            } else if (!m_enemy.ai->getDropId().empty()) {
+              spawnWeaponPickup(dropPos, m_enemy.ai->getDropId(), false);
+            }
+          }
+          if (!m_enemy.respawns && m_enemy.deathFlag > 0) {
+            getFlags().set(m_enemy.deathFlag, true);
+            getFlags().saveToFile(k_saveFilePath);
+            LOG_INFO("[Game] Enemy permanently killed - flag {} set", m_enemy.deathFlag);
+          }
+        };
+        LOG_INFO("[Game] Enemy spawned at {:.2f},{:.2f},{:.2f}", spawnPos.x, spawnPos.y, spawnPos.z);
+      } else {
+        LOG_INFO("[Game] Enemy has been killed permanently, skipping...");
+      }
     } else if (inst.classname == "bonfire") {
       BonfireVolume bf;
       bf.bonfireId = ent.getInt("bonfire_id", 0);
@@ -736,6 +918,11 @@ void ForgeGame::setupLevel(const std::string& levelName) {
       float radius = ent.getFloat("radius", 1.5f);
 
       bf.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), inst.origin, radius);
+      bf.position = inst.origin + glm::vec3(0.0f, 0.1f, 0.0f);
+
+      if (m_bonfires.empty())
+        m_lastBonfirePos = bf.position;
+
       m_bonfires.push_back(std::move(bf));
     } else if (inst.classname == "fog_gate") {
       glm::vec3 pos = inst.origin;
@@ -800,6 +987,44 @@ void ForgeGame::setupScripts() {
   getLua().callFunction("onAIInit");
 }
 
+void ForgeGame::enterDeathSequence() {
+  m_gameState = GameState::DeathSequence;
+  m_gameStateDuration = 2.0f;
+  m_gameStateTimer = m_gameStateDuration;
+  LOG_INFO("[Game] Death sequence started");
+}
+
+void ForgeGame::enterYouDied() {
+  m_gameState = GameState::YouDied;
+  m_gameStateDuration = 2.5f;
+  m_gameStateTimer = m_gameStateDuration;
+  LOG_INFO("[Game] YOU DIED");;
+}
+
+void ForgeGame::respawnPlayer() {
+  m_player.combat->revive();
+  m_player.controller->warp(m_lastBonfirePos);
+
+  if (m_enemy.active && m_enemy.respawns) {
+    m_enemy.combat->revive();
+    m_enemy.controller->warp(m_enemySpawnPos);
+    m_enemy.ai->reset();
+  }
+
+  m_lockedOn = false;
+  m_tpCamera->setLockOnTarget(nullptr);
+
+  m_rmOverride = false;
+  m_rmScale = 1.0f;
+  m_rmAxes = { true, false, true };
+  m_inputLocked = false;
+
+  m_gameState = GameState::Respawning;
+  m_gameStateDuration = 1.0f;
+  m_gameStateTimer = m_gameStateDuration;
+  LOG_INFO("[Game] Player respawnned at bonfire");
+}
+
 void ForgeGame::onUpdate(float dt) {
   if (m_shakeTimer > 0.0f) {
     m_shakeTimer -= dt;
@@ -814,10 +1039,33 @@ void ForgeGame::onUpdate(float dt) {
   } else {
     m_tpCamera->setTraumaOffset({ 0.0f, 0.0f, 0.0f });
   }
+
+  // Game State machine
+  if (m_gameState != GameState::Playing) {
+    m_gameStateTimer -= dt;
+
+    if (m_gameState == GameState::DeathSequence) {
+      m_player.animator->update(dt); // Keep dying!
+      if (m_gameStateTimer <= 0.0f) enterYouDied();
+    } else if (m_gameState == GameState::YouDied) {
+      if (m_gameStateTimer <= 0.0f) respawnPlayer();
+    } else if (m_gameState == GameState::Respawning) {
+      m_player.animator->update(dt);
+      if (m_gameStateTimer <= 0.0f) m_gameState = GameState::Playing;
+    }
+    return;
+  }
+
   if (m_hitStopTimer > 0.0f) {
     m_hitStopTimer -= dt;
     return;
   }
+
+  if (!m_player.combat->isAlive()) {
+    enterDeathSequence();
+    return;
+  }
+
   for (auto& dn : m_damageNumbers) {
     dn.worldPos.y += k_damNumberRiseSpeed * dt;
     dn.lifetime -= dt;
@@ -887,6 +1135,8 @@ void ForgeGame::onUpdate(float dt) {
     }
   }
 
+  m_player.controller->syncTransform();
+
   if (m_player.equipment) {
     m_player.equipment->update(
       m_player.transform->getModelMatrix(),
@@ -925,7 +1175,6 @@ void ForgeGame::onUpdate(float dt) {
       m_player.combat->setHitboxTransform(wpnWorld, halfExt);
     }
   }
-  m_player.controller->syncTransform();
 
   m_tpCamera->update(m_player.transform->getPosition());
 
@@ -933,6 +1182,8 @@ void ForgeGame::onUpdate(float dt) {
   m_player.combat->setWorldData(playerPos, m_player.forward);
 
   if (m_enemy.active) {
+    m_enemy.controller->syncTransform();
+
     if (m_enemy.equipment && m_enemy.combat->isAlive()) {
       m_enemy.equipment->update(
         m_enemy.transform->getModelMatrix(),
@@ -947,8 +1198,6 @@ void ForgeGame::onUpdate(float dt) {
         m_enemy.combat->setHitboxTransform(wpnWorld, halfExt);
       }
     }
-
-    m_enemy.controller->syncTransform();
 
     if (m_lockedOn) {
       m_lockOnEnemyPos = m_enemy.transform->getPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
@@ -1125,8 +1374,47 @@ void ForgeGame::onRender() {
     forge::DebugDraw::flush(m_camera->getViewProjection());
   }
 
+  drawWeaponSocketEditor();
+
+  glDisable(GL_DEPTH_TEST);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+  m_hudShader->bind();
+
+  const float barW = 200.0f;
+  const float barH = 12.0f;
+  const float staminaW = barW * 0.75f;
+  const float staminaH = barH * 0.75f;
+  const float marginX = 24.0f;
+  const float marginY = (float)getHeight() - 60.0f;
+  const float gap = 5.0f;
+
+  float hpFill = m_player.combat->getHp() / m_player.combat->getMaxHp();
+  float staFill = m_player.combat->getStamina() / m_player.combat->getMaxStamina();
+
+  drawHUDBar(marginX, marginY, barW, barH, hpFill, 0.75f, 0.15f, 0.15f);
+  drawHUDBar(marginX, marginY + barH + gap, staminaW, staminaH, staFill, 0.85f, 0.75f, 0.10f);
+
+  if (m_enemy.active && m_enemy.combat->isAlive()) {
+    const float bossW = 400.0f;
+    const float bossH = 14.0f;
+    float bossX = ((float)getWidth() - bossW) * 0.5f;
+    float bossY = (float)getHeight() - 50.0f;
+    float bossFill = m_enemy.combat->getHp() / m_enemy.combat->getMaxHp();
+    drawHUDBar(bossX, bossY, bossW, bossH, bossFill, 0.80f, 0.20f, 0.20f);
+  }
+
+  m_hudShader->unbind();
+
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_BLEND);
+
   if (!m_damageNumbers.empty()) {
-    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     float sw = (float)getWidth();
     float sh = (float)getHeight();
     glm::mat4 vp = m_camera->getViewProjection();
@@ -1147,15 +1435,59 @@ void ForgeGame::onRender() {
       // Alpha fades over lifetime
       float alpha = std::clamp(dn.lifetime / k_damNumberLifetime, 0.0f, 1.0f);
 
-      ImU32 col = dn.heavy
-        ? IM_COL32(255, 210,40, (int)(255 * alpha))
-        : IM_COL32(255, 255, 255, (int)(255 * alpha));
-
       char buff[16];
       std::snprintf(buff, sizeof(buff), "%.0f", dn.damage);
-
       float fontSize = dn.heavy ? 22.0f : 16.0f;
-      dl->AddText(ImGui::GetFont(), fontSize, ImVec2(px, py), col, buff);
+
+      if (dn.heavy)
+        drawHUDText(px, py, fontSize, buff, 1.0f, 0.82f, 0.16f, alpha);
+      else
+        drawHUDText(px, py, fontSize, buff, 1.0f, 1.0f, 1.0f, alpha);
+    }
+
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+  }
+
+  if (m_gameState != GameState::Playing) {
+    float alpha = 0.0f;
+
+    if (m_gameState == GameState::DeathSequence) {
+      float elapsed = m_gameStateDuration - m_gameStateTimer;
+      alpha = glm::clamp(elapsed / 1.5f, 0.0f, 1.0f);
+    } else if (m_gameState == GameState::YouDied) {
+      alpha = 1.0f;
+    } else if (m_gameState == GameState::Respawning) {
+      alpha = glm::clamp(m_gameStateTimer / m_gameStateDuration, 0.0f, 1.0f);
+    }
+
+    if (alpha > 0.0f) {
+      glDisable(GL_DEPTH_TEST);
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+      m_hudShader->bind();
+      drawHUDRect(0.0f, 0.0f, (float)getWidth(), (float)getHeight(),
+                  0.0f, 0.0f, 0.0f, alpha * 0.90f);
+
+      if (m_gameState == GameState::YouDied) {
+        float textAlpha = glm::clamp(
+          (m_gameStateDuration - m_gameStateTimer) / 1.0f, 0.0f, 1.0f);
+
+        const char* title = "YOU DIED";
+        float fontSize = 64.0f;
+
+        float approxW = (float)strlen(title) * fontSize * 0.55f;
+        float tx = ((float)getWidth() - approxW) * 0.5f;
+        float ty = ((float)getHeight() - fontSize) * 0.5f;
+
+        drawHUDText(tx, ty, fontSize, title, 0.71f, 0.08f, 0.08f, textAlpha);
+      }
+
+      m_hudShader->unbind();
+
+      glEnable(GL_DEPTH_TEST);
+      glDisable(GL_BLEND);
     }
   }
 }
@@ -1467,4 +1799,60 @@ void ForgeGame::drawModelAtMatrix(const forge::ModelData& model, const glm::mat4
     }
     sub.mesh->draw();
   }
+}
+
+void ForgeGame::drawWeaponSocketEditor() {
+  if (!ImGui::Begin("Weapon Socket Editor")) {
+    ImGui::End();
+    return;
+  }
+
+  const forge::WeaponDef* def = m_player.equipment
+    ? m_player.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND)
+    : nullptr;
+
+  if (!def) {
+    ImGui::TextDisabled("No weapon equipped.");
+    ImGui::End();
+    return;
+  }
+
+  ImGui::Text("Weapon: %s Bone: %s", def->id.c_str(), def->boneAttach.c_str());
+  ImGui::Separator();
+
+  bool changed = false;
+  changed |= ImGui::DragFloat3("Position (m)", &m_socketDebug.pos.x, 0.001f);
+  changed |= ImGui::DragFloat3("Rotation (deg)", &m_socketDebug.euler.x, 0.25f);
+  changed |= ImGui::DragFloat3("Scale", &m_socketDebug.scale.x, 0.01f, 0.01f, 10.0f);
+
+  if (ImGui::Checkbox("Override Active", &m_socketDebug.active))
+    changed = true;
+
+  if (changed && m_socketDebug.active) {
+    glm::mat4 T = glm::translate(glm::mat4(1.0f), m_socketDebug.pos);
+    glm::mat4 R = glm::mat4_cast(glm::quat(glm::radians(m_socketDebug.euler)));
+    glm::mat4 S = glm::scale(glm::mat4(1.0f), m_socketDebug.scale);
+    m_player.equipment->setMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND, T * R * S);
+  }
+  if (!m_socketDebug.active) {
+    m_player.equipment->clearMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND);
+  }
+
+  ImGui::Separator();
+  if (ImGui::Button("Log JSON Snippet")) {
+    LOG_INFO("[SocketEditor] \"meshOffset\": {{  "
+             "\"pos\": [{:.4f},{:.4f},{:.4f}], "
+             "\"rot\": [{:.2f},{:.2f},{:.2f}], "
+             "\"scale\": [{:.4f},{:.4f},{:.4f}] }}",
+             m_socketDebug.pos.x, m_socketDebug.pos.y, m_socketDebug.pos.z,
+             m_socketDebug.euler.x, m_socketDebug.euler.y, m_socketDebug.euler.z,
+             m_socketDebug.scale.x, m_socketDebug.scale.y, m_socketDebug.scale.z);
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Reset")) {
+    m_socketDebug = {};
+    m_player.equipment->clearMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND);
+  }
+
+  ImGui::End();
 }

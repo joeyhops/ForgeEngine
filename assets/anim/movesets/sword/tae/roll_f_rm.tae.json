@@ -4,14 +4,14 @@
   "events": [
     {
       "type": "RootMotionBegin",
-      "startTime": 0.08,
+      "startTime": 0.04,
       "endTime": 0.30,
       "payload": "0.6;xz;6.0"
     },
     {
       "type": "RootMotionEnd",
-      "startTime": 0.30,
-      "endTime": 0.30,
+      "startTime": 0.70,
+      "endTime": 0.70,
       "payload": ""
     }
   ]

@@ -709,7 +709,7 @@ void AssetManager::loadWeaponDefs(const std::string& relativePath) {
     if (w.contains("meshOffset")) {
       const auto& mo = w.at("meshOffset");
       glm::vec3 pos(0.0f), scale(1.0f);
-      glm::quat rot = glm::quat(1.0f, 1.0f, 0.0f, 0.0f);
+      glm::quat rot = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
       if (mo.contains("pos")) {
         auto& p = mo.at("pos");

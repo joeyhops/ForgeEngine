@@ -145,6 +145,18 @@ void AIComponent::update(float dt, const glm::vec3& playerPos) {
   m_fsm.update(dt);
 }
 
+void AIComponent::reset() {
+  m_alertTimer = 0.0f;
+  m_attackTimer = 0.0f;
+  m_recoverTimer = 0.0f;
+  m_currentWaypoint = 0;
+  m_distToPlayer = 999.0f;
+
+  m_fsm.transition(AIState::Idle);
+
+  LOG_INFO("[AI] {} reset", m_name);
+}
+
 // Per state ticks
 void AIComponent::tickPatrol(float dt) {
   if (m_waypoints.empty()) return;
