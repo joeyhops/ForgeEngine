@@ -120,6 +120,7 @@ void DebugUI::begin(float dt) {
   if (ImGui::IsKeyPressed(ImGuiKey_F5)) m_showAIInspector = !m_showAIInspector;
   if (ImGui::IsKeyPressed(ImGuiKey_F6)) m_showAnimGraphMonitor = !m_showAnimGraphMonitor;
   if (ImGui::IsKeyPressed(ImGuiKey_F7)) m_showPhysicsDebug = !m_showPhysicsDebug;
+  if (ImGui::IsKeyPressed(ImGuiKey_F8)) m_showSocketEditor = !m_showSocketEditor;
 
   // build panels
   if (m_showPerformance) drawPerformancePanel();
@@ -128,6 +129,7 @@ void DebugUI::begin(float dt) {
   if (m_showLuaConsole) drawLuaConsolePanel();
   if (m_showAIInspector) drawAIInspectorPanel();
   if (m_showAnimGraphMonitor) drawAnimGraphMonitorPanel();
+  if (m_showSocketEditor) drawWeaponSocketEditorPanel();
 }
 
 void DebugUI::end() {
@@ -514,6 +516,62 @@ void DebugUI::drawAnimGraphMonitorPanel() {
     
     ImGui::PopID();
     ImGui::Spacing();
+  }
+
+  ImGui::End();
+}
+
+void DebugUI::drawWeaponSocketEditorPanel() {
+  if (!ImGui::Begin("Weapon Socket Editor")) {
+    ImGui::End();
+    return;
+  }
+
+  const forge::WeaponDef* def = m_equipment
+    ? m_equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND)
+    : nullptr;
+
+  if (!def) {
+    ImGui::TextDisabled("No weapon equipped.");
+    ImGui::End();
+    return;
+  }
+
+  ImGui::Text("Weapon: %s Bone: %s", def->id.c_str(), def->boneAttach.c_str());
+  ImGui::Separator();
+
+  bool changed = false;
+  changed |= ImGui::DragFloat3("Position (m)", &m_socketDebug.pos.x, 0.001f);
+  changed |= ImGui::DragFloat3("Rotation (deg)", &m_socketDebug.euler.x, 0.25f);
+  changed |= ImGui::DragFloat3("Scale", &m_socketDebug.scale.x, 0.01f, 0.01f, 10.0f);
+
+  if (ImGui::Checkbox("Override Active", &m_socketDebug.active))
+    changed = true;
+
+  if (changed && m_socketDebug.active) {
+    glm::mat4 T = glm::translate(glm::mat4(1.0f), m_socketDebug.pos);
+    glm::mat4 R = glm::mat4_cast(glm::quat(glm::radians(m_socketDebug.euler)));
+    glm::mat4 S = glm::scale(glm::mat4(1.0f), m_socketDebug.scale);
+    m_equipment->setMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND, T * R * S);
+  }
+  if (!m_socketDebug.active) {
+    m_equipment->clearMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND);
+  }
+
+  ImGui::Separator();
+  if (ImGui::Button("Log JSON Snippet")) {
+    LOG_INFO("[SocketEditor] \"meshOffset\": {{  "
+             "\"pos\": [{:.4f},{:.4f},{:.4f}], "
+             "\"rot\": [{:.2f},{:.2f},{:.2f}], "
+             "\"scale\": [{:.4f},{:.4f},{:.4f}] }}",
+             m_socketDebug.pos.x, m_socketDebug.pos.y, m_socketDebug.pos.z,
+             m_socketDebug.euler.x, m_socketDebug.euler.y, m_socketDebug.euler.z,
+             m_socketDebug.scale.x, m_socketDebug.scale.y, m_socketDebug.scale.z);
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Reset")) {
+    m_socketDebug = {};
+    m_equipment->clearMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND);
   }
 
   ImGui::End();

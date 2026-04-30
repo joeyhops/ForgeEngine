@@ -48,105 +48,7 @@ void ForgeGame::onInit() {
   setupPlayer();
   setupEnemy();
 
-  auto staticSolidFactory = [this](const forge::LevelEntity& ent,
-                                   const forge::EntityGeometry& geom,
-                                   forge::PhysicsWorld& physics,
-                                   forge::LuaState& lua) {
-    forge::EntityInstance inst;
-    inst.renderObjects = buildRenderObjects(geom);
-    if (!geom.collisionPositions.empty()) {
-      forge::Transform ident; // Static identity transform
-      inst.rigidBody = std::make_unique<forge::RigidBodyComponent>(
-        physics, ident, geom.collisionPositions, geom.collisionIndices, 0.0f
-      );
-    }
-    return inst;
-  };
-  m_assembler.registerFactory("worldspawn", staticSolidFactory);
-  m_assembler.registerFactory("func_wall", staticSolidFactory);
-  m_assembler.registerFactory("func_group", staticSolidFactory);
-
-  m_assembler.registerFactory("func_illusionary", [this](const forge::LevelEntity& ent,
-                                                         const forge::EntityGeometry& geom,
-                                                         forge::PhysicsWorld& physics,
-                                                         forge::LuaState& lua) {
-    forge::EntityInstance inst;
-    inst.renderObjects = buildRenderObjects(geom);                          
-    LOG_INFO("[Factory] Loaded func_illusionary");
-    return inst;                          
-  });
-
-  m_assembler.registerFactory("trigger_once", [this](const forge::LevelEntity& ent,
-                                                         const forge::EntityGeometry& geom,
-                                                         forge::PhysicsWorld& physics,
-                                                         forge::LuaState& lua) {
-                                forge::EntityInstance inst;
-                                if (!geom.collisionPositions.empty()) {
-                                  std::string target = ent.getProperty("target");
-                                  inst.trigger = std::make_unique<forge::TriggerVolume>(
-                                    physics, geom.collisionPositions,
-                                    [this, target]() { // onEnter
-                                      LOG_INFO("[Trigger] trigger_once entered! Firing target: {}", target);
-                                      forge::EventBus::publish(forge::ScriptEvent{ "triggerActivated", target });
-                                    }
-                                  );
-                                }
-                                return inst;
-                              });
-
-  m_assembler.registerFactory("trigger_multiple", 
-                              [this](const forge::LevelEntity& ent,
-                                     const forge::EntityGeometry& geom,
-                                     forge::PhysicsWorld& physics,
-                                     forge::LuaState& lua) {
-                                forge::EntityInstance inst;
-                                if (!geom.collisionPositions.empty()) {
-                                  std::string target = ent.getProperty("target");
-                                  inst.trigger = std::make_unique<forge::TriggerVolume>(
-                                    physics, geom.collisionPositions,
-                                    [target]() {
-                                      LOG_INFO("[Trigger] trigger_multiple entered! Firing target: {}", target);
-                                      forge::EventBus::publish(forge::ScriptEvent{ "triggerActivated", target });
-                                    }
-                                  ); 
-                                }
-                                return inst;
-                              });
-
-  m_assembler.registerFactory("flag_trigger", [this](const forge::LevelEntity& ent,
-    const forge::EntityGeometry& geom,
-    forge::PhysicsWorld& physics,
-    forge::LuaState& lua) {
-      forge::EntityInstance inst;
-      int flagId = ent.getInt("flag_id", -1);
-      bool once = ent.getBool("trigger_once", true);
-      float radius = ent.getFloat("radius", 2.0f);
-      if (flagId >= 0) {
-        inst.trigger = std::make_unique<forge::TriggerVolume>(
-          physics, ent.origin, radius,
-          [this, flagId, once]() {
-            getFlags().set(flagId, true);
-            // Optionally: if once, disable trigger
-          }
-        );
-      }
-      return inst;
-    });
-
-                             
-  // Basic point entities
-  auto pointFactory = [](const forge::LevelEntity& ent,
-                         const forge::EntityGeometry& geom,
-                         forge::PhysicsWorld& physics,
-                         forge::LuaState& lua) {
-    return forge::EntityInstance();
-  };
-  m_assembler.registerFactory("info_player_start", pointFactory);
-  m_assembler.registerFactory("enemy_spawn", pointFactory);
-  m_assembler.registerFactory("bonfire", pointFactory);
-  m_assembler.registerFactory("weapon_pickup", pointFactory);
-  m_assembler.registerFactory("fog_gate", pointFactory);
-  m_assembler.registerFactory("patrol_waypoint", pointFactory);
+  registerEntityFactories();
 
   setupLevel(m_initialMap);
   setupScripts();
@@ -205,7 +107,7 @@ void ForgeGame::onInit() {
     }
     LOG_INFO("[Game] Bonfire {} rested - respawn pos updated", e.bonfireId);
   });
-  // Try loading previous save
+
   LOG_INFO("[Game] init complete");
 }
 
@@ -247,7 +149,7 @@ void ForgeGame::initHUD() {
     std::vector<uint8_t> fontData(size);
     fontFile.read(reinterpret_cast<char*>(fontData.data()), size);
 
-    // Bakle at 32PX - drawHUDText scales quads to the requested size at draw time
+    // Bake at 32PX - drawHUDText scales quads to the requested size at draw time
     std::vector<uint8_t> bitmap(k_fontAtlasW * k_fontAtlasH);
     stbtt_BakeFontBitmap(fontData.data(), 0, 32.0f,
                          bitmap.data(), k_fontAtlasW, k_fontAtlasH, k_fontFirstChar, k_fontNumChars, m_glyphData);
@@ -281,6 +183,107 @@ void ForgeGame::initHUD() {
 #else
   m_hudTextShader = forge::AssetManager::loadShader("shaders/win/hud_text.vert", "shaders/win/hud_text.frag");
 #endif
+}
+
+void ForgeGame::registerEntityFactories() {
+  auto staticSolidFactory = [this](const forge::LevelEntity& ent,
+                                   const forge::EntityGeometry& geom,
+                                   forge::PhysicsWorld& physics,
+                                   forge::LuaState& lua) {
+    forge::EntityInstance inst;
+    inst.renderObjects = buildRenderObjects(geom);
+    if (!geom.collisionPositions.empty()) {
+      forge::Transform ident; // Static identity transform
+      inst.rigidBody = std::make_unique<forge::RigidBodyComponent>(
+        physics, ident, geom.collisionPositions, geom.collisionIndices, 0.0f
+      );
+    }
+    return inst;
+  };
+  m_assembler.registerFactory("worldspawn", staticSolidFactory);
+  m_assembler.registerFactory("func_wall", staticSolidFactory);
+  m_assembler.registerFactory("func_group", staticSolidFactory);
+
+  m_assembler.registerFactory("func_illusionary", [this](const forge::LevelEntity& ent,
+                                                         const forge::EntityGeometry& geom,
+                                                         forge::PhysicsWorld& physics,
+                                                         forge::LuaState& lua) {
+    forge::EntityInstance inst;
+    inst.renderObjects = buildRenderObjects(geom);                          
+    LOG_INFO("[Factory] Loaded func_illusionary");
+    return inst;                          
+  });
+
+  m_assembler.registerFactory("trigger_once", [this](const forge::LevelEntity& ent,
+                                                     const forge::EntityGeometry& geom,
+                                                     forge::PhysicsWorld& physics,
+                                                     forge::LuaState& lua) {
+    forge::EntityInstance inst;
+    if (!geom.collisionPositions.empty()) {
+      std::string target = ent.getProperty("target");
+      inst.trigger = std::make_unique<forge::TriggerVolume>(
+        physics, geom.collisionPositions,
+        [this, target]() { // onEnter
+          LOG_INFO("[Trigger] trigger_once entered! Firing target: {}", target);
+          forge::EventBus::publish(forge::ScriptEvent{ "triggerActivated", target });
+        }
+      );
+    }
+    return inst;
+  });
+
+  m_assembler.registerFactory("trigger_multiple", [this](const forge::LevelEntity& ent,
+                                                         const forge::EntityGeometry& geom,
+                                                         forge::PhysicsWorld& physics,
+                                                         forge::LuaState& lua) {
+    forge::EntityInstance inst;
+    if (!geom.collisionPositions.empty()) {
+      std::string target = ent.getProperty("target");
+      inst.trigger = std::make_unique<forge::TriggerVolume>(
+        physics, geom.collisionPositions,
+        [target]() {
+          LOG_INFO("[Trigger] trigger_multiple entered! Firing target: {}", target);
+          forge::EventBus::publish(forge::ScriptEvent{ "triggerActivated", target });
+        }
+      ); 
+    }
+    return inst;
+  });
+
+  m_assembler.registerFactory("flag_trigger", [this](const forge::LevelEntity& ent,
+                                                     const forge::EntityGeometry& geom,
+                                                     forge::PhysicsWorld& physics,
+                                                     forge::LuaState& lua) {
+    forge::EntityInstance inst;
+    int flagId = ent.getInt("flag_id", -1);
+    bool once = ent.getBool("trigger_once", true);
+    float radius = ent.getFloat("radius", 2.0f);
+    if (flagId >= 0) {
+      inst.trigger = std::make_unique<forge::TriggerVolume>(
+        physics, ent.origin, radius,
+        [this, flagId, once]() {
+          getFlags().set(flagId, true);
+          // Optionally: if once, disable trigger
+        }
+      );
+    }
+    return inst;
+  });
+
+                             
+  // Basic point entities
+  auto pointFactory = [](const forge::LevelEntity& ent,
+                         const forge::EntityGeometry& geom,
+                         forge::PhysicsWorld& physics,
+                         forge::LuaState& lua) {
+    return forge::EntityInstance();
+  };
+  m_assembler.registerFactory("info_player_start", pointFactory);
+  m_assembler.registerFactory("enemy_spawn", pointFactory);
+  m_assembler.registerFactory("bonfire", pointFactory);
+  m_assembler.registerFactory("weapon_pickup", pointFactory);
+  m_assembler.registerFactory("fog_gate", pointFactory);
+  m_assembler.registerFactory("patrol_waypoint", pointFactory);
 }
 
 void ForgeGame::drawHUDText(float x, float y, float pixelHeight,
@@ -569,63 +572,6 @@ void ForgeGame::setupPlayer() {
       std::sort(dodgeClip->events.begin(), dodgeClip->events.end(),
                 [](const forge::AnimEvent& a, const forge::AnimEvent& b){ return a.startTime < b.startTime; });
     }
-
-    forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
-      if (e.ownerName != "player") return;
-      if (e.type != forge::AnimEventType::RootMotionBegin) return;
-
-      m_rmOverride = true;
-      m_rmScale = 1.0f;
-      m_rmAxes = { true, false, true };
-
-      // Parse payload: "scale;axes;maxVel"
-      if (!e.payload.empty()) {
-        std::istringstream ss(e.payload);
-        std::string token;
-        int idx = 0;
-        while (std::getline(ss, token, ';')) {
-          if (idx == 0 && !token.empty()) m_rmScale = std::stof(token);
-          if (idx == 1 && !token.empty()) {
-            m_rmAxes.x = token.find('x') != std::string::npos;
-            m_rmAxes.y = token.find('y') != std::string::npos;
-            m_rmAxes.z = token.find('z') != std::string::npos;
-          }
-          idx++;
-        }
-      }
-      LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{}", m_rmScale,
-               m_rmAxes.x ? "x" : "",m_rmAxes.y ? "y" : "",m_rmAxes.z ? "z" : "");
-    });
-
-    forge::EventBus::subscribe<forge::AnimEventDeactivated>([this](const forge::AnimEventDeactivated& e) {
-      if (e.ownerName != "player") return;
-      if (e.type != forge::AnimEventType::RootMotionEnd) return;
-      m_rmOverride = false;
-      m_rmScale = 1.0f;
-      m_rmAxes = { true, false, true };
-      LOG_INFO("[RM] RootMotionEnd");
-    });
-
-    forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
-      if (e.ownerName != "player") return;
-      if (e.type != forge::AnimEventType::RootMotionScale) return;
-      if (!e.payload.empty()) m_rmScale = std::stof(e.payload);
-    });
-
-    forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
-      if (e.ownerName != "player") return;
-      if (e.type == forge::AnimEventType::SetKinematic) {
-        m_kinematicMode = true;
-        m_player.controller->setGravity(0.0f);
-      } else if (e.type == forge::AnimEventType::RestorePhysics) {
-        m_kinematicMode = false;
-        m_player.controller->setGravity(-20.0f);
-      } else if (e.type == forge::AnimEventType::LockInput) {
-        m_inputLocked = true;
-      } else if (e.type == forge::AnimEventType::UnlockInput) {
-        m_inputLocked = false;
-      }
-    });
   }
 
   if (m_player.clips["death"])
@@ -680,6 +626,8 @@ void ForgeGame::setupPlayer() {
       getLua().callFunction("onPlayerUnequip", static_cast<int>(slot));
     }
   };
+  
+  setupPlayerAnimEvents();
 
   getCombat().registerCombatant(m_player.combat.get());
   m_player.combat->setGhostObject(m_player.controller->getGhostObject());
@@ -689,9 +637,69 @@ void ForgeGame::setupPlayer() {
   getLua().get()["playerEquipment"] = m_player.equipment.get();
 
   getDebugUI().registerAnimator(m_player.animator.get(), "Player");
+  getDebugUI().registerEquipmentComponent(m_player.equipment.get());
 
   LOG_INFO("[ForgeGame] Player ready - skeleton: {} bones",
            m_player.skinnedModel.skeleton.size());
+}
+
+void ForgeGame::setupPlayerAnimEvents() {
+  forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
+    if (e.ownerName != "player") return;
+    if (e.type != forge::AnimEventType::RootMotionBegin) return;
+
+    m_rmOverride = true;
+    m_rmScale = 1.0f;
+    m_rmAxes = { true, false, true };
+
+    // Parse payload: "scale;axes;maxVel"
+    if (!e.payload.empty()) {
+      std::istringstream ss(e.payload);
+      std::string token;
+      int idx = 0;
+      while (std::getline(ss, token, ';')) {
+        if (idx == 0 && !token.empty()) m_rmScale = std::stof(token);
+        if (idx == 1 && !token.empty()) {
+          m_rmAxes.x = token.find('x') != std::string::npos;
+          m_rmAxes.y = token.find('y') != std::string::npos;
+          m_rmAxes.z = token.find('z') != std::string::npos;
+        }
+        idx++;
+      }
+    }
+    LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{}", m_rmScale,
+             m_rmAxes.x ? "x" : "",m_rmAxes.y ? "y" : "",m_rmAxes.z ? "z" : "");
+  });
+
+  forge::EventBus::subscribe<forge::AnimEventDeactivated>([this](const forge::AnimEventDeactivated& e) {
+    if (e.ownerName != "player") return;
+    if (e.type != forge::AnimEventType::RootMotionEnd) return;
+    m_rmOverride = false;
+    m_rmScale = 1.0f;
+    m_rmAxes = { true, false, true };
+    LOG_INFO("[RM] RootMotionEnd");
+  });
+
+  forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
+    if (e.ownerName != "player") return;
+    if (e.type != forge::AnimEventType::RootMotionScale) return;
+    if (!e.payload.empty()) m_rmScale = std::stof(e.payload);
+  });
+
+  forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
+    if (e.ownerName != "player") return;
+    if (e.type == forge::AnimEventType::SetKinematic) {
+      m_kinematicMode = true;
+      m_player.controller->setGravity(0.0f);
+    } else if (e.type == forge::AnimEventType::RestorePhysics) {
+      m_kinematicMode = false;
+      m_player.controller->setGravity(-20.0f);
+    } else if (e.type == forge::AnimEventType::LockInput) {
+      m_inputLocked = true;
+    } else if (e.type == forge::AnimEventType::UnlockInput) {
+      m_inputLocked = false;
+    }
+  });
 }
 
 void ForgeGame::setupEnemy() {
@@ -702,14 +710,13 @@ void ForgeGame::setupEnemy() {
   constexpr float k_enemyCapsuleHalfHeight = 0.75f;
   m_enemy.transform = std::make_unique<forge::Transform>();
   m_enemy.transform->setPosition({ 0.0f, 0.0f, -4.0f });
-  //m_enemy.transform->setPosition({ 0.0f, k_enemyCapsuleHalfHeight, -4.0f });
   m_enemy.transform->setScale({ 0.01f, 0.01f, 0.01f });
   m_enemy.transform->setEulerAngles({ 90.0f, 0.0f, 0.0f });
  
   m_enemy.controller = std::make_unique<forge::CharacterController>(
     getPhysics(), *m_enemy.transform, 0.3f, 0.9f);
 
-  // ── Animator ─────────────────────────────────────────────────────────
+  // Animator
   m_enemy.animator = std::make_unique<forge::Animator>();
   m_enemy.animator->setOwnerName("enemy");
   m_enemy.animator->setSkeleton(m_enemy.skinnedModel.skeleton);
@@ -730,7 +737,7 @@ void ForgeGame::setupEnemy() {
     "enemy"
   );
   m_enemy.animator->setGraph(graph);
-  // ── Combat ───────────────────────────────────────────────────────────
+  // Combat
   m_enemy.combat = std::make_unique<forge::CombatComponent>(
     "enemy", 400.0f, 100.0f, 60.0f);
  
@@ -746,7 +753,7 @@ void ForgeGame::setupEnemy() {
     getLua().callFunction("onEnemyHit", h.damage, h.damageType);
   };
 
-  // ── AI ────────────────────────────────────────────────────────────────
+  // AI
   m_enemy.ai = std::make_unique<forge::AIComponent>(
     "enemy", *m_enemy.transform, *m_enemy.combat);
 
@@ -845,7 +852,6 @@ void ForgeGame::setupLevel(const std::string& levelName) {
       m_enemy.respawns = ent.getBool("respawns", true);
       m_enemy.deathFlag = ent.getInt("death_flag", -1);
       bool shouldSpawn = !(m_enemy.deathFlag > 0 && getFlags().get(m_enemy.deathFlag));
-      LOG_INFO("[FLAGS] Flags loaded for enemy: respawns:{} {} {}", m_enemy.respawns ? "true" : "false", m_enemy.deathFlag, getFlags().get(m_enemy.deathFlag) ? "true" : "false");
       if (shouldSpawn) {
         m_enemy.active = true;
         glm::vec3 spawnPos = inst.origin;
@@ -998,7 +1004,7 @@ void ForgeGame::enterYouDied() {
   m_gameState = GameState::YouDied;
   m_gameStateDuration = 2.5f;
   m_gameStateTimer = m_gameStateDuration;
-  LOG_INFO("[Game] YOU DIED");;
+  LOG_INFO("[Game] YOU DIED");
 }
 
 void ForgeGame::respawnPlayer() {
@@ -1243,6 +1249,13 @@ void ForgeGame::onUpdate(float dt) {
 }
 
 void ForgeGame::onRender() {
+  renderScene();
+  renderDebugOverlays();
+  renderHUD();
+  renderDeathOverlay();
+}
+
+void ForgeGame::renderScene() {
   m_shader->bind();
   // Draw pickups
   for (const auto& pk : m_weaponPickups) {
@@ -1285,7 +1298,9 @@ void ForgeGame::onRender() {
   }
 
   m_skinnedShader->unbind();
+}
 
+void ForgeGame::renderDebugOverlays() {
   static constexpr glm::vec3 kHitboxColors[] = {
     { 1.0f, 1.0f, 0.2f }, // Startup - yellow
     { 1.0f, 0.5f, 0.0f }, // Active - orange
@@ -1370,12 +1385,11 @@ void ForgeGame::onRender() {
       }
     }
 
-
     forge::DebugDraw::flush(m_camera->getViewProjection());
   }
+}
 
-  drawWeaponSocketEditor();
-
+void ForgeGame::renderHUD() {
   glDisable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1448,7 +1462,9 @@ void ForgeGame::onRender() {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
   }
+}
 
+void ForgeGame::renderDeathOverlay() {
   if (m_gameState != GameState::Playing) {
     float alpha = 0.0f;
 
@@ -1491,47 +1507,6 @@ void ForgeGame::onRender() {
     }
   }
 }
-
-void ForgeGame::drawModel(const forge::ModelData& model,
-                          const forge::Transform& transform)
-{
-  if (!model.mesh) return;
-
-  glm::mat4 modelMat = transform.getModelMatrix();
-  glm::mat4 mvp      = m_camera->getViewProjection() * modelMat;
-
-  m_shader->setMat4("u_mvp",   mvp);
-  m_shader->setMat4("u_model", modelMat);
-  m_shader->setVec3("u_tint",  glm::vec3(1.0f));  // White tint = no tint
-
-  if (!model.subMeshes.empty()) {
-    for (const auto& sub : model.subMeshes) {
-      if (!sub.mesh) continue;
-
-      if (sub.texture) {
-        sub.texture->bind(0);
-
-        m_shader->setInt("u_texture", 0);
-        m_shader->setBool("u_hasTexture", true);
-      } else {
-        m_shader->setBool("u_hasTexture", false);
-      }
-
-      sub.mesh->draw();
-    }
-  } else {
-    if (model.hasTexture()) {
-        model.texture->bind(0);           // Bind to texture unit 0
-        m_shader->setInt ("u_texture",    0);
-        m_shader->setBool("u_hasTexture", true);
-    } else {
-        m_shader->setBool("u_hasTexture", false);
-    }
-
-    model.mesh->draw();
-  }
-}
-
 
 // Draw Skinned Model
 void ForgeGame::drawSkinnedModel(const forge::SkinnedModelData& model,
@@ -1801,58 +1776,3 @@ void ForgeGame::drawModelAtMatrix(const forge::ModelData& model, const glm::mat4
   }
 }
 
-void ForgeGame::drawWeaponSocketEditor() {
-  if (!ImGui::Begin("Weapon Socket Editor")) {
-    ImGui::End();
-    return;
-  }
-
-  const forge::WeaponDef* def = m_player.equipment
-    ? m_player.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND)
-    : nullptr;
-
-  if (!def) {
-    ImGui::TextDisabled("No weapon equipped.");
-    ImGui::End();
-    return;
-  }
-
-  ImGui::Text("Weapon: %s Bone: %s", def->id.c_str(), def->boneAttach.c_str());
-  ImGui::Separator();
-
-  bool changed = false;
-  changed |= ImGui::DragFloat3("Position (m)", &m_socketDebug.pos.x, 0.001f);
-  changed |= ImGui::DragFloat3("Rotation (deg)", &m_socketDebug.euler.x, 0.25f);
-  changed |= ImGui::DragFloat3("Scale", &m_socketDebug.scale.x, 0.01f, 0.01f, 10.0f);
-
-  if (ImGui::Checkbox("Override Active", &m_socketDebug.active))
-    changed = true;
-
-  if (changed && m_socketDebug.active) {
-    glm::mat4 T = glm::translate(glm::mat4(1.0f), m_socketDebug.pos);
-    glm::mat4 R = glm::mat4_cast(glm::quat(glm::radians(m_socketDebug.euler)));
-    glm::mat4 S = glm::scale(glm::mat4(1.0f), m_socketDebug.scale);
-    m_player.equipment->setMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND, T * R * S);
-  }
-  if (!m_socketDebug.active) {
-    m_player.equipment->clearMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND);
-  }
-
-  ImGui::Separator();
-  if (ImGui::Button("Log JSON Snippet")) {
-    LOG_INFO("[SocketEditor] \"meshOffset\": {{  "
-             "\"pos\": [{:.4f},{:.4f},{:.4f}], "
-             "\"rot\": [{:.2f},{:.2f},{:.2f}], "
-             "\"scale\": [{:.4f},{:.4f},{:.4f}] }}",
-             m_socketDebug.pos.x, m_socketDebug.pos.y, m_socketDebug.pos.z,
-             m_socketDebug.euler.x, m_socketDebug.euler.y, m_socketDebug.euler.z,
-             m_socketDebug.scale.x, m_socketDebug.scale.y, m_socketDebug.scale.z);
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Reset")) {
-    m_socketDebug = {};
-    m_player.equipment->clearMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND);
-  }
-
-  ImGui::End();
-}

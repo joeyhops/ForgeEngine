@@ -1,5 +1,7 @@
 #pragma once
 
+#include <forge/EquipmentComponent.h>
+
 #include <deque>
 #include <string>
 #include <vector>
@@ -59,6 +61,8 @@ public:
   // Call once per AI Entity in games onInit after the AI component is created
   void registerAIComponent(AIComponent* ai) { if (ai) m_aiComponents.push_back(ai); }
 
+  void registerEquipmentComponent(EquipmentComponent* eq) { m_equipment = eq; }
+
   void registerAnimator(Animator* anim, const std::string& label) {
     if (anim) m_animators.push_back({ anim, label });
   }
@@ -77,10 +81,12 @@ private:
   void drawLuaConsolePanel();
   void drawAIInspectorPanel();
   void drawAnimGraphMonitorPanel();
+  void drawWeaponSocketEditorPanel();
 
   CombatSystem* m_combat = nullptr;
   FlagManager* m_flags = nullptr;
   LuaState* m_lua = nullptr;
+  EquipmentComponent* m_equipment = nullptr;
   std::vector<AIComponent*> m_aiComponents;
 
   struct AnimatorEntry {
@@ -88,6 +94,13 @@ private:
     std::string label;
   };
   std::vector<AnimatorEntry> m_animators;
+
+  struct WeaponSocketDebug {
+    glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
+    glm::vec3 euler = { 0.0f, 0.0f, 0.0f };
+    glm::vec3 scale = { 1.0f, 1.0f, 1.0f };
+    bool active = false;
+  } m_socketDebug;
 
   // Panel visibility
   bool m_showPerformance = true;
@@ -97,6 +110,7 @@ private:
   bool m_showAIInspector = false;
   bool m_showAnimGraphMonitor = true;
   bool m_showPhysicsDebug = false;
+  bool m_showSocketEditor = false;
 
   // Timing state (updatd in begin)
   float m_fps = 0.0f;

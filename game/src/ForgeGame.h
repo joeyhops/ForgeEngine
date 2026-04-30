@@ -41,12 +41,20 @@ private:
 
   void setupRenderer();
   void setupPlayer();
+  void setupPlayerAnimEvents();
   void setupEnemy();
   void setupLevel(const std::string& levelName = "level_01");
   void setupScripts();
+  void registerEntityFactories();
   void handleInput(float dt);
   void applyMovement(float dt);
   void spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns);
+
+  void renderScene();
+  void renderDebugOverlays();
+  void renderHUD();
+  void renderDeathOverlay();
+
   void drawModelAtMatrix(const forge::ModelData& model, const glm::mat4& matrix);
 
   void drawModel(const forge::ModelData& model,
@@ -238,13 +246,4 @@ private:
 
   forge::CombatComponent::AttackPhase m_prevPlayerPhase = forge::CombatComponent::AttackPhase::None;
   forge::CombatComponent::AttackPhase m_prevEnemyPhase = forge::CombatComponent::AttackPhase::None;
-
-  struct WeaponSocketDebug {
-    glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
-    glm::vec3 euler = { 0.0f, 0.0f, 0.0f };
-    glm::vec3 scale = { 1.0f, 1.0f, 1.0f };
-    bool active = false;
-  } m_socketDebug;
-
-  void drawWeaponSocketEditor();
 };
