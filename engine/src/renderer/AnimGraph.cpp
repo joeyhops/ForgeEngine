@@ -76,6 +76,14 @@ bool ClipNode::isFinished() const {
   return m_time >= m_clip->duration;
 }
 
+void ClipNode::setActiveTime(float t) {
+  if (!m_clip) return;
+  m_time = std::clamp(t, 0.0f, m_clip->duration);
+  m_prevTime = m_time;
+  m_activeEventIndices.clear();
+  m_pose.clear();
+}
+
 std::string ClipNode::getDebugStateInfo() const {
   if (!m_clip) return "ClipNode(null)";
   return m_clip->name + " [" + std::to_string(m_time).substr(0, 4) + "s]";
@@ -146,6 +154,11 @@ void Blend1DNode::addEntry(float threshold, std::shared_ptr<AnimGraphNode> node)
 void Blend1DNode::setSkeleton(const std::vector<Bone>* skeleton) {
   for (auto& e : m_entries)
     if (e.node) e.node->setSkeleton(skeleton);
+}
+
+void Blend1DNode::setActiveTime(float t) {
+  for (auto& entry : m_entries)
+    if (entry.node) entry.node->setActiveTime(t);
 }
 
 void Blend1DNode::update(float dt, AnimParamTable& params) {
@@ -368,6 +381,12 @@ bool StateMachineNode::isFinished() const {
   auto it = m_states.find(m_currentState);
   if (it == m_states.end() || !it->second) return false;
   return it->second->isFinished();
+}
+
+void StateMachineNode::setActiveTime(float t) {
+  auto it = m_states.find(m_currentState);
+  if (it != m_states.end() && it->second)
+    it->second->setActiveTime(t);
 }
 
 glm::vec3 StateMachineNode::getRootMotionDelta() const {

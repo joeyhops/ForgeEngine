@@ -81,6 +81,11 @@ public:
     (void)key; (void)clip;
   }
 
+  // Seek the active leaf clip to time t without advancing internal state
+  // or firing TAE events. Called by Animator::scrubTo(), default no-op
+  // Concrete overrides propagate to their active children
+  virtual void setActiveTime(float) {}
+
   // returns this nodes root motion displacement for the current frame
   // non-root-motion node return vec3(0) blend nodes return weighted avg
   virtual glm::vec3 getRootMotionDelta() const { return glm::vec3(0.0f); }
@@ -103,6 +108,9 @@ public:
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const override;
   bool isFinished() const override;
+  void setActiveTime(float t) override;
+  float getTime() const { return m_time; }
+
   void setSkeleton(const std::vector<Bone>* skeleton) override { m_skeleton = skeleton; }
 
   void setActionKey(const std::string& key) { m_actionKey = key; }
@@ -153,6 +161,7 @@ public:
   void setSkeleton(const std::vector<Bone>* skeleton) override;
 
   void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
+  void setActiveTime(float t) override;
 
   std::string getDebugStateInfo() const override;
   float getActiveClipTime() const override {
@@ -211,6 +220,7 @@ public:
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const override;
   bool isFinished() const override;
+  void setActiveTime(float t) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
 
   void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;

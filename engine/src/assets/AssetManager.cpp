@@ -801,6 +801,14 @@ const MovesetDef* AssetManager::getMovesetDef(const std::string& movesetId) {
   return (it != s_movesetDefs.end()) ? &it->second : nullptr;
 }
 
+const std::unordered_map<std::string, WeaponDef>& AssetManager::getAllWeaponDefs() {
+  return s_weaponDefs;
+}
+
+const std::unordered_map<std::string, MovesetDef>& AssetManager::getAllMovesetDefs() {
+  return s_movesetDefs;
+}
+
 void AssetManager::clear() {
   s_skinnedModels.clear();
   s_clips.clear();

@@ -795,6 +795,8 @@ void ForgeGame::setupLevel(const std::string& levelName) {
   const std::string root = forge::AssetManager::getAssetRoot();
   const std::string mapPath = root + "levels/" + levelName + ".map";
 
+  constexpr float k_playerCapsuleHalfHeight = 0.9f;
+
   m_levelData = forge::LevelLoader::load(mapPath);
   m_enemy.active = false;
 
@@ -804,6 +806,7 @@ void ForgeGame::setupLevel(const std::string& levelName) {
 
   m_mapScene = std::make_unique<forge::MapScene>();
   m_mapEntities.clear(); // Clear entities from previous level
+  m_bonfires.clear();
 
   forge::GeometryGenerator gen;
   forge::GeometrySettings settings;
@@ -835,7 +838,6 @@ void ForgeGame::setupLevel(const std::string& levelName) {
     // 4. Game specific Routing (point entities)
     if (inst.classname == "info_player_start") {
       glm::vec3 origin = inst.origin;
-      constexpr float k_playerCapsuleHalfHeight = 0.9f;
       origin.y += k_playerCapsuleHalfHeight;
       m_player.controller->warp(origin);
       if (ent.angle != 0.0f) {
@@ -924,7 +926,7 @@ void ForgeGame::setupLevel(const std::string& levelName) {
       float radius = ent.getFloat("radius", 1.5f);
 
       bf.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), inst.origin, radius);
-      bf.position = inst.origin + glm::vec3(0.0f, 0.1f, 0.0f);
+      bf.position = inst.origin + glm::vec3(0.0f, k_playerCapsuleHalfHeight, 0.0f);
 
       if (m_bonfires.empty())
         m_lastBonfirePos = bf.position;
@@ -1028,7 +1030,8 @@ void ForgeGame::respawnPlayer() {
   m_gameState = GameState::Respawning;
   m_gameStateDuration = 1.0f;
   m_gameStateTimer = m_gameStateDuration;
-  LOG_INFO("[Game] Player respawnned at bonfire");
+  LOG_INFO("[Game] Player respawned at ({:.2f}, {:.2f}, {:.2f})",
+          m_lastBonfirePos.x, m_lastBonfirePos.y, m_lastBonfirePos.z);
 }
 
 void ForgeGame::onUpdate(float dt) {

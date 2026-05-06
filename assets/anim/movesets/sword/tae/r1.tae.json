@@ -1,19 +1,35 @@
 {
-  "rootBone": "",
-  "extractRootY": false,
+  "clip": "root.001|Unreal Take|Base Layer",
   "events": [
     {
-      "type": "SpawnHitbox",
-      "startTime": 0.23,
-      "endTime": 0.37,
+      "endTime": 0.10000000149011612,
+      "hitboxExtents": [
+        0.30000001192092896,
+        0.800000011920929,
+        0.15000000596046448
+      ],
       "payload": "weapon_r",
-      "hitboxExtents": [0.30, 0.80, 0.15]
+      "startTime": 0.0,
+      "type": "SpawnHitbox"
     },
     {
-      "type": "ComboWindow",
-      "startTime": 0.45,
-      "endTime": 0.60,
-      "payload": "r1_2"
+      "endTime": 0.3700000047683716,
+      "hitboxExtents": [
+        0.30000001192092896,
+        0.800000011920929,
+        0.15000000596046448
+      ],
+      "payload": "weapon_r",
+      "startTime": 0.23000000417232513,
+      "type": "SpawnHitbox"
+    },
+    {
+      "endTime": 0.6000000238418579,
+      "payload": "r1_2",
+      "startTime": 0.44999998807907104,
+      "type": "ComboWindow"
     }
-  ]
+  ],
+  "extractRootY": false,
+  "rootBone": "root"
 }

@@ -98,6 +98,9 @@ public:
   static void loadMovesetDefs(const std::string& relativePath);
   static const MovesetDef* getMovesetDef(const std::string& movesetId);
 
+  static const std::unordered_map<std::string, WeaponDef>& getAllWeaponDefs();
+  static const std::unordered_map<std::string, MovesetDef>& getAllMovesetDefs();
+
   // Release everything - call on shutdown or scene change
   static void clear();
   static void printStats();

@@ -44,6 +44,12 @@ public:
 
   float getActiveClipTime() const;
   float getActiveClipDuration() const;
+
+  // Seek the active clip to explicit time t and recompute bone matrices
+  // Does not advance frame state or fire TAE events
+  // The next call to update(t) resumes normal playback from this pos
+  void scrubTo(float t);
+
   std::string getCurrentStateName() const;
   std::string getStateInfo() const; 
 

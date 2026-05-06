@@ -74,6 +74,16 @@ float Animator::getActiveClipDuration() const {
   return m_graph->getActiveClipDuration();
 }
 
+void Animator::scrubTo(float t) {
+  if (!m_graph) {
+    LOG_ERROR("[Animator] '{}' scrubTo() called without graph", m_ownerName);
+    return;
+  }
+  m_graph->setActiveTime(t);
+  m_graph->evaluate(m_localTransforms);
+  computeBoneMatrices();
+}
+
 std::string Animator::getCurrentStateName() const {
   if (!m_graph) return "";
   auto* sm = dynamic_cast<StateMachineNode*>(m_graph.get());

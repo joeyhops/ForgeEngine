@@ -17,6 +17,7 @@ endif()
 # Include sub-projects.
 add_subdirectory (engine)
 add_subdirectory (game)
+add_subdirectory (tools/tae_editor)
 
 execute_process(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
