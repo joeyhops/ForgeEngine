@@ -18,6 +18,7 @@ uniform bool u_hasMetallicMap;
 uniform bool u_hasRoughnessMap;
 uniform bool u_hasAoMap;
 
+uniform vec3 u_albedoTint;
 uniform vec3 u_lightDir;
 uniform vec3 u_lightColor;
 uniform vec3 u_cameraPos;
@@ -66,7 +67,7 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 }
 
 void main() {
-  vec3 albedo = u_hasAlbedo ? texture(u_albedo, v_texCoord).rgb : vec3(0.75);
+  vec3 albedo = u_hasAlbedo ? texture(u_albedo, v_texCoord).rgb : u_albedoTint;
   float metallic = u_hasMetallicMap ? texture(u_metallicMap, v_texCoord).r : 0.0;
   float roughness = u_hasRoughnessMap ? texture(u_roughnessMap, v_texCoord).r : 0.5;
   float ao = u_hasAoMap ? texture(u_aoMap, v_texCoord).r : 1.0;

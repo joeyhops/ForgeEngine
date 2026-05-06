@@ -3,6 +3,7 @@
 #include <forge/Animator.h>
 #include <forge/AnimationClip.h>
 #include <forge/AssetManager.h>
+#include <forge/Renderer.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -90,9 +91,6 @@ private:
     void handleMouse(float dx, float dy, float scroll);
   } m_camera;
   
-  // Rendering
-  std::shared_ptr<forge::Shader> m_lineShader;
-
   // UI
   std::unique_ptr<TaeEditorUI> m_ui;
   char m_charPathBuff[1024] = {};

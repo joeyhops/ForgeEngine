@@ -39,7 +39,6 @@ private:
   enum class GameState { Playing, DeathSequence, YouDied, Respawning };
   std::string m_initialMap = "bonfire";
 
-  void setupRenderer();
   void setupPlayer();
   void setupPlayerAnimEvents();
   void setupEnemy();
@@ -55,15 +54,6 @@ private:
   void renderHUD();
   void renderDeathOverlay();
 
-  void drawModelAtMatrix(const forge::ModelData& model, const glm::mat4& matrix);
-
-  void drawModel(const forge::ModelData& model,
-                 const forge::Transform& transform);
-
-  void drawSkinnedModel(const forge::SkinnedModelData& model,
-                        const forge::Transform& transform,
-                        const forge::Animator& animator);
-
   std::vector<forge::MapRenderObject> buildRenderObjects(const forge::EntityGeometry& geom);
   
   void initHUD();
@@ -71,13 +61,13 @@ private:
                    float r, float g, float b, float a);
   void drawHUDBar(float x, float y, float w, float h,
                   float fill, float r, float g, float b);
+  void drawHUDText(float x, float y, float pixelHeight,
+                   const char* text, float r, float g, float b, float a);
 
   // Rendering
-  std::shared_ptr<forge::Shader> m_shader; // basic.vert/frag
-  std::shared_ptr<forge::Shader> m_skinnedShader; // skinned.vert/basic.frag
-  std::shared_ptr<forge::Shader> m_debugLineShader;
   std::shared_ptr<forge::Shader> m_hudShader;
   std::shared_ptr<forge::Shader> m_hudTextShader;
+  
   std::unique_ptr<forge::Camera> m_camera;
   std::unique_ptr<forge::ThirdPersonCamera> m_tpCamera;
   
@@ -94,8 +84,6 @@ private:
 
   stbtt_bakedchar m_glyphData[96]; // one entry per baked char
 
-  void drawHUDText(float x, float y, float pixelHeight,
-                   const char* text, float r, float g, float b, float a);
 
   // Player
   struct PlayerEntity {
@@ -154,12 +142,10 @@ private:
   std::vector<std::unique_ptr<forge::TriggerVolume>> m_triggerVolumes;
 
   std::unique_ptr<forge::MapScene> m_mapScene;
-  std::shared_ptr<forge::Shader> m_brushShader;
   forge::EntityAssembler m_assembler;
   std::vector<forge::EntityInstance> m_mapEntities;
 
   // Input
-  
   double m_prevMouseX = 0.0;
   double m_prevMouseY = 0.0;
   bool m_firstMouse = true;

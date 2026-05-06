@@ -31,27 +31,15 @@ TaeEditorApp::TaeEditorApp(int w, int h, const char* title)
 TaeEditorApp::~TaeEditorApp() = default;
 
 void TaeEditorApp::onInit() {
-  setClearColor(0.12f, 0.12f, 0.14f);
-
 #ifdef __WIN32__
   forge::AssetManager::setAssetRoot("../../../../assets/");
 #else
   forge::AssetManager::setAssetRoot("assets/");
 #endif
 
-#ifdef __APPLE__
-  m_lineShader = forge::AssetManager::loadShader(
-    "shaders/mac/debug_line.vert",
-    "shaders/mac/debug_line.frag"
-  );
-#else
-  m_lineShader = forge::AssetManager::loadShader(
-    "shaders/win/debug_line.vert",
-    "shaders/win/debug_line.frag"
-  );
-#endif
-  // Line Shader for DebugDraw
-  forge::DebugDraw::init(m_lineShader.get());
+  initRenderer(forge::AssetManager::getAssetRoot());
+
+  getRenderer().setClearColor(0.12f, 0.12f, 0.14f);
 
   glfwSetScrollCallback(getWindow(), onScroll);
 
@@ -64,7 +52,6 @@ void TaeEditorApp::onInit() {
 }
 
 void TaeEditorApp::onShutdown() {
-  forge::DebugDraw::shutdown();
 }
 
 void TaeEditorApp::onUpdate(float dt) {
@@ -80,6 +67,8 @@ void TaeEditorApp::onUpdate(float dt) {
 }
 
 void TaeEditorApp::onRender() {
+  getRenderer().beginFrame(getWidth(), getHeight());
+
   if (m_clip) {
     renderSkeleton();
     renderActiveHitboxes();

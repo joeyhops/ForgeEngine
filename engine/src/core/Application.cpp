@@ -5,6 +5,8 @@
 #include <forge/CombatSystem.h>
 #include <forge/FlagManager.h>
 #include <forge/DebugUI.h>
+#include <forge/Renderer.h>
+#include <forge/DebugDraw.h>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -12,6 +14,7 @@
 #include <chrono>
 #include <stdexcept>
 #include <cstring>
+#include <cassert>
 
 namespace forge {
 
@@ -21,6 +24,12 @@ LuaState& Application::getLua() { return *m_lua; }
 CombatSystem& Application::getCombat() { return *m_combat; }
 FlagManager& Application::getFlags() { return *m_flags; }
 DebugUI& Application::getDebugUI() { return *m_debugUI; }
+
+Renderer& Application::getRenderer() {
+  assert(m_renderer && "getRenderer() called before initRenderer()");
+  return *m_renderer;
+}
+
 GLFWwindow* Application::getWindow() const { return m_window; }
 int Application::getWidth() const { return m_width; }
 int Application::getHeight() const { return m_height; }
@@ -31,8 +40,6 @@ Application::Application(int width, int height, const char* title)
 {
   initWindow();
   initSystems();
-
-
   m_running = true;
 }
 
@@ -89,14 +96,22 @@ void Application::initSystems() {
   LOG_INFO("Engine systems initialized");
 }
 
+void Application::initRenderer(const std::string& assetRoot) {
+  m_renderer = std::make_unique<Renderer>(assetRoot);
+  DebugDraw::init(m_renderer->getDebugLineShader());
+  LOG_INFO("[Application] Renderer initialized");
+}
+
 void Application::shutdownSystems() {
   // ImGui first - no deps on any other systems
   if (m_debugUI) { m_debugUI->shutdown(); m_debugUI.reset(); }
+  DebugDraw::shutdown();
   // Shutdown order matters - Lua first (Lua may reference other systems)
   m_lua.reset();
   m_combat.reset();
   m_physics.reset();
   m_flags.reset();
+  m_renderer.reset();
 
   if (m_window) { glfwDestroyWindow(m_window); m_window = nullptr; }
   glfwTerminate();
@@ -124,16 +139,10 @@ void Application::run() {
     }
     onUpdate(dt);
 
-    // Render
-    glClearColor(m_clearColor[0], m_clearColor[1], m_clearColor[2], 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     // build ImGui panels for this frame (must come before onRender so
     // the game can push its own panels in onRender if needed later)
     m_debugUI->begin(dt);
-
     onRender();
-
     //Flush ImGui draw data on top of scene
     m_debugUI->end();
 
@@ -154,12 +163,6 @@ bool Application::isKeyPressed(int key) {
   bool prev = m_prevKeyStates[key] == GLFW_PRESS;
   m_prevKeyStates[key] = curr ? GLFW_PRESS : GLFW_RELEASE;
   return curr && !prev;
-}
-
-void Application::setClearColor(float r, float g, float b) {
-  m_clearColor[0] = r;
-  m_clearColor[1] = g;
-  m_clearColor[2] = b;
 }
 
 }

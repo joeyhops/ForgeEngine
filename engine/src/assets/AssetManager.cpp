@@ -8,6 +8,7 @@
 #include <forge/Bone.h>
 #include <forge/AnimationClip.h>
 #include <forge/TAESerialization.h>
+#include <forge/Material.h>
 
 // Assimp
 #include <assimp/Importer.hpp>
@@ -49,6 +50,7 @@ std::unordered_map<std::string, std::shared_ptr<Shader>> AssetManager::s_shaders
 std::unordered_map<std::string, std::shared_ptr<Texture>> AssetManager::s_textures;
 std::unordered_map<std::string, WeaponDef> AssetManager::s_weaponDefs;
 std::unordered_map<std::string, MovesetDef> AssetManager::s_movesetDefs;
+std::unordered_map<std::string, std::shared_ptr<Material>> AssetManager::s_materials;
 
 // Helpers
 
@@ -76,6 +78,28 @@ static std::shared_ptr<Texture> loadMapTextureWithSuffix(const std::string& bare
   }
 
   return nullptr;
+}
+
+// Helper:
+static void applyMaterialJSON(forge::Material& mat, const nlohmann::json& j) {
+  if (j.contains("albedo"))
+    mat.albedo = forge::AssetManager::loadTexture(j["albedo"].get<std::string>());
+  if (j.contains("normalMap"))
+    mat.normalMap = forge::AssetManager::loadTexture(j["normalMap"].get<std::string>());
+  if (j.contains("metallicMap"))
+    mat.metallicMap = forge::AssetManager::loadTexture(j["metallicMap"].get<std::string>());
+  if (j.contains("roughnessMap"))
+    mat.roughnessMap = forge::AssetManager::loadTexture(j["roughnessMap"].get<std::string>());
+  if (j.contains("aoMap"))
+    mat.aoMap = forge::AssetManager::loadTexture(j["aoMap"].get<std::string>());
+  if (j.contains("albedoTint")) {
+    auto& a = j["albedoTint"];
+    mat.albedoTint = glm::vec3(a[0].get<float>(), a[1].get<float>(), a[2].get<float>());
+  }
+  if (j.contains("metallic"))
+    mat.metallic = j["metallic"].get<float>();
+  if (j.contains("roughness"))
+    mat.roughness = j["roughness"].get<float>();
 }
 
 // Config
@@ -336,15 +360,40 @@ ModelData AssetManager::loadModel(const std::string& path) {
     ModelData::SubMesh sub;
     sub.mesh = std::make_shared<Mesh>(verts, matIdx[matIndex]);
 
-    if (matIndex < scene->mNumMaterials)
-      sub.texture = resolveTexture(scene->mMaterials[matIndex]);
+    if (matIndex < scene->mNumMaterials) {
+      aiMaterial* aiMat = scene->mMaterials[matIndex];
+      sub.material.albedo = resolveTexture(aiMat);
+
+      aiString matName;
+      aiMat->Get(AI_MATKEY_NAME, matName);
+      sub.name = matName.C_Str();
+    }
 
     result.subMeshes.push_back(std::move(sub));
   }
 
-  if (!result.subMeshes.empty()) {
+  if (!result.subMeshes.empty())
     result.mesh = result.subMeshes[0].mesh;
-    result.texture = result.subMeshes[0].texture;
+
+  {
+    std::string sidecarAbs = resolvePath(path + ".mat.json");
+    std::ifstream sf(sidecarAbs);
+    if (sf.is_open()) {
+      try {
+        nlohmann::json j = nlohmann::json::parse(sf);
+        if (j.contains("materials")) {
+          for (auto& sub : result.subMeshes)
+            if (j["materials"].contains(sub.name))
+              applyMaterialJSON(sub.material, j["materials"][sub.name]);
+        } else {
+          for (auto& sub : result.subMeshes)
+            applyMaterialJSON(sub.material, j);
+        }
+        LOG_INFO("[Assets] Applied material sidecar: {}.mat.json", path);
+      } catch (const nlohmann::json::exception& e) {
+        LOG_WARN("[Assets] Material sidecar parse error for {}: {}", path, e.what());
+      }
+    }
   }
 
   s_models[path] = result;
@@ -550,7 +599,21 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
   SkinnedModelData result;
   result.mesh = std::make_shared<SkinnedMesh>(allVerts, allIdx);
   result.skeleton = std::move(skeleton);
-  result.texture = texture;
+  result.material.albedo = texture;
+
+  // Apply single material sidecar if present (skinned models are single-surface)
+  {
+    std::string sidecarAbs = resolvePath(path + ".mat.json");
+    std::ifstream sf(sidecarAbs);
+    if (sf.is_open()) {
+      try {
+        nlohmann::json j = nlohmann::json::parse(sf);
+        applyMaterialJSON(result.material, j);
+      } catch (const nlohmann::json::exception& e) {
+        LOG_WARN("[Assets] Material sidecar parse error for {}: {}", path, e.what());
+      }
+    }
+  }
 
   s_skinnedModels[path] = result;
   return result;
@@ -809,20 +872,80 @@ const std::unordered_map<std::string, MovesetDef>& AssetManager::getAllMovesetDe
   return s_movesetDefs;
 }
 
+std::shared_ptr<Material> AssetManager::loadMaterial(const std::string& relativePath) {
+  auto it = s_materials.find(relativePath);
+  if (it != s_materials.end()) return it->second;
+
+  std::string absPath = resolvePath(relativePath);
+  std::ifstream f(absPath);
+  if (!f.is_open()) {
+    LOG_WARN("[Assets] Material not found: {}", absPath);
+    return nullptr;
+  }
+
+  nlohmann::json j;
+  try {
+    j = nlohmann::json::parse(f);
+  } catch (const nlohmann::json::exception& e) {
+    LOG_ERROR("[Assets] Material JSON parse error in {}: {}", absPath, e.what());
+    return nullptr;
+  }
+
+  auto mat = std::make_shared<Material>();
+  applyMaterialJSON(*mat, j);
+
+  s_materials[relativePath] = mat;
+  LOG_INFO("[Assets] Loaded material: {}", relativePath);
+  return mat;
+}
+
+std::shared_ptr<Material> AssetManager::loadMaterialForMesh(const std::string& meshRelativePath) {
+  return loadMaterial(meshRelativePath + ".mat.json");
+}
+
+std::shared_ptr<Material> AssetManager::loadMaterialForTBTexture(const std::string& bareName) {
+  std::string cacheKey = "__tb__" + bareName;
+  auto it = s_materials.find(cacheKey);
+  if (it != s_materials.end()) return it->second;
+
+  // Try explicit mat.json sidecar first
+  std::string sidecarPath = "texture/" + bareName + ".mat.json";
+  std::ifstream probe(resolvePath(sidecarPath));
+  std::shared_ptr<Material> mat;
+
+  if (probe.is_open()) {
+    probe.close();
+    mat = loadMaterial(sidecarPath);
+  } else {
+    // fallback
+    mat = std::make_shared<Material>();
+    mat->albedo = loadMapTexture(bareName);
+    mat->normalMap = loadMapNormalTexture(bareName);
+    mat->roughnessMap = loadMapRoughnessTexture(bareName);
+    mat->metallicMap = loadMapMetallicTexture(bareName);
+    mat->aoMap = loadMapAOTexture(bareName);
+    LOG_INFO("[Assets] Built material from naming convention: {}", bareName);
+  }
+
+  s_materials[cacheKey] = mat;
+  return mat;
+}
+
 void AssetManager::clear() {
   s_skinnedModels.clear();
   s_clips.clear();
   s_models.clear();
   s_textures.clear();
   s_shaders.clear();
+  s_materials.clear();
   s_weaponDefs.clear();
   s_movesetDefs.clear();
   LOG_INFO("[Assets] Cache cleared");
 }
 
 void AssetManager::printStats() {
-  LOG_INFO("[Assets] Cache: {} models, {} textures, {} Shaders cached",
-           s_models.size(), s_textures.size(), s_shaders.size());
+  LOG_INFO("[Assets] Cache: {} models, {} textures, {} Shaders, {} materials cached",
+           s_models.size(), s_textures.size(), s_shaders.size(), s_materials.size());
 }
 
 }

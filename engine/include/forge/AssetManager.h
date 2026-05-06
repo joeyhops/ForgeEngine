@@ -6,6 +6,7 @@
 #include <forge/AnimationClip.h>
 #include <forge/Texture.h>
 #include <forge/Shader.h>
+#include <forge/Material.h>
 #include <forge/WeaponDef.h>
 #include <forge/MovesetDef.h>
 #include <string>
@@ -19,7 +20,8 @@ namespace forge {
 struct ModelData {
   struct SubMesh {
     std::shared_ptr<Mesh> mesh;
-    std::shared_ptr<Texture> texture; // Nullptr if no texture
+    Material material;
+    std::string name; // Assimp material name, used for multi-material sidecar keys
   };
 
   std::vector<SubMesh> subMeshes;
@@ -41,11 +43,11 @@ struct ModelData {
 struct SkinnedModelData {
   std::shared_ptr<SkinnedMesh> mesh;
   std::vector<Bone> skeleton; // Full bone hierarchy, parent indices set
-  std::shared_ptr<Texture> texture;
+  Material material;
 
-  bool hasTexture() const { return texture != nullptr; }
   bool valid() const { return mesh != nullptr && !skeleton.empty(); }
 };
+
 
 class AssetManager {
 public:
@@ -98,6 +100,14 @@ public:
   static void loadMovesetDefs(const std::string& relativePath);
   static const MovesetDef* getMovesetDef(const std::string& movesetId);
 
+  // Parse a .mat.json at relativePath. returns nullptr if the file is absent or malformed
+  static std::shared_ptr<Material> loadMaterial(const std::string& relativePath);
+  // Looks for <meshRelativePath>.mat.json sidecar
+  // returns nullptr if no sidecar exists
+  static std::shared_ptr<Material> loadMaterialForMesh(const std::string& meshRelativePath);
+  // Load material for trenchbroom surface name
+  static std::shared_ptr<Material> loadMaterialForTBTexture(const std::string& bareName);
+
   static const std::unordered_map<std::string, WeaponDef>& getAllWeaponDefs();
   static const std::unordered_map<std::string, MovesetDef>& getAllMovesetDefs();
 
@@ -114,6 +124,7 @@ private:
   static std::unordered_map<std::string, std::shared_ptr<Texture>> s_textures;
   static std::unordered_map<std::string, WeaponDef> s_weaponDefs;
   static std::unordered_map<std::string, MovesetDef> s_movesetDefs;
+  static std::unordered_map<std::string, std::shared_ptr<Material>> s_materials;
 };
 
 }

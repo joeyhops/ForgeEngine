@@ -9,6 +9,7 @@ class LuaState;
 class CombatSystem;
 class FlagManager;
 class DebugUI;
+class Renderer;
 
 class Application {
 
@@ -29,6 +30,8 @@ public:
   CombatSystem& getCombat(); 
   FlagManager& getFlags(); 
   DebugUI& getDebugUI();
+  Renderer& getRenderer();
+
   GLFWwindow* getWindow() const; 
   int getWidth() const; 
   int getHeight() const; 
@@ -45,9 +48,7 @@ protected:
   virtual void onRender() = 0; // Submit draw calls
   virtual void onShutdown() = 0; // Release game resources
 
-  // Clear color - game can change this
-  void setClearColor(float r, float g, float b);
-
+  void initRenderer(const std::string& assetRoot);
 private:
   void initWindow();
   void initSystems();
@@ -58,7 +59,6 @@ private:
   int m_width, m_height;
   float m_totalTime = 0.0f;
   bool m_running = false;
-  float m_clearColor[3] = { 0.1f, 0.1f, 0.12f };
 
   // Prev key states for isKeyPressed
   static constexpr int KEY_COUNT = 512;
@@ -70,6 +70,7 @@ private:
   std::unique_ptr<CombatSystem> m_combat;
   std::unique_ptr<FlagManager> m_flags;
   std::unique_ptr<DebugUI> m_debugUI;
+  std::unique_ptr<Renderer> m_renderer;
 };
 
 }

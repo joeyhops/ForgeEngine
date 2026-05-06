@@ -10,10 +10,11 @@ uniform sampler2D u_albedo;
 uniform sampler2D u_normalMap;
 uniform bool u_hasAlbedo;
 uniform bool u_hasNormalMap;
+uniform vec3 u_albedoTint;
 uniform vec3 u_lightDir;
 
 void main() {
-  vec3 albedo = u_hasAlbedo ? texture(u_albedo, v_texCoord).rgb : vec3(0.0);
+  vec3 albedo = u_hasAlbedo ? texture(u_albedo, v_texCoord).rgb : u_albedoTint; 
 
   vec3 normal = v_TBN[2]; // Default to vertex normal
   if (u_hasNormalMap) {

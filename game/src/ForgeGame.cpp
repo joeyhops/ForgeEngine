@@ -15,6 +15,9 @@
 #include <forge/Animator.h>
 #include <forge/map/GeometryGenerator.h>
 #include <forge/map/MapGeometryTypes.h>
+#include <forge/Renderer.h>
+#include <forge/Material.h>
+#include <forge/map/MapScene.h>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -40,7 +43,14 @@ void ForgeGame::onInit() {
   forge::AssetManager::setAssetRoot("assets/");
 #endif
 
-  setupRenderer();
+  float aspect = (float)getWidth() / (float)getHeight();
+  m_camera = std::make_unique<forge::Camera>(60.0f, aspect, 0.1f, 300.0f);
+  m_tpCamera = std::make_unique<forge::ThirdPersonCamera>(*m_camera, getPhysics());
+
+  initRenderer(forge::AssetManager::getAssetRoot());
+  initHUD();
+  glfwSetInputMode(getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
   getFlags().loadFromFile(k_saveFilePath);
   forge::AssetManager::loadWeaponDefs("data/weapons.json");
   forge::AssetManager::loadMovesetDefs("data/movesets.json");
@@ -52,28 +62,6 @@ void ForgeGame::onInit() {
 
   setupLevel(m_initialMap);
   setupScripts();
-
-#ifdef __APPLE__
-  m_debugLineShader = forge::AssetManager::loadShader(
-  "shaders/mac/debug_line.vert", 
-  "shaders/mac/debug_line.frag"
-  );
-  m_brushShader = forge::AssetManager::loadShader(
-    "shaders/mac/brush.vert",
-    "shaders/mac/brush.frag"
-  );
-#else
-  m_debugLineShader = forge::AssetManager::loadShader(
-  "shaders/win/debug_line.vert", 
-  "shaders/win/debug_line.frag"
-  );
-  m_brushShader = forge::AssetManager::loadShader(
-    "shaders/win/brush.vert",
-    "shaders/win/brush.frag"
-  );
-#endif
-
-  forge::DebugDraw::init(m_debugLineShader.get());
 
   forge::EventBus::subscribe<forge::EntityHitEvent>([this](const forge::EntityHitEvent& e) {
     bool playerWasHit = (e.defenderName == "player");
@@ -371,35 +359,6 @@ void ForgeGame::onShutdown() {
   forge::AssetManager::clear();
 }
 
-void ForgeGame::setupRenderer() {
-  // Shader and camera
-#ifdef __APPLE__
-  m_shader = forge::AssetManager::loadShader(
-    "shaders/mac/basic.vert",
-    "shaders/mac/basic.frag"
-  );
-  m_skinnedShader = forge::AssetManager::loadShader("shaders/mac/skinned.vert",
-                                                    "shaders/mac/basic.frag"); 
-#else
-  m_shader = forge::AssetManager::loadShader(
-    "shaders/win/basic.vert",
-    "shaders/win/basic.frag"
-  );
-  m_skinnedShader = forge::AssetManager::loadShader("shaders/win/skinned.vert",
-                                                    "shaders/win/basic.frag"); 
-#endif
-  // Third person camera - positioned behind and above player
-  // angled down to see the level.
-  float aspect = (float)getWidth() / (float)getHeight();
-  m_camera = std::make_unique<forge::Camera>(60.0f, aspect, 0.1f, 300.0f);
-  m_tpCamera = std::make_unique<forge::ThirdPersonCamera>(*m_camera, getPhysics());
-
-  initHUD();
-  // Hide and capture cursor so all mouse mvmt drives the camera
-  // ImGui panels remain accessible via F-key toggles and keyboard nav
-  glfwSetInputMode(getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-}
-
 std::vector<forge::MapRenderObject> ForgeGame::buildRenderObjects(const forge::EntityGeometry& geom) {
   std::vector<forge::MapRenderObject> objects;
   for (const auto& surf : geom.surfaces) {
@@ -416,11 +375,7 @@ std::vector<forge::MapRenderObject> ForgeGame::buildRenderObjects(const forge::E
     }
     forge::MapRenderObject ro;
     ro.mesh = std::make_shared<forge::Mesh>(meshVerts, surf.indices);
-    ro.albedo = forge::AssetManager::loadMapTexture(surf.textureName);
-    ro.normalMap = forge::AssetManager::loadMapNormalTexture(surf.textureName);
-    ro.roughnessMap = forge::AssetManager::loadMapRoughnessTexture(surf.textureName);
-    ro.metallicMap = forge::AssetManager::loadMapMetallicTexture(surf.textureName);
-    ro.aoMap = forge::AssetManager::loadMapAOTexture(surf.textureName);
+    ro.material = *forge::AssetManager::loadMaterialForTBTexture(surf.textureName);
     objects.push_back(ro);
   }
   return objects;
@@ -1252,40 +1207,49 @@ void ForgeGame::onUpdate(float dt) {
 }
 
 void ForgeGame::onRender() {
+  getRenderer().beginFrame(*m_camera, getWidth(), getHeight());
   renderScene();
   renderDebugOverlays();
   renderHUD();
   renderDeathOverlay();
+  getRenderer().endFrame();
 }
 
 void ForgeGame::renderScene() {
-  m_shader->bind();
   // Draw pickups
   for (const auto& pk : m_weaponPickups) {
     if (!pk.collected && pk.model.hasRenderData())
-      drawModelAtMatrix(pk.model, pk.transform->getModelMatrix());
+      getRenderer().drawMesh(pk.model, pk.transform->getModelMatrix());
   }
 
   // Draw player weapon
   if (m_player.equipment && m_player.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND))
-    drawModelAtMatrix(m_player.weaponModel, 
-                      m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
+    getRenderer().drawMesh(
+      m_player.weaponModel,
+      m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND)
+    );
 
   // Draw enemy weapon
-  if (m_enemy.active && m_enemy.equipment && m_enemy.combat->isAlive()
+  if (m_enemy.active
+    && m_enemy.equipment
+    && m_enemy.combat->isAlive()
     && m_enemy.equipment->hasWeapon(forge::EquipmentComponent::RIGHT_HAND)) {
-    drawModelAtMatrix(m_enemy.weaponModel,
-                      m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND));
+    getRenderer().drawMesh(
+      m_enemy.weaponModel,
+      m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND)
+    );
   }
-  m_shader->unbind();
-
+  
   // Draw Native Map
-  if (m_mapScene) {
-    m_mapScene->render(*m_camera, m_brushShader.get());
-  }
+  if (m_mapScene)
+    getRenderer().drawBrushScene(*m_mapScene);
 
-  m_skinnedShader->bind();
-  drawSkinnedModel(m_player.skinnedModel, *m_player.transform, *m_player.animator);
+  // skinned characters
+  getRenderer().drawSkinnedMesh(
+    m_player.skinnedModel,
+    m_player.transform->getModelMatrix(),
+    m_player.animator->getBoneMatrices()
+  );
 
   if (m_enemy.active) {
     forge::Transform enemyVisualTransform;
@@ -1293,14 +1257,12 @@ void ForgeGame::renderScene() {
     enemyVisualTransform.setScale(m_enemy.transform->getScale());
     enemyVisualTransform.setRotation(m_enemy.transform->getRotation());
 
-    m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f, 0.7f, 0.7f));
-    drawSkinnedModel(m_enemy.skinnedModel, enemyVisualTransform, *m_enemy.animator);
-    m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
-  } else {
-    m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
-  }
-
-  m_skinnedShader->unbind();
+    getRenderer().drawSkinnedMesh(
+      m_enemy.skinnedModel,
+      enemyVisualTransform.getModelMatrix(),
+      m_enemy.animator->getBoneMatrices()
+    );
+  } 
 }
 
 void ForgeGame::renderDebugOverlays() {
@@ -1511,44 +1473,6 @@ void ForgeGame::renderDeathOverlay() {
   }
 }
 
-// Draw Skinned Model
-void ForgeGame::drawSkinnedModel(const forge::SkinnedModelData& model,
-                                 const forge::Transform& transform,
-                                 const forge::Animator& animator)
-{
-  if (!model.mesh) return;
-
-  glm::mat4 modelMat = transform.getModelMatrix();
-  glm::mat4 mvp = m_camera->getViewProjection() * modelMat;
-
-  m_skinnedShader->setMat4("u_mvp", mvp);
-  m_skinnedShader->setMat4("u_model", modelMat);
-  //m_skinnedShader->setVec3("u_tint", glm::vec3(1.0f));
-
-  // Upload bone palette - the heart of skinning
-  const auto& bones = animator.getBoneMatrices();
-  if (!bones.empty()) {
-    m_skinnedShader->setBool("u_hasBones", true);
-    m_skinnedShader->setMat4Array(
-      "u_boneMatrices",
-      static_cast<int>(std::min(bones.size(), (size_t)forge::MAX_BONES)),
-      bones.data()
-    );
-  } else {
-    m_skinnedShader->setBool("u_hasBones", false);
-  }
-
-  if (model.hasTexture()) {
-    model.texture->bind(0);
-    m_skinnedShader->setInt("u_texture", 0);
-    m_skinnedShader->setBool("u_hasTexture", true);
-  } else {
-    m_skinnedShader->setBool("u_hasTexture", false);
-  }
-
-  model.mesh->draw();
-}
-
 // Input - full rewrite
 //
 // Responsibilities:
@@ -1757,25 +1681,5 @@ void ForgeGame::spawnWeaponPickup(const glm::vec3& pos, const std::string& weapo
   m_weaponPickups.push_back(std::move(pickup));
   LOG_INFO("[Level] Spawned '{}' pickup at ({:.1f},{:.1f},{:.1f})",
            weaponId, pos.x, pos.y, pos.z);
-}
-
-void ForgeGame::drawModelAtMatrix(const forge::ModelData& model, const glm::mat4& matrix) {
-  if (!model.hasRenderData()) return;
-
-  glm::mat4 mvp = m_camera->getViewProjection() * matrix;
-  m_shader->setMat4("u_mvp", mvp);
-  m_shader->setMat4("u_model", matrix);
-  m_shader->setVec3("u_tint", glm::vec3(1.0f));
-
-  for (const auto& sub : model.subMeshes) {
-    if (sub.texture) {
-      sub.texture->bind(0);
-      m_shader->setInt("u_texture", 0);
-      m_shader->setBool("u_hasTexture", true);
-    } else {
-      m_shader->setBool("u_hasTexture", false);
-    }
-    sub.mesh->draw();
-  }
 }
 

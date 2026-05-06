@@ -4,17 +4,14 @@ in vec3 v_worldNormal;
 in vec2 v_texCoord;
 out vec4 fragColor;
 
-uniform sampler2D u_texture;
-uniform bool      u_hasTexture;
-uniform vec3      u_tint;       // Multiplied against the texture (default white)
-
+uniform sampler2D u_albedo;
+uniform bool      u_hasAlbedo;
+uniform vec3      u_albedoTint; 
 void main() {
     // Base color — texture or flat grey fallback
-    vec3 albedo = u_hasTexture
-        ? texture(u_texture, v_texCoord).rgb
-        : vec3(0.75);
-
-    albedo *= u_tint;
+    vec3 albedo = u_hasAlbedo
+        ? texture(u_albedo, v_texCoord).rgb
+        : u_albedoTint;
 
     // Simple single directional light — good enough for now
     // Phase 8 will replace this with a proper lighting system
