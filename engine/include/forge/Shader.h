@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <unordered_map>
 #include <glm/glm.hpp>
 
 namespace forge {
@@ -24,9 +25,14 @@ public:
   void setFloat(const std::string& name, float value) const;
   void setInt(const std::string& name, int value) const;
   void setBool(const std::string& name, bool value) const;
+  // Queries the uniform block index for blockName and binds it to
+  // bindingPoint. Call once per shader program after construction, before the first draw
+  // Required on OpenGL 4.1 (macOS) - glsl 4.10 does not support layout(binding=N)
+  void setUniformBlockBinding(const std::string& blockName, int bindingPoint) const;
 
 private:
   unsigned int m_programID = 0;
+  mutable std::unordered_map<std::string, int> m_uniformCache;
 
   unsigned int compileShader(unsigned int type, const std::string& source);
   std::string readFile(const std::string& path);

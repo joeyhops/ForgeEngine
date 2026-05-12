@@ -15,6 +15,7 @@ class FlagManager;
 class LuaState;
 class AIComponent;
 class Animator;
+class LightEnvironment;
 
 // DebugUI - owns the ImGUI lifecycle so we keep Application.cpp clean
 //
@@ -67,6 +68,10 @@ public:
     if (anim) m_animators.push_back({ anim, label });
   }
 
+  // Registers the LightEnvironment for the light editor panel
+  // Call once in Application::initRenderer() after the Renderer is created
+  void setLightEnvironment(LightEnvironment* lights) { m_lights = lights; }
+
   // Appends a line to console panel output buffer
   void addConsoleLine(std::string line);
 
@@ -82,10 +87,12 @@ private:
   void drawAIInspectorPanel();
   void drawAnimGraphMonitorPanel();
   void drawWeaponSocketEditorPanel();
+  void drawLightEditorPanel();
 
   CombatSystem* m_combat = nullptr;
   FlagManager* m_flags = nullptr;
   LuaState* m_lua = nullptr;
+  LightEnvironment* m_lights = nullptr;
   EquipmentComponent* m_equipment = nullptr;
   std::vector<AIComponent*> m_aiComponents;
 
@@ -104,13 +111,14 @@ private:
 
   // Panel visibility
   bool m_showPerformance = true;
-  bool m_showCombatMonitor = true;
+  bool m_showCombatMonitor = false;
   bool m_showFlagBrowser = false;
   bool m_showLuaConsole = false;
   bool m_showAIInspector = false;
-  bool m_showAnimGraphMonitor = true;
+  bool m_showAnimGraphMonitor = false;
   bool m_showPhysicsDebug = false;
   bool m_showSocketEditor = false;
+  bool m_showLightEditor = false;
 
   // Timing state (updatd in begin)
   float m_fps = 0.0f;

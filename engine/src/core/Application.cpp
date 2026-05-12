@@ -99,6 +99,7 @@ void Application::initSystems() {
 void Application::initRenderer(const std::string& assetRoot) {
   m_renderer = std::make_unique<Renderer>(assetRoot);
   DebugDraw::init(m_renderer->getDebugLineShader());
+  m_debugUI->setLightEnvironment(&m_renderer->getLights());
   LOG_INFO("[Application] Renderer initialized");
 }
 

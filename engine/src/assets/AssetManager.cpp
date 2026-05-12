@@ -180,7 +180,7 @@ std::shared_ptr<Texture> AssetManager::loadTextureAbsolute(const std::string& ab
   LOG_INFO("[Assets] Loaded texture '{}' - {}x{} ({} ch)",
            absPath, width, height, channels);
 
-  s_textures[absPath] = tex;
+  s_textures[key] = tex;
   return tex;
 }
 
@@ -247,7 +247,8 @@ ModelData AssetManager::loadModel(const std::string& path) {
   const unsigned int flags =
     aiProcess_Triangulate           |   // Quads → triangles
     aiProcess_GenSmoothNormals      |   // Generate normals if absent
-    aiProcess_FlipUVs               |   // OpenGL UV origin = bottom-left
+    aiProcess_CalcTangentSpace      |   // Populates mTangents[] and mBitangents[]
+    //aiProcess_FlipUVs               |   // OpenGL UV origin = bottom-left
     aiProcess_JoinIdenticalVertices |   // Deduplicate verts
     aiProcess_PreTransformVertices  |   // Bake node transforms into mesh
     aiProcess_OptimizeMeshes;           // Merge small meshes where possible
@@ -262,31 +263,6 @@ ModelData AssetManager::loadModel(const std::string& path) {
 
   fs::path modelDir = fs::path(absPath).parent_path();
   
-  auto resolveTexture = [&](aiMaterial* mat) -> std::shared_ptr<Texture> {
-    aiString texPath;
-    if (mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) != AI_SUCCESS)
-      return nullptr;
-
-    std::vector<fs::path> candidates = {
-      fs::path(texPath.C_Str()),
-      modelDir / texPath.C_Str(),
-      modelDir / fs::path(texPath.C_Str()).filename(),
-      modelDir / "Textures" / fs::path(texPath.C_Str()).filename(),
-    };
-
-    for (const auto& candidate : candidates) {
-      if (fs::exists(candidate)) {
-        LOG_INFO("[Assets] Texture resolved: {}", candidate.generic_string());
-        return loadTextureAbsolute(candidate.generic_string());
-      }
-    }
-
-    if (std::string(texPath.C_Str()).find("__TB_empty") == std::string::npos)
-      LOG_WARN("[Assets] Texture not found for '{}': {}", path, texPath.C_Str());
-
-    return nullptr;
-  };
-
   std::map<unsigned int, std::vector<Vertex>> matVerts;
   std::map<unsigned int, std::vector<unsigned int>> matIdx;
 
@@ -318,6 +294,15 @@ ModelData AssetManager::loadModel(const std::string& path) {
       if (aiM->HasTextureCoords(0)) {
           v.texCoord[0] = aiM->mTextureCoords[0][i].x;
           v.texCoord[1] = aiM->mTextureCoords[0][i].y;
+      }
+
+      if (aiM->HasTangentsAndBitangents()) {
+        glm::vec3 T(aiM->mTangents[i].x, aiM->mTangents[i].y, aiM->mTangents[i].z);
+        glm::vec3 B(aiM->mBitangents[i].x, aiM->mBitangents[i].y, aiM->mBitangents[i].z);
+        glm::vec3 N(v.normal[0], v.normal[1], v.normal[2]);
+        float handedness = (glm::dot(glm::cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
+        v.tangent[0] = T.x; v.tangent[1] = T.y; v.tangent[2] = T.z;
+        v.tangent[3] = handedness;
       }
 
       matVerts[matIdx_].push_back(v);
@@ -362,7 +347,6 @@ ModelData AssetManager::loadModel(const std::string& path) {
 
     if (matIndex < scene->mNumMaterials) {
       aiMaterial* aiMat = scene->mMaterials[matIndex];
-      sub.material.albedo = resolveTexture(aiMat);
 
       aiString matName;
       aiMat->Get(AI_MATKEY_NAME, matName);
@@ -410,6 +394,7 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
   const unsigned int flags =
     aiProcess_Triangulate | // Quads -> triangles
     aiProcess_GenSmoothNormals | // gen normals if missing
+    aiProcess_CalcTangentSpace |
     aiProcess_FlipUVs | // OpenGL UV origin = btm-left
     aiProcess_JoinIdenticalVertices | // de dupe
     aiProcess_LimitBoneWeights; // clamp to 4 influences per vertex
@@ -507,6 +492,15 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
       if (aiM->HasTextureCoords(0)) {
         v.texCoord[0] = aiM->mTextureCoords[0][i].x;
         v.texCoord[1] = aiM->mTextureCoords[0][i].y;
+      }
+
+      if (aiM->HasTangentsAndBitangents()) {
+        glm::vec3 T(aiM->mTangents[i].x, aiM->mTangents[i].y, aiM->mTangents[i].z);
+        glm::vec3 B(aiM->mBitangents[i].x, aiM->mBitangents[i].y, aiM->mBitangents[i].z);
+        glm::vec3 N(v.normal[0], v.normal[1], v.normal[2]);
+        float handedness = (glm::dot(glm::cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
+        v.tangent[0] = T.x; v.tangent[1] = T.y; v.tangent[2] = T.z;
+        v.tangent[3] = handedness;
       }
 
       // Sort influences by weight descending, keep top 4

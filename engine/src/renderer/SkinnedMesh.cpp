@@ -58,6 +58,9 @@ void SkinnedMesh::setupGPU(const std::vector<SkinnedVertex>& vertices,
   glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex), (void*)offsetof(SkinnedVertex, boneWeights));
   glEnableVertexAttribArray(4);
 
+  glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex), (void*)offsetof(SkinnedVertex, tangent));
+  glEnableVertexAttribArray(5);
+
   glBindVertexArray(0);
 }
 

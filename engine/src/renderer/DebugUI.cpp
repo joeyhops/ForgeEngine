@@ -6,6 +6,7 @@
 #include <forge/AIComponent.h>
 #include <forge/Logger.h>
 #include <forge/Animator.h>
+#include <forge/LightEnvironment.h>
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -70,7 +71,7 @@ void DebugUI::init(GLFWwindow* window) {
   ImGui_ImplOpenGL3_Init("#version 460");
 #endif
 
-  LOG_INFO("[DebugUI] Initialized (F1=Perf F2=Combat F3=Flags F4=Lua F5=AI, F6=AnimGraph, F7=Physics | F9=LuaReload grave=cursor)");
+  LOG_INFO("[DebugUI] Initialized (F1=Perf F2=Combat F3=Flags F4=Lua F5=AI, F6=AnimGraph, F7=Physics, F8=Socket, F9=Lights | F9=LuaReload grave=cursor)");
 }
 
 void DebugUI::setLuaState(LuaState* lua) {
@@ -121,6 +122,7 @@ void DebugUI::begin(float dt) {
   if (ImGui::IsKeyPressed(ImGuiKey_F6)) m_showAnimGraphMonitor = !m_showAnimGraphMonitor;
   if (ImGui::IsKeyPressed(ImGuiKey_F7)) m_showPhysicsDebug = !m_showPhysicsDebug;
   if (ImGui::IsKeyPressed(ImGuiKey_F8)) m_showSocketEditor = !m_showSocketEditor;
+  if (ImGui::IsKeyPressed(ImGuiKey_F9)) m_showLightEditor = !m_showLightEditor;
 
   // build panels
   if (m_showPerformance) drawPerformancePanel();
@@ -130,6 +132,7 @@ void DebugUI::begin(float dt) {
   if (m_showAIInspector) drawAIInspectorPanel();
   if (m_showAnimGraphMonitor) drawAnimGraphMonitorPanel();
   if (m_showSocketEditor) drawWeaponSocketEditorPanel();
+  if (m_showLightEditor) drawLightEditorPanel();
 }
 
 void DebugUI::end() {
@@ -572,6 +575,68 @@ void DebugUI::drawWeaponSocketEditorPanel() {
   if (ImGui::Button("Reset")) {
     m_socketDebug = {};
     m_equipment->clearMeshOffsetOverride(forge::EquipmentComponent::RIGHT_HAND);
+  }
+
+  ImGui::End();
+}
+
+void DebugUI::drawLightEditorPanel() {
+  if (!m_lights) return;
+  if (!ImGui::Begin("Light Editor [F9]")) {
+    ImGui::End();
+    return;
+  }
+
+  ImGui::SeparatorText("Directional Light");
+  {
+    const Light& d = m_lights->getDirectional();
+    float dir[3] = { d.posOrDir.x, d.posOrDir.y, d.posOrDir.z };
+    float col[3] = { d.color.x, d.color.y, d.color.z };
+    float intensity = d.intensity;
+
+    bool changed = false;
+    changed |= ImGui::DragFloat3("Direction##dir", dir, 0.01f, -1.0f, 1.0f);
+    changed |= ImGui::ColorEdit3("Color##dircol", col);
+    changed |= ImGui::DragFloat("Intensity##dirint", &intensity, 0.01f, 0.0f, 5.0f);
+
+    if (changed) {
+      glm::vec3 d3 = glm::normalize(glm::vec3(dir[0], dir[1], dir[2]));
+      m_lights->setDirectional(d3, glm::vec3(col[0], col[1], col[2]), intensity);
+    }
+  }
+
+  ImGui::SeparatorText("Ambient");
+  {
+    glm::vec3 ac = m_lights->getAmbientColor();
+    float ai = m_lights->getAmbientIntensity();
+    float col[3] = { ac.x, ac.y, ac.z };
+
+    bool changed = false;
+    changed |= ImGui::ColorEdit3("Color##ambcol", col);
+    changed |= ImGui::DragFloat("Intensity##ambint", &ai, 0.005f, 0.0f, 1.0f);
+
+    if (changed)
+      m_lights->setAmbient(glm::vec3(col[0], col[1], col[2]), ai);
+  }
+
+  ImGui::SeparatorText("Point Lights");
+  int count = m_lights->getPointLightCount();
+  ImGui::Text("Active point lights: %d / %d", count, LightEnvironment::k_maxPointLights);
+
+  for (int i = 0; i < count; ++i) {
+    ImGui::PushID(i);
+    const Light& pl = m_lights->getPointLight(i);
+    float pos[3] = { pl.posOrDir.x, pl.posOrDir.y, pl.posOrDir.z };
+    float col[3] = { pl.color.x, pl.color.y, pl.color.z };
+    float intensity = pl.intensity;
+    float range = pl.range;
+
+    ImGui::Text("Point light %d", i);
+    ImGui::DragFloat3("Pos", pos, 0.1f);
+    ImGui::ColorEdit3("Col", col);
+    ImGui::DragFloat("Intensity", &intensity, 0.05f, 0.0f, 10.0f);
+    ImGui::DragFloat("Range", &range, 0.5f, 0.1f, 100.0f);
+    ImGui::PopID();
   }
 
   ImGui::End();

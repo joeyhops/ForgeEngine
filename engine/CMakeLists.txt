@@ -9,6 +9,7 @@ add_library(forge_engine STATIC
   src/map/EntityAssembler.cpp
   src/renderer/Renderer.cpp
   src/renderer/Material.cpp
+  src/renderer/LightEnvironment.cpp
   src/renderer/Shader.cpp
   src/renderer/DebugDraw.cpp
   src/renderer/Mesh.cpp

@@ -1,5 +1,6 @@
 {
-  "albedoTint": [0.9, 0.9, 0.9],
-  "metallic": 0.8,
-  "roughness": 0.2
+  "albedo":       "textures/weapons/longsword/Sword_BaseColor.png",
+  "normalMap":    "textures/weapons/longsword/Sword_Normal.png",
+  "metallicMap":  "textures/weapons/longsword/Sword_Metallic.png",
+  "roughnessMap": "textures/weapons/longsword/Sword_Roughness.png"
 }

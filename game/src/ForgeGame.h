@@ -121,6 +121,11 @@ private:
     int bonfireId = 0;
     int targetFlag = 0;
     glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+
+    // light properties
+    glm::vec3 lightColor = { 1.0f, 0.45f, 0.05f };
+    float lightIntensity = 8.0f;
+    float lightRange = 12.0f;
   };
   std::vector<BonfireVolume> m_bonfires;
 
@@ -144,6 +149,7 @@ private:
   std::unique_ptr<forge::MapScene> m_mapScene;
   forge::EntityAssembler m_assembler;
   std::vector<forge::EntityInstance> m_mapEntities;
+  std::vector<std::pair<forge::ModelData, glm::mat4>> m_staticProps;
 
   // Input
   double m_prevMouseX = 0.0;

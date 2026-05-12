@@ -1,6 +1,7 @@
 #pragma once
 #include <forge/AssetManager.h>
 #include <forge/Camera.h>
+#include <forge/LightEnvironment.h>
 #include <forge/Material.h>
 #include <forge/Shader.h>
 
@@ -54,6 +55,9 @@ public:
 
   void setClearColor(float r, float g, float b);
 
+  LightEnvironment& getLights() { return m_lights; }
+  const LightEnvironment& getLights() const { return m_lights; }
+
 private:
   // prepends platform specific directory to a shader filename
   std::string resolvePath(const std::string& name) const;
@@ -67,6 +71,8 @@ private:
   glm::vec3 m_cameraPos = glm::vec3(0.0f);
 
   float m_clearColor[3] = { 0.08f, 0.08f, 0.10f };
+
+  LightEnvironment m_lights;
 };
 
 }

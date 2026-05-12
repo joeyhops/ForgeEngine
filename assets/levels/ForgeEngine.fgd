@@ -38,7 +38,7 @@ Optional weapon: set weaponId to equip on spawn; dropWeapon to leave a pickup on
     2 : "Boss"
   ]
   patrol_group(string) : "Patrol group name — must match patrol_waypoint entities in this area" : ""
-  aggro_radius(float) : "Detection radius in meters (overrides default)" : 0
+  aggro_radius(float) : "Detection radius in meters (overrides default)" : "0"
   weaponId(string)    : "WeaponDef ID to equip on spawn (leave blank for unarmed)" : ""
   dropWeapon(choices) : "Drop equipped weapon as pickup on death" : 1 =
   [
@@ -67,7 +67,7 @@ their group in the order they appear in the .map file."
 player enters the trigger radius. Used to drive quest state transitions."
 [
   flag_id(integer)     : "Flag ID to set (see GameFlags.h)" : 0
-  radius(float)        : "Trigger radius in meters" : 2.0
+  radius(float)        : "Trigger radius in meters" : "2.0"
   trigger_once(integer): "0 = repeatable, 1 = fires once then deactivates" : 1
   set_value(integer)   : "Value to write: 0 = clear flag, 1 = set flag" : 1
 ]
@@ -81,8 +81,8 @@ Player is pushed back with a locked feedback if the flag is not set.
 Orient with 'angle' so the gate face points toward the approach direction."
 [
   requiredFlag(integer) : "FlagManager flag ID that must be set to pass (0 = always open)" : 0
-  width(float)          : "Gate opening width in metres" : 2.0
-  height(float)         : "Gate opening height in metres" : 3.0
+  width(float)          : "Gate opening width in metres" : "2.0"
+  height(float)         : "Gate opening height in metres" : "3.0"
   angle(integer)        : "Facing direction (0=+Z, 90=+X, 180=-Z, 270=-X)" : 0
 ]
 
@@ -95,7 +95,7 @@ Press E while inside the trigger radius to pick up.
 Use respawns=1 for rare weapons that should not be permanently collected."
 [
   weaponId(string)    : "WeaponDef ID — must match an entry in assets/data/weapons.json" : ""
-  radius(float)       : "Pickup trigger radius in metres" : 1.0
+  radius(float)       : "Pickup trigger radius in metres" : "1.0"
   respawns(choices)   : "Respawns at bonfire rest?" : 0 =
   [
     0 : "No — permanent collect (default)"
@@ -107,13 +107,25 @@ Use respawns=1 for rare weapons that should not be permanently collected."
 // Bonfire / checkpoint
 // ─────────────────────────────────────────────────────────────────────────────
 
-@PointClass color(255 140 0) = bonfire : "Rest point / checkpoint.
+@PointClass
+  model({ "path": model, scale: scale })
+  size(-10 -9 -2, 10 9 8)
+  color(255 140 0)
+  = bonfire : "Rest point / checkpoint.
 The player can interact with this to save progress and reset enemies.
-Fires RestEvent through EventBus and calls onBonfireRest Lua callback."
+Fires RestEvent through EventBus and calls onBonfireRest Lua callback.
+Spawns a point light whos color and range are configurable per-instance"
 [
   bonfire_id(integer) : "Unique ID — used to distinguish multiple bonfires" : 0
   targetFlag(integer) : "FlagManager flag ID set when player rests here (0 = none)" : 0
-  radius(float)       : "Trigger radius in meters" : 1.5
+  radius(float)       : "Trigger radius in meters" : "1.5"
+  model(string)       : "Brazier/Bonfire mesh (optional, OBJ for editor preview)" : ""
+  scale(float)        : "Bonfire model scale - same value used in-engine after model scale conversion" : "5.0"
+  light_intensity(float) : "Flame point light intensity" : "8.0"
+  light_range(float)  : "Flame point light radius in meters" : "12.0"
+  light_r(integer)    : "Flame color - red channel 0-255" : 255
+  light_g(integer)    : "Flame color - green channel 0-255" : 115
+  light_b(integer)    : "Flame color - blue channel 0-255" : 13
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,13 +133,28 @@ Fires RestEvent through EventBus and calls onBonfireRest Lua callback."
 // ─────────────────────────────────────────────────────────────────────────────
 
 @PointClass color(255 255 100) iconsprite("sprites/light.spr") = light_point :
-"Point light source. Radius and colour recorded for future Phase 15 lighting pass."
+"Point light source."
 [
-  radius(float) : "Light radius in meters" : 5.0
+  radius(float) : "Light radius in meters" : "5.0"
   r(integer)    : "Red channel 0-255" : 255
   g(integer)    : "Green channel 0-255" : 230
   b(integer)    : "Blue channel 0-255" : 180
-  intensity(float) : "Brightness multiplier" : 1.0
+  intensity(float) : "Brightness multiplier" : "1.0"
+]
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Static props
+// ─────────────────────────────────────────────────────────────────────────────
+
+@PointClass model({ "path": model, "scale": scale }) color(200 200 200) = static_prop : "Static decorative mesh. 
+Loads any model from the assets root.
+TrenchBroom can preview OBJ files — use the .obj path here for editor visibility.
+The engine will load whatever path is stored in model at runtime."
+[
+    model(string)  : "Model path relative to assets root (e.g. models/env/brazier.obj)" : ""
+    angle(integer) : "Yaw rotation in degrees (0=+Z, 90=+X, 180=-Z, 270=-X)" : 0
+    scale(float)   : "Uniform scale multiplier" : "1.0"
 ]
 
 // ------------

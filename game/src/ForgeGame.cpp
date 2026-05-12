@@ -272,6 +272,7 @@ void ForgeGame::registerEntityFactories() {
   m_assembler.registerFactory("weapon_pickup", pointFactory);
   m_assembler.registerFactory("fog_gate", pointFactory);
   m_assembler.registerFactory("patrol_waypoint", pointFactory);
+  m_assembler.registerFactory("static_prop", pointFactory);
 }
 
 void ForgeGame::drawHUDText(float x, float y, float pixelHeight,
@@ -761,6 +762,7 @@ void ForgeGame::setupLevel(const std::string& levelName) {
 
   m_mapScene = std::make_unique<forge::MapScene>();
   m_mapEntities.clear(); // Clear entities from previous level
+  m_staticProps.clear();
   m_bonfires.clear();
 
   forge::GeometryGenerator gen;
@@ -883,6 +885,23 @@ void ForgeGame::setupLevel(const std::string& levelName) {
       bf.trigger = std::make_unique<forge::TriggerVolume>(getPhysics(), inst.origin, radius);
       bf.position = inst.origin + glm::vec3(0.0f, k_playerCapsuleHalfHeight, 0.0f);
 
+      bf.lightColor = glm::vec3(
+        ent.getFloat("light_r", 255) / 255.0f,
+        ent.getFloat("light_g", 155) / 255.0f,
+        ent.getFloat("light_b", 13) / 255.0f
+      );
+      bf.lightIntensity = ent.getFloat("light_intensity", 8.0f);
+      bf.lightRange = ent.getFloat("light_range", 12.0f);
+
+      std::string bfModel = ent.getProperty("model");
+      if (!bfModel.empty()) {
+        forge::ModelData model = forge::AssetManager::loadModel(bfModel);
+        float bfScale = ent.getFloat("scale", 5.0f) * forge::LevelLoader::k_defaultMapScale;
+        glm::mat4 T = glm::translate(glm::mat4(1.0f), ent.origin);
+        glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(bfScale));
+        m_staticProps.push_back({ std::move(model), T * S });
+      }
+
       if (m_bonfires.empty())
         m_lastBonfirePos = bf.position;
 
@@ -912,10 +931,49 @@ void ForgeGame::setupLevel(const std::string& levelName) {
       bool respawns = ent.getBool("respawns", false);
       if (!wepId.empty())
         spawnWeaponPickup(inst.origin, wepId, respawns);
+    } else if (inst.classname == "static_prop") {
+      std::string modelPath = ent.getProperty("model");
+      if (!modelPath.empty()) {
+        forge::ModelData model = forge::AssetManager::loadModel(modelPath);
+        float yaw = glm::radians(ent.getFloat("angle", 0.0f));
+        float scale = ent.getFloat("scale", 1.0f) * forge::LevelLoader::k_defaultMapScale;
+
+        glm::mat4 T = glm::translate(glm::mat4(1.0f), ent.origin);
+        glm::mat4 R = glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+        m_staticProps.push_back({ std::move(model), T * R * S });
+      }
     }
 
     m_mapEntities.push_back(std::move(inst));
   }
+
+  getRenderer().getLights().clearPointLights();
+  for (const auto& le : m_levelData.getByClass("light_point")) {
+    forge::Light l;
+    l.posOrDir = le->origin;
+    l.color = glm::vec3(le->getFloat("r", 255) / 255.0f,
+                        le->getFloat("g", 230) / 255.0f,
+                        le->getFloat("b", 180) / 255.0f);
+    l.intensity = le->getFloat("intensity", 1.0f);
+    l.range = le->getFloat("radius", 5.0f);
+    getRenderer().getLights().addPointLight(l);
+  }
+
+  for (const auto& bf : m_bonfires) {
+    forge::Light bonfireLight;
+    bonfireLight.posOrDir = bf.position + glm::vec3(0.0f, 1.2f, 0.0f); // offset above bonfire base
+    bonfireLight.color = bf.lightColor;
+    bonfireLight.intensity = bf.lightIntensity;
+    bonfireLight.range = bf.lightRange;
+    getRenderer().getLights().addPointLight(bonfireLight);
+  }
+
+  if (getRenderer().getLights().getPointLightCount() >= 6)
+    LOG_WARN("Currently at %d or %d point lights",
+             getRenderer().getLights().getPointLightCount(),
+             getRenderer().getLights().k_maxPointLights);
 
   LOG_INFO("[Game] Map assembly complete: {} entities active", m_mapEntities.size());
 }
@@ -1216,6 +1274,10 @@ void ForgeGame::onRender() {
 }
 
 void ForgeGame::renderScene() {
+  // Static props
+  for (const auto& [model, transform] : m_staticProps)
+    getRenderer().drawMesh(model, transform);
+
   // Draw pickups
   for (const auto& pk : m_weaponPickups) {
     if (!pk.collected && pk.model.hasRenderData())

@@ -1,0 +1,6 @@
+{
+  "albedo":       "textures/entities/bonfire/Campfire_MAT_BaseColor_00.jpg",
+  "normalMap":    "textures/entities/bonfire/Campfire_MAT_Normal_JL.jpg",
+  "metallicMap":  "textures/entities/bonfire/Campfire_MAT_Metallic.jpg",
+  "roughnessMap": "textures/entities/bonfire/Campfire_MAT_Roughness.jpg"
+}

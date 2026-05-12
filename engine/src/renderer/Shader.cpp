@@ -46,19 +46,20 @@ void Shader::bind() const { glUseProgram(m_programID); }
 void Shader::unbind() const { glUseProgram(0); }
 
 int Shader::getUniformLocation(const std::string& name) const {
+  auto it = m_uniformCache.find(name);
+  if (it != m_uniformCache.end()) return it->second;
+  
   int loc = glGetUniformLocation(m_programID, name.c_str());
   if (loc == -1)
-    LOG_WARN("Uniform '{}' not found in shader", name);
+    LOG_TRACE("Uniform '{}' not found in shader (Program: {})", name, m_programID);
+  m_uniformCache[name] = loc;
   return loc;
 }
 
 void Shader::setMat4Array(const std::string& name, int count, const glm::mat4* data) const
 {
-  int loc = glGetUniformLocation(m_programID, name.c_str());
-  if (loc == -1) {
-    // suppress warning for bone array
-    return;
-  }
+  int loc = getUniformLocation(name);
+  if (loc == -1) return;
   glUniformMatrix4fv(loc, count, GL_FALSE, glm::value_ptr(data[0]));
 }
 
@@ -86,13 +87,40 @@ void Shader::setBool(const std::string& name, bool value) const {
   glUniform1i(getUniformLocation(name), (int)value);
 }
 
+void Shader::setUniformBlockBinding(const std::string& blockName, int bindingPoint) const {
+  unsigned int blockIndex = glGetUniformBlockIndex(m_programID, blockName.c_str());
+  if (blockIndex != GL_INVALID_INDEX)
+    glUniformBlockBinding(m_programID, blockIndex, bindingPoint);
+  else
+    LOG_WARN("Uniform block '{}' not found in shader (Program: {})", blockName, m_programID);
+}
+
 std::string Shader::readFile(const std::string& path) {
   std::ifstream file(path);
   if (!file.is_open())
     throw std::runtime_error("Cannot open shader file: " + path);
-  std::stringstream ss;
-  ss << file.rdbuf();
-  return ss.str();
+  // Extract the directory of this file so we can resolve relative #include paths.
+  std::string dir;
+  auto sep = path.rfind('/');
+  if (sep != std::string::npos)
+    dir = path.substr(0, sep + 1);
+
+  std::string result;
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line.substr(0, 8) == "#include") {
+      auto q1 = line.find('"');
+      auto q2 = (q1 != std::string::npos) ? line.find('"', q1 + 1) : std::string::npos;
+      if (q1 != std::string::npos && q2 != std::string::npos) {
+        std::string includePath = line.substr(q1 + 1, q2 - q1 - 1);
+        result += readFile(dir + includePath);
+        result += '\n';
+        continue;
+      }
+    }
+    result += line + '\n';
+  }
+  return result;
 }
 
 unsigned int Shader::compileShader(unsigned int type, const std::string& source) {

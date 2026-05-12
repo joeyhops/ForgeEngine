@@ -2,7 +2,7 @@
   "weapons": [
     {
       "id":         "longsword",
-      "mesh":       "models/weapons/longsword.glb",
+      "mesh":       "models/weapons/long_sword.glb",
       "boneAttach": "weapon_r",
       "movesetId": "sword",
       "meshOffset": { 

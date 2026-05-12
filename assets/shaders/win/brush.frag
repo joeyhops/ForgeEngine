@@ -1,5 +1,7 @@
 #version 460 core
 
+#include "../include/lights.glsl"
+
 in vec3 v_worldPos;
 in vec2 v_texCoord;
 in mat3 v_TBN;
@@ -19,57 +21,14 @@ uniform bool u_hasRoughnessMap;
 uniform bool u_hasAoMap;
 
 uniform vec3 u_albedoTint;
-uniform vec3 u_lightDir;
-uniform vec3 u_lightColor;
+uniform float u_metallic;
+uniform float u_roughness;
 uniform vec3 u_cameraPos;
-
-const float PI = 3.14159265359;
-
-// --- PBR HELPER FUNCTIONS ---
-
-// Normal Distribution Function (NDF) - Trowbridge-Reitz GGX
-// Approximates how many microfacets are aligned with the halfway vector.
-float DistributionGGX(vec3 N, vec3 H, float roughness) {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH * NdotH;
-
-    float num   = a2;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-
-    return num / denom;
-}
-
-// Geometry Function - Schlick-GGX
-// Approximates how much the microfacets shadow or mask each other.
-float GeometrySchlickGGX(float NdotV, float roughness) {
-    float r = (roughness + 1.0);
-    float k = (r * r) / 8.0;
-    float num   = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-    return num / denom;
-}
-
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-    return ggx1 * ggx2;
-}
-
-// Fresnel Equation - Schlick Approximation
-// Describes the ratio of light that gets reflected vs. refracted.
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
 
 void main() {
   vec3 albedo = u_hasAlbedo ? texture(u_albedo, v_texCoord).rgb : u_albedoTint;
-  float metallic = u_hasMetallicMap ? texture(u_metallicMap, v_texCoord).r : 0.0;
-  float roughness = u_hasRoughnessMap ? texture(u_roughnessMap, v_texCoord).r : 0.5;
+  float metallic = u_hasMetallicMap ? texture(u_metallicMap, v_texCoord).r : u_metallic;
+  float roughness = u_hasRoughnessMap ? texture(u_roughnessMap, v_texCoord).r : u_roughness;
   float ao = u_hasAoMap ? texture(u_aoMap, v_texCoord).r : 1.0;
 
   vec3 N = v_TBN[2]; // Default to vertex normal
@@ -81,36 +40,45 @@ void main() {
   }
 
   vec3 V = normalize(u_cameraPos - v_worldPos); // View vector
-  vec3 L = normalize(u_lightDir); // Light vector
-  vec3 H = normalize(V + L); //Halfway vector
-  
-  // 3. PBR calcs
-  // Base reflectivity for dielectrics (non-metals) is ~4%
-  vec3 F0 = vec3(0.04);
-  F0 = mix(F0, albedo, metallic);
+  vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-  // Cook-Torrance BRDF
-  float NDF = DistributionGGX(N, H, roughness);
-  float G = GeometrySmith(N, V, L, roughness);
-  vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+  vec3 Lo = vec3(0.0);
 
-  vec3 kS = F;
-  vec3 kD = vec3(1.0) - kS;
-  kD *= 1.0 - metallic;
+  // Directional Light
+  {
+    vec3 L = normalize(u_directional.posOrDir.xyz);
+    vec3 H = normalize(V + L);
+    vec3 radiance = u_directional.colorIntensity.rgb * u_directional.colorIntensity.w;
+    Lo += cookTorranceBRDF(N, V, L, H, albedo, metallic, roughness, F0)
+        * radiance * max(dot(N, L), 0.0);
+  }
 
-  vec3 numerator = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001;
-  vec3 specular = numerator / denominator;
+  // Point lights
+  for (int i = 0; i < u_pointLightCount; ++i) {
+    vec3 lightPos = u_pointLights[i].posOrDir.xyz;
+    vec3 lightCol = u_pointLights[i].colorIntensity.rgb;
+    float intensity = u_pointLights[i].colorIntensity.w;
+    float range = u_pointLights[i].range;
 
-  float NdotL = max(dot(N, L), 0.0);
-  vec3 Lo = (kD * albedo / PI + specular) * u_lightColor * NdotL;
+    vec3 toLight = lightPos - v_worldPos;
+    float dist = length(toLight);
+    vec3 L = normalize(toLight);
+    vec3 H = normalize(V + L);
 
-  vec3 ambient = vec3(0.03) * albedo * ao;
+    float window = pow(max(1.0 - pow(dist / range, 4.0), 0.0), 2.0);
+    float atten = window / (dist * dist + 0.0001);
 
+    vec3 radiance = lightCol * intensity * atten;
+    Lo += cookTorranceBRDF(N, V, L, H, albedo, metallic, roughness, F0)
+        * radiance * max(dot(N, L), 0.0);
+  }
+
+  vec3 ambient = u_ambientColor.rgb * u_ambientIntensity * albedo * ao;
   vec3 color = ambient + Lo;
 
+  // Reinhard tonemap + gamma
   color = color / (color + vec3(1.0));
-  color = pow(color, vec3(1.0/2.2));
+  color = pow(color, vec3(1.0 / 2.2));
 
   fragColor = vec4(color, 1.0);
 }

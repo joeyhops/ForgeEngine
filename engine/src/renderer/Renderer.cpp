@@ -1,4 +1,5 @@
 #include <forge/Renderer.h>
+#include <forge/LightEnvironment.h>
 #include <forge/Material.h>
 #include <forge/map/MapScene.h>
 #include <forge/Animator.h>
@@ -20,6 +21,13 @@ Renderer::Renderer(const std::string& shaderRoot) {
   m_debugLineShader = AssetManager::loadShader(resolvePath("debug_line.vert"),
                                           resolvePath("debug_line.frag"));
 
+  // bind "LightBlock" to point 0 on all lit shaders
+  // on GLSL 4.10 (macOS, OpenGL 4.1), layout(binding=N) is unavailable
+  // this programmatic binding is required on all platforms for portability
+  m_meshShader->setUniformBlockBinding("LightBlock", LightEnvironment::k_bindingPoint);
+  m_skinnedShader->setUniformBlockBinding("LightBlock", LightEnvironment::k_bindingPoint);
+  m_brushShader->setUniformBlockBinding("LightBlock", LightEnvironment::k_bindingPoint);
+
   LOG_INFO("[Renderer] Shaders loaded (root: {})", shaderRoot);
 }
 
@@ -36,6 +44,7 @@ void Renderer::beginFrame(const Camera& camera, int /*viewportW*/, int /*viewpor
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   m_viewProj = camera.getViewProjection();
   m_cameraPos = camera.getPosition();
+  m_lights.upload();
 }
 
 void Renderer::beginFrame(int /*viewportW*/, int /*viewportH*/) {
@@ -43,9 +52,7 @@ void Renderer::beginFrame(int /*viewportW*/, int /*viewportH*/) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-void Renderer::endFrame() {
-  // No-op - see phase 18
-}
+void Renderer::endFrame() {}
 
 void Renderer::setClearColor(float r, float g, float b) {
   m_clearColor[0] = r;
@@ -61,6 +68,7 @@ void Renderer::drawMesh(const ModelData& model, const glm::mat4& modelMatrix) {
   glm::mat4 mvp = m_viewProj * modelMatrix;
   m_meshShader->setMat4("u_mvp", mvp);
   m_meshShader->setMat4("u_model", modelMatrix);
+  m_meshShader->setVec3("u_cameraPos", m_cameraPos);
 
   for (const auto& sub : model.subMeshes) {
     if (!sub.mesh) continue;
@@ -82,6 +90,7 @@ void Renderer::drawSkinnedMesh(const SkinnedModelData& model,
   glm::mat4 mvp = m_viewProj * modelMatrix;
   m_skinnedShader->setMat4("u_mvp", mvp);
   m_skinnedShader->setMat4("u_model", modelMatrix);
+  m_skinnedShader->setVec3("u_cameraPos", m_cameraPos);
 
   if (!boneMatrices.empty()) {
     m_skinnedShader->setBool("u_hasBones", true);
@@ -105,8 +114,6 @@ void Renderer::drawBrushScene(const MapScene& scene) {
   glm::mat4 model = glm::mat4(1.0f);
   m_brushShader->setMat4("u_mvp", m_viewProj * model);
   m_brushShader->setMat4("u_model", model);
-  m_brushShader->setVec3("u_lightDir", glm::normalize(glm::vec3(0.6f, 1.0f, 0.4f)));
-  m_brushShader->setVec3("u_lightColor", glm::vec3(1.0f));
   m_brushShader->setVec3("u_cameraPos", m_cameraPos);
 
   for (const auto& obj : scene.renderObjects) {
