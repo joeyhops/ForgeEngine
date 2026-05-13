@@ -18,6 +18,11 @@ bool AnimParamTable::getBool(const std::string& k, bool def) const {
   auto it = m_bools.find(k);
   return (it != m_bools.end()) ? it->second : def;
 }
+
+int AnimParamTable::getInt(const std::string& k, int def) const {
+  auto it = m_ints.find(k);
+  return (it != m_ints.end()) ? it->second : def;
+}
   
 bool AnimParamTable::consumeTrigger(const std::string& k) {
   auto it = m_triggers.find(k);
@@ -423,6 +428,213 @@ void StateMachineNode::swapClipByKey(const std::string& key, std::shared_ptr<Ani
   }
 } 
 
+Blend2DNode::Blend2DNode(std::string xParam, std::string zParam)
+  : m_xParam(std::move(xParam)), m_zParam(std::move(zParam)) {}
 
+void Blend2DNode::addClip(glm::vec2 position,
+                          std::shared_ptr<AnimationClip> clip) {
+  auto node = std::make_shared<ClipNode>(std::move(clip), true);
+  m_clips.push_back({ position, std::move(node) });
+}
+
+void Blend2DNode::build() {
+  m_triangles.clear();
+  m_hullEdges.clear();
+  if (m_clips.size() < 3) return; // degenerate: handle in update()
+  
+  // step 1 - Bowyer-Watson incremental Delaunay triangulations
+  //
+  // 1. create super-triangle of all input points
+  // 2. for each input point P:
+  //    a. find all triangles whose circumcircle contains P ("bad" triangles)
+  //    b. Form a polygonal hole by collecting the boundary edges of said triangles
+  //      (edges appearing in exactly one bad triangle)
+  //    c. Delete the bad triangles
+  //    d. Connect P to each edge of the hole, producing new triangles
+  // 3. Discard any triangle that uses a super-triangle vertex
+  //
+  // An edge is on the convex hull if it appears in exactly one
+  // triangle. Build a count map keyed by sorted vertex index pair,
+  // walk each triangles three edges, increment the count. Any entry
+  // with count == 1 is a hull edge; we also remember which triangle it
+  // came from (for the nearest edge clamp in update())
+
+  struct EdgeKey { int a, b; bool operator==(const EdgeKey& o) const {
+    return a == o.a && b == o.b;
+  } };
+  struct EdgeHash { size_t operator()(const EdgeKey& k) const {
+    return std::hash<int>()(k.a) ^ (std::hash<int>()(k.b) << 1);
+  } };
+
+  auto makeKey = [](int u, int v) -> EdgeKey {
+    return (u < v) ? EdgeKey{u, v} : EdgeKey{v, u};
+  };
+
+  // edge -> (count, last-seen triangle index)
+  std::unordered_map<EdgeKey, std::pair<int, int>, EdgeHash> edges;
+  for (size_t t = 0; t < m_triangles.size(); ++t) {
+    const auto& tri = m_triangles[t];
+    int e[3][2] = { {tri.a, tri.b}, {tri.b, tri.c}, {tri.c, tri.a} };
+    for (int i = 0; i < 3; i++) {
+      EdgeKey k = makeKey(e[i][0], e[i][1]);
+      auto& slot = edges[k];
+      slot.first++;
+      slot.second = static_cast<int>(t);
+    }
+  }
+  for (const auto& [key, val] : edges) {
+    if (val.first == 1)
+      m_hullEdges.push_back({ key.a, key.b, val.second });
+  }
+}
+
+static glm::vec3 barycentric(glm::vec2 p, glm::vec2 a, glm::vec2 b, glm::vec2 c) {
+  glm::vec2 v0 = b - a, v1 = c - a, v2 = p - a;
+  float d00 = glm::dot(v0, v0);
+  float d01 = glm::dot(v0, v1);
+  float d11 = glm::dot(v1, v1);
+  float d20 = glm::dot(v2, v0);
+  float d21 = glm::dot(v2, v1);
+  float denom = d00 * d11 - d01 * d01;
+  if (std::abs(denom) < 1e-9f) return glm::vec3(1.0f, 0.0f, 0.0f);
+  float v = (d11 * d20 - d01 * d21) / denom;
+  float w = (d00 * d21 - d01 * d20) / denom;
+  float u = 1.0f - v - w;
+  return glm::vec3(u, v, w); // u for a, v for b, w for c
+}
+
+void Blend2DNode::update(float dt, AnimParamTable& params) {
+  if (m_clips.empty()) return;
+
+  m_currentParam.x = params.getFloat(m_xParam, 0.0f);
+  m_currentParam.y = params.getFloat(m_zParam, 0.0f);
+
+  // Advance ALL child clips every frame for loop sync
+  for (auto& bc : m_clips)
+    if (bc.node) bc.node->update(dt, params);
+
+  if (m_clips.size() == 1 || m_triangles.empty()) {
+    m_idxA = m_idxB = m_idxC = 0;
+    m_weights = glm::vec3(1.0f, 0.0f, 0.0f);
+    m_rootDelta = m_clips[0].node->getRootMotionDelta();
+    return;
+  }
+
+  // locate param in triangulation
+  // current linear search is ideally fast for small triangle counts
+  // potential to replace with BSP/kd-tree over triangle AABBs
+  int found = -1;
+  glm::vec3 bary(0.0f);
+  for (size_t t = 0; t < m_triangles.size(); ++t) {
+    const auto& tri = m_triangles[t];
+    bary = barycentric(m_currentParam,
+                       m_clips[tri.a].position,
+                       m_clips[tri.b].position,
+                       m_clips[tri.c].position);
+    if (bary.x >= -1e-4f && bary.y >= -1e-4f && bary.z >= -1e-4f) {
+      found = static_cast<int>(t);
+      break;
+    }
+  }
+
+  if (found < 0) {
+    // Outside hull edge: clamp nearest hull edge
+    //
+    // 1. for each hull edge, compute the closest point on that
+    // edge segment to m_currentParam. Track global min.
+    // 2. Use adjacent triangle of winning edge as the
+    // clamped point in that triangle (one barycentric will
+    // be ~0 - the vertex of the triangle that does not belong
+    // to the hulls edge - and the other two will sum to ~1)
+
+    glm::vec2 bestPoint(m_clips[0].position);
+    float bestDist2 = std::numeric_limits<float>::max();
+    int bestTri = 0;
+    for (const auto& he : m_hullEdges) {
+      glm::vec2 a = m_clips[he.u].position;
+      glm::vec2 b = m_clips[he.v].position;
+      glm::vec2 ab = b - a;
+      float ab2 = glm::dot(ab, ab);
+      float t = (ab2 > 1e-9f)
+        ? glm::clamp(glm::dot(m_currentParam - a, ab) / ab2, 0.0f, 1.0f)
+        : 0.0f;
+      glm::vec2 q = a + t * ab;
+      float d2 = glm::length2(q - m_currentParam);
+      if (d2 < bestDist2) {
+        bestDist2 = d2;
+        bestPoint = q;
+        bestTri = he.tri;
+      }
+    }
+
+    const auto& tri = m_triangles[bestTri];
+    bary = barycentric(bestPoint,
+                       m_clips[tri.a].position,
+                       m_clips[tri.b].position,
+                       m_clips[tri.c].position);
+    found = bestTri;
+  }
+
+  const auto& tri = m_triangles[found];
+  m_idxA = tri.a; m_idxB = tri.b; m_idxC = tri.c;
+  m_weights = bary;
+
+  m_rootDelta =
+      bary.x * m_clips[m_idxA].node->getRootMotionDelta()
+    + bary.y * m_clips[m_idxB].node->getRootMotionDelta()
+    + bary.z * m_clips[m_idxC].node->getRootMotionDelta();
+}
+
+void Blend2DNode::evaluate(std::vector<glm::mat4>& outPose) const {
+  if (m_clips.empty()) return;
+
+  if (m_triangles.empty() || m_clips.size() == 1) {
+    m_clips[0].node->evaluate(outPose);
+  }
+
+  std::vector<glm::mat4> poseA, poseB, poseC;
+  m_clips[m_idxA].node->evaluate(poseA);
+  m_clips[m_idxB].node->evaluate(poseB);
+  m_clips[m_idxC].node->evaluate(poseC);
+
+  size_t n = std::min({ poseA.size(), poseB.size(), poseC.size() });
+  outPose.resize(n);
+  for (size_t i = 0; i < n; ++i) {
+    outPose[i] = poseA[i] * m_weights.x
+               + poseB[i] * m_weights.y
+               + poseC[i] * m_weights.z;
+  }
+}
+
+void Blend2DNode::setSkeleton(const std::vector<Bone>* skeleton) {
+  for (auto& bc : m_clips)
+    if (bc.node) bc.node->setSkeleton(skeleton);
+}
+
+void Blend2DNode::swapClipByKey(const std::string& key,
+                                std::shared_ptr<AnimationClip> clip) {
+  for (auto& bc : m_clips)
+    if (bc.node) bc.node->swapClipByKey(key, clip);
+}
+
+void Blend2DNode::setActiveTime(float t) {
+  for (auto& bc : m_clips)
+    if (bc.node) bc.node->setActiveTime(t);
+}
+
+float Blend2DNode::getActiveClipTime() const {
+  return m_clips.empty() ? 0.0f : m_clips[m_idxA].node->getActiveClipTime();
+}
+
+float Blend2DNode::getActiveClipDuration() const {
+  return m_clips.empty() ? 0.0f : m_clips[m_idxA].node->getActiveClipDuration();
+}
+
+std::string Blend2DNode::getDebugStateInfo() const {
+  if (m_clips.empty()) return "Blend2D(empty)";
+  return "Blend2D(" + m_xParam + "," + m_zParam + " @ "
+        + std::to_string(m_currentParam.x).substr(0, 4) + ","
+        + std::to_string(m_currentParam.y).substr(0, 4) + ")";
+}
 
 }

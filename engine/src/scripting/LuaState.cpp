@@ -185,8 +185,10 @@ void LuaState::registerAnimGraph() {
                                             "setFloat", &forge::AnimParamTable::setFloat,
                                             "setBool", &forge::AnimParamTable::setBool,
                                             "setTrigger", &forge::AnimParamTable::setTrigger,
+                                            "setInt", &forge::AnimParamTable::setInt,
                                             "getFloat", &forge::AnimParamTable::getFloat,
-                                            "getBool", &forge::AnimParamTable::getBool
+                                            "getBool", &forge::AnimParamTable::getBool,
+                                            "getInt", &forge::AnimParamTable::getInt
                                             );
 }
 

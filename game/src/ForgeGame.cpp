@@ -11,7 +11,6 @@
 #include <forge/DebugDraw.h>
 #include <forge/LuaState.h>
 #include <forge/CombatSystem.h>
-#include <forge/AnimGraph.h>
 #include <forge/Animator.h>
 #include <forge/map/GeometryGenerator.h>
 #include <forge/map/MapGeometryTypes.h>
@@ -55,8 +54,10 @@ void ForgeGame::onInit() {
   forge::AssetManager::loadWeaponDefs("data/weapons.json");
   forge::AssetManager::loadMovesetDefs("data/movesets.json");
 
-  setupPlayer();
-  setupEnemy();
+  m_player.setup(getPhysics(), getLua(), getCombat(), getDebugUI());
+  m_enemy.setup(getPhysics(), getLua(), getCombat(), getDebugUI());
+
+  setupRootMotionAnimEvents();
 
   registerEntityFactories();
 
@@ -382,224 +383,7 @@ std::vector<forge::MapRenderObject> ForgeGame::buildRenderObjects(const forge::E
   return objects;
 }
 
-static std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
-  std::shared_ptr<forge::AnimationClip> idleClip,
-  std::shared_ptr<forge::AnimationClip> walkClip, 
-  std::shared_ptr<forge::AnimationClip> sprintClip, // Optional - no sprint if null
-  std::shared_ptr<forge::AnimationClip> attackClip,
-  std::shared_ptr<forge::AnimationClip> dodgeClip, // optional - no dodge if null
-  std::shared_ptr<forge::AnimationClip> deathClip,
-  const std::string& ownerName)
-{
-  using namespace forge;
-
-  if (!idleClip || !walkClip || !attackClip || !deathClip) {
-    LOG_ERROR("[Game] buildCharacterGraph('{}') - required clip null (need idle/walk/attack/death)", ownerName);
-    return nullptr;
-  }
-  auto idleNode = std::make_shared<ClipNode>(idleClip, true);
-  auto walkNode = std::make_shared<ClipNode>(walkClip, true); //todo walk clip
-  idleNode->setOwnerName(ownerName);
-  walkNode->setOwnerName(ownerName);
-
-  auto locomotionNode = std::make_shared<Blend1DNode>("moveSpeed");
-  locomotionNode->addEntry(0.0f, idleNode);
-  locomotionNode->addEntry(1.0f, walkNode);
-
-  if (sprintClip) {
-    auto sprintNode = std::make_shared<ClipNode>(sprintClip, true);
-    sprintNode->setOwnerName(ownerName);
-    locomotionNode->addEntry(2.0f, sprintNode);
-  }
-
-  // atk
-  auto attackNode = std::make_shared<ClipNode>(attackClip, false);
-  attackNode->setOwnerName(ownerName);
-  attackNode->setActionKey("r1");
-
-  // death
-  auto deathNode = std::make_shared<ClipNode>(deathClip, false);
-  deathNode->setOwnerName(ownerName);
-
-  // graph root
-  auto root = std::make_shared<StateMachineNode>();
-  root->addState("Locomotion", locomotionNode);
-  root->addState("Attacking", attackNode);
-  root->addState("Dead", deathNode);
-
-  // Locomotion-> attacking
-  root->addTransition({
-    "Locomotion", "Attacking",
-    [](AnimParamTable& p) {
-      return p.consumeTrigger("attackR1") || p.consumeTrigger("attackR2");
-    },
-    0.1f
-  });
-
-  // attacking -> locomotion
-  root->addTransition({
-    "Attacking", "Locomotion",
-    [attackNode](AnimParamTable&) {
-      return attackNode->isFinished();
-    },
-    0.2f
-  });
-
-  if (dodgeClip) {
-    auto dodgeNode = std::make_shared<ClipNode>(dodgeClip, false);
-    dodgeNode->setOwnerName(ownerName);
-    root->addState("Dodging", dodgeNode);
-
-    root->addTransition({
-      "Locomotion", "Dodging",
-      [](AnimParamTable& p) { return p.consumeTrigger("dodge"); },
-      0.0f
-    });
-
-    root->addTransition({
-      "Dodging", "Locomotion",
-      [dodgeNode](AnimParamTable&) { return dodgeNode->isFinished(); },
-      0.5f 
-    });
-  }
-
-  // Any -> dead
-  root->addTransition({
-    "", "Dead",
-    [](AnimParamTable& p) { return p.getBool("isDead"); },
-    0.3f
-  });
-
-  root->addTransition({
-    "Dead", "Locomotion",
-    [](AnimParamTable& p) { return !p.getBool("isDead"); },
-    0.5f
-  });
-
-  root->setInitialState("Locomotion");
-  return root;
-}
-
-void ForgeGame::setupPlayer() {
-  m_player.skinnedModel = forge::AssetManager::loadSkinnedModel("models/characters/anim/base_skeleton.glb"); 
-  m_player.transform = std::make_unique<forge::Transform>();
-  m_player.transform->setPosition({ 0.0f, 0.0f, 0.0f });
-  m_player.transform->setScale({ 0.01f, 0.01f, 0.01f });
-  m_player.transform->setEulerAngles({ 0.0f, 180.0f, 0.0f });
-
-  m_player.controller = std::make_unique<forge::CharacterController>(getPhysics(), *m_player.transform, 0.3f, 0.9f);
-
-  // Animator
-  m_player.animator = std::make_unique<forge::Animator>();
-  m_player.animator->setOwnerName("player");
-  m_player.animator->setSkeleton(m_player.skinnedModel.skeleton);
-
-  // Load anim clips
-  // Idle is embadded in the base model - load the first animation from it
-  m_player.clips["idle"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/idle.glb", "idle");
-  m_player.clips["walk"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/walk_f_2.glb", "walk");
-  m_player.clips["sprint"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/sprint_f_rm.glb", "sprint");
-  m_player.clips["attack_r1"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash");
-  m_player.clips["death"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death");
-  m_player.clips["dodge"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/roll_f_rm.glb", "dodge");
-  
-  if (m_player.clips["attack_r1"]) {
-    auto& clip = m_player.clips["attack_r1"];
-    clip->looping = false;
-    clip->events.push_back({ 14.0f/60.0f, 22.0f/60.0f,
-                            forge::AnimEventType::SpawnHitbox, "weapon_r" });
-    clip->events.push_back({ 10.0f/60.0f, 10.0f/60.0f,
-                            forge::AnimEventType::SoundOneShot, "sfx/swing_heavy.wav" });
-    std::sort(clip->events.begin(), clip->events.end(),
-              [](const forge::AnimEvent& a, const forge::AnimEvent& b) { return a.startTime < b.startTime; });
-  }
- 
-  auto& dodgeClip = m_player.clips["dodge"];
-  if (!dodgeClip) {
-    // irrelevant dodge clip is present. regardless
-    dodgeClip = m_player.clips["idle"];
-    LOG_WARN("[Game] ybot_dodge.glb not found - using idle as dodge stub.");
-  }
-  if (dodgeClip) {
-    dodgeClip->looping = false;
-    if (dodgeClip->duration < 0.6f || m_player.clips.count("dodge")) {
-      dodgeClip->events.push_back({ 0.08f, 0.38f,
-                                  forge::AnimEventType::IFrame, "dodge_iframe" });
-      std::sort(dodgeClip->events.begin(), dodgeClip->events.end(),
-                [](const forge::AnimEvent& a, const forge::AnimEvent& b){ return a.startTime < b.startTime; });
-    }
-  }
-
-  if (m_player.clips["death"])
-    m_player.clips["death"]->looping = false;
-
-  auto graph = buildCharacterGraph(
-    m_player.clips["idle"], 
-    m_player.clips["walk"],
-    m_player.clips["sprint"],
-    m_player.clips["attack_r1"], 
-    m_player.clips["dodge"],
-    m_player.clips["death"], 
-    "player"
-  );
-  m_player.animator->setGraph(graph);
-
-  m_player.combat = std::make_unique<forge::CombatComponent>(
-    "player",
-    500.0f,
-    100.0f,
-    80.0f
-  );
-
-  m_player.combat->setAnimator(m_player.animator.get());
-  m_player.combat->setParamTable(&m_player.animator->getParams());
-
-  // Wire up lua for player
-  m_player.combat->onDeath = [this](){
-    getLua().callFunction("onPlayerDeath");
-  };
-  m_player.combat->onHit = [this](const forge::HitEvent& h) {
-    getLua().callFunction("onPlayerHit", h.damage, h.damageType);
-  };
-
-  m_player.equipment = std::make_unique<forge::EquipmentComponent>("player");
-  m_player.equipment->setAnimator(m_player.animator.get());
-
-  // CombatComponent onEquip
-  m_player.equipment->onEquip = [this](forge::EquipmentComponent::Slot slot, const forge::WeaponDef* def) {
-    if (slot == forge::EquipmentComponent::RIGHT_HAND) {
-      m_player.combat->setWeapon(def);
-      if (!def->meshPath.empty())
-        m_player.weaponModel = forge::AssetManager::loadModel(def->meshPath);
-      getLua().callFunction("onPlayerEquip", static_cast<int>(slot), def->id);
-    }
-  };
-
-  m_player.equipment->onUnequip = [this](forge::EquipmentComponent::Slot slot) {
-    if (slot == forge::EquipmentComponent::RIGHT_HAND) {
-      m_player.combat->setWeapon(nullptr);
-      m_player.weaponModel = forge::ModelData{};
-      getLua().callFunction("onPlayerUnequip", static_cast<int>(slot));
-    }
-  };
-  
-  setupPlayerAnimEvents();
-
-  getCombat().registerCombatant(m_player.combat.get());
-  m_player.combat->setGhostObject(m_player.controller->getGhostObject());
-  getLua().get()["playerCombat"] = m_player.combat.get();
-  getLua().get()["playerTransform"] = m_player.transform.get();
-  getLua().get()["playerAnim"] = &m_player.animator->getParams();
-  getLua().get()["playerEquipment"] = m_player.equipment.get();
-
-  getDebugUI().registerAnimator(m_player.animator.get(), "Player");
-  getDebugUI().registerEquipmentComponent(m_player.equipment.get());
-
-  LOG_INFO("[ForgeGame] Player ready - skeleton: {} bones",
-           m_player.skinnedModel.skeleton.size());
-}
-
-void ForgeGame::setupPlayerAnimEvents() {
+void ForgeGame::setupRootMotionAnimEvents() {
   forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
     if (e.ownerName != "player") return;
     if (e.type != forge::AnimEventType::RootMotionBegin) return;
@@ -650,101 +434,8 @@ void ForgeGame::setupPlayerAnimEvents() {
     } else if (e.type == forge::AnimEventType::RestorePhysics) {
       m_kinematicMode = false;
       m_player.controller->setGravity(-20.0f);
-    } else if (e.type == forge::AnimEventType::LockInput) {
-      m_inputLocked = true;
-    } else if (e.type == forge::AnimEventType::UnlockInput) {
-      m_inputLocked = false;
-    }
+    } 
   });
-}
-
-void ForgeGame::setupEnemy() {
-  // Reuse the same Y Bot mesh — different transform, same skeleton
-  m_enemy.skinnedModel = forge::AssetManager::loadSkinnedModel(
-    "models/characters/anim/ybot_idle.glb");
- 
-  constexpr float k_enemyCapsuleHalfHeight = 0.75f;
-  m_enemy.transform = std::make_unique<forge::Transform>();
-  m_enemy.transform->setPosition({ 0.0f, 0.0f, -4.0f });
-  m_enemy.transform->setScale({ 0.01f, 0.01f, 0.01f });
-  m_enemy.transform->setEulerAngles({ 90.0f, 0.0f, 0.0f });
- 
-  m_enemy.controller = std::make_unique<forge::CharacterController>(
-    getPhysics(), *m_enemy.transform, 0.3f, 0.9f);
-
-  // Animator
-  m_enemy.animator = std::make_unique<forge::Animator>();
-  m_enemy.animator->setOwnerName("enemy");
-  m_enemy.animator->setSkeleton(m_enemy.skinnedModel.skeleton);
- 
-  // Share clips with the player — same file, same data
-  m_enemy.clips["idle"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_idle.glb", "idle"); 
-  m_enemy.clips["walk"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_walk.glb", "walk"); 
-  m_enemy.clips["attack_r1"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash"); 
-  m_enemy.clips["death"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death"); 
-
-  auto graph = buildCharacterGraph(
-    m_enemy.clips["idle"], 
-    m_enemy.clips["walk"],
-    nullptr,
-    m_enemy.clips["attack_r1"], 
-    nullptr,
-    m_enemy.clips["death"], 
-    "enemy"
-  );
-  m_enemy.animator->setGraph(graph);
-  // Combat
-  m_enemy.combat = std::make_unique<forge::CombatComponent>(
-    "enemy", 400.0f, 100.0f, 60.0f);
- 
-  m_enemy.combat->setAnimator(m_enemy.animator.get());
-  m_enemy.combat->setParamTable(&m_enemy.animator->getParams());
-
-  m_enemy.combat->onDeath = [this]() {
-    m_enemy.animator->getParams().setBool("isDead", true);
-    getLua().callFunction("onEnemyDeath");
-  };
-  
-  m_enemy.combat->onHit = [this](const forge::HitEvent& h) {
-    getLua().callFunction("onEnemyHit", h.damage, h.damageType);
-  };
-
-  // AI
-  m_enemy.ai = std::make_unique<forge::AIComponent>(
-    "enemy", *m_enemy.transform, *m_enemy.combat);
-
-  m_enemy.equipment = std::make_unique<forge::EquipmentComponent>("enemy");
-  m_enemy.equipment->setAnimator(m_enemy.animator.get());
- 
-  m_enemy.equipment->onEquip = [this](forge::EquipmentComponent::Slot slot, const forge::WeaponDef* def) {
-    if (slot == forge::EquipmentComponent::RIGHT_HAND) {
-      m_enemy.combat->setWeapon(def);
-      if (!def->meshPath.empty())
-        m_enemy.weaponModel = forge::AssetManager::loadModel(def->meshPath);
-      getLua().callFunction("onEnemyEquip", static_cast<int>(slot), def->id);
-    }
-  };
-
-  m_enemy.equipment->onUnequip = [this](forge::EquipmentComponent::Slot slot) {
-    if (slot == forge::EquipmentComponent::RIGHT_HAND) {
-      m_enemy.combat->setWeapon(nullptr);
-      m_enemy.weaponModel = forge::ModelData{};
-      getLua().callFunction("onEnemyUnequip", static_cast<int>(slot));
-    }
-  };
-
-  getCombat().registerCombatant(m_enemy.combat.get());
-  m_enemy.combat->setGhostObject(m_enemy.controller->getGhostObject());
-  getDebugUI().registerAnimator(m_enemy.animator.get(), "Enemy");
-  getDebugUI().registerAIComponent(m_enemy.ai.get());
-
-  getLua().get()["enemyCombat"] = m_enemy.combat.get();
-  getLua().get()["enemyTransform"] = m_enemy.transform.get();
-  getLua().get()["enemyAnim"] = &m_enemy.animator->getParams();
-  getLua().get()["enemyAI"] = m_enemy.ai.get();
-  getLua().get()["enemyEquipment"] = m_enemy.equipment.get();
-
-  LOG_INFO("[ForgeGame] Enemy ready");
 }
 
 void ForgeGame::setupLevel(const std::string& levelName) {
@@ -828,8 +519,8 @@ void ForgeGame::setupLevel(const std::string& levelName) {
         } else {
           spawnPos.y -= k_capsuleHalfHeight;
         }
-        m_enemySpawnPos = spawnPos;
-        m_enemy.controller->warp(m_enemySpawnPos);
+        m_enemy.spawnPos = spawnPos;
+        m_enemy.controller->warp(m_enemy.spawnPos);
 
         // Patrol waypoints
         std::string group = ent.getProperty("patrol_group", "");
@@ -1026,11 +717,7 @@ void ForgeGame::respawnPlayer() {
   m_player.combat->revive();
   m_player.controller->warp(m_lastBonfirePos);
 
-  if (m_enemy.active && m_enemy.respawns) {
-    m_enemy.combat->revive();
-    m_enemy.controller->warp(m_enemySpawnPos);
-    m_enemy.ai->reset();
-  }
+  if (m_enemy.active && m_enemy.respawns) m_enemy.reset(); 
 
   m_lockedOn = false;
   m_tpCamera->setLockOnTarget(nullptr);
@@ -1038,7 +725,7 @@ void ForgeGame::respawnPlayer() {
   m_rmOverride = false;
   m_rmScale = 1.0f;
   m_rmAxes = { true, false, true };
-  m_inputLocked = false;
+  m_player.inputLocked = false;
 
   m_gameState = GameState::Respawning;
   m_gameStateDuration = 1.0f;
@@ -1098,6 +785,8 @@ void ForgeGame::onUpdate(float dt) {
                    [](const DamageNumber& d) { return d.lifetime <= 0.0f; }),
     m_damageNumbers.end()
   );
+
+  m_input.update(getWindow(), m_tpCamera->getHorizontalForward(), m_player.forward);
   handleInput(dt);
 
   m_player.animator->update(dt);
@@ -1123,38 +812,8 @@ void ForgeGame::onUpdate(float dt) {
       inst.trigger->update();
   }
 
-  // Bonfire interaction
-  if (isKeyPressed(GLFW_KEY_B)) {
-    for (auto& bf : m_bonfires) {
-      if (bf.trigger->isOverlapping()) {
-        m_player.combat->healToFull();
-        if (bf.targetFlag != 0)
-          getFlags().set(bf.targetFlag, true);
-        getFlags().saveToFile(k_saveFilePath);
-        forge::EventBus::publish(forge::RestEvent{ bf.bonfireId });
-        getLua().callFunction("onBonfireRest", bf.bonfireId);
-        LOG_INFO("[Level] Bonfire {} rest — player healed, flags saved", bf.bonfireId);
-        break;
-      }
-    }
-  }
-
   for (auto& pk : m_weaponPickups) {
     if (!pk.collected) pk.trigger->update();
-  }
-
-  if (isKeyPressed(GLFW_KEY_E)) {
-    for (auto& pk : m_weaponPickups) {
-      if (!pk.collected && pk.trigger->isOverlapping()) {
-        m_player.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, pk.weaponId);
-        if (!pk.respawns) {
-          pk.collected = true;
-          pk.trigger->setEnabled(false);
-        }
-        LOG_INFO("[Level] Player picked up '{}'", pk.weaponId);
-        break;
-      }
-    }
   }
 
   m_player.controller->syncTransform();
@@ -1245,22 +904,45 @@ void ForgeGame::onUpdate(float dt) {
 
   }
   // Input -> Lua
-  bool j = isKeyDown(GLFW_KEY_J);
-  bool k = isKeyDown(GLFW_KEY_K);
-  bool l = isKeyDown(GLFW_KEY_L);
   auto inputTable = getLua().get().create_table();
-  inputTable["attackLight"] = j && !m_prevInput.j;
-  inputTable["attackHeavy"] = k && !m_prevInput.k;
-  inputTable["guard"] = l;
-  m_prevInput = { j, k, l };
+  inputTable["attackLight"] = m_input.isPressed(InputAction::AttackLight);
+  inputTable["attackHeavy"] = m_input.isPressed(InputAction::AttackHeavy);
+  inputTable["guard"] = m_input.isHeld(InputAction::Guard);
 
   getLua().callFunction("onCombatUpdate", dt, inputTable);
   getCombat().update(dt);
   getLua().callFunction("onQuestUpdate", dt);
 
-  if (isKeyPressed(GLFW_KEY_B))
-    getLua().callFunction("onBonfireReset");
-  if (isKeyPressed(GLFW_KEY_F9))
+  // Bonfire interactio
+  if (m_input.isPressed(InputAction::BonfireInteract)) {
+    for (auto& bf : m_bonfires) {
+      if (bf.trigger->isOverlapping()) {
+        m_player.combat->healToFull();
+        if (bf.targetFlag != 0)
+          getFlags().set(bf.targetFlag, true);
+        getFlags().saveToFile(k_saveFilePath);
+        forge::EventBus::publish(forge::RestEvent{ bf.bonfireId });
+        getLua().callFunction("onBonfireRest", bf.bonfireId);
+        LOG_INFO("[Level] Bonfire {} rest — player healed, flags saved", bf.bonfireId);
+        break;
+      }
+    }
+  }
+
+  if (m_input.isPressed(InputAction::Interact)) {
+    for (auto& pk : m_weaponPickups) {
+      if (!pk.collected && pk.trigger->isOverlapping()) {
+        m_player.equipment->equip(forge::EquipmentComponent::RIGHT_HAND, pk.weaponId);
+        if (!pk.respawns) {
+          pk.collected = true;
+          pk.trigger->setEnabled(false);
+        }
+        LOG_INFO("[Level] Player picked up '{}'", pk.weaponId);
+        break;
+      }
+    }
+  }
+  if (m_input.isPressed(InputAction::ReloadScript))
     getLua().loadScript(forge::AssetManager::getAssetRoot() + "scripts/combat/player_combat.lua");
 }
 
@@ -1549,12 +1231,11 @@ void ForgeGame::renderDeathOverlay() {
 // Never sets transform.position directly, controller owns X&Z and bullet owns Y.
 
 void ForgeGame::handleInput(float dt) {
-  if (isKeyPressed(GLFW_KEY_GRAVE_ACCENT)) {
+  if (m_input.isPressed(InputAction::ToggleUIMouse)) {
     m_uiMouseMode = !m_uiMouseMode;
     glfwSetInputMode(getWindow(), GLFW_CURSOR,
                      m_uiMouseMode ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
-    if (!m_uiMouseMode)
-      m_firstMouse = true;
+    m_input.resetLookTracking();
     LOG_INFO("[Game] UI Mouse Mode: {}", m_uiMouseMode ? "ON" : "OFF");
   }
   if (!m_player.combat->isAlive()) {
@@ -1563,21 +1244,13 @@ void ForgeGame::handleInput(float dt) {
     return;
   }
 
-  // Mouse delta
-  double mx, my;
-  glfwGetCursorPos(getWindow(), &mx, &my);
-
-  if (!m_firstMouse && !m_uiMouseMode && !getDebugUI().isCapturingMouse()) {
-    float dx = static_cast<float>(mx - m_prevMouseX);
-    float dy = static_cast<float>(my - m_prevMouseY);
-    m_tpCamera->applyMouseDelta(dx, dy);
+  if (!m_uiMouseMode && !getDebugUI().isCapturingMouse()) {
+    const glm::vec2& look = m_input.getLookDelta();
+    if (look.x != 0.0f || look.y != 0.0f)
+      m_tpCamera->applyMouseDelta(look.x, look.y);
   }
-  m_firstMouse = false;
-  m_prevMouseX = mx;
-  m_prevMouseY = my;
-
   // Tab: Toggle lock on
-  if (isKeyPressed(GLFW_KEY_TAB)) {
+  if (m_input.isPressed(InputAction::LockOn)) {
     if (m_lockedOn) {
       m_lockedOn = false;
       m_tpCamera->setLockOnTarget(nullptr);
@@ -1595,8 +1268,6 @@ void ForgeGame::handleInput(float dt) {
     }
   }
 
-  glm::vec3   move  = { 0, 0, 0 };
-
   bool isDodging = (m_player.animator->getCurrentStateName() == "Dodging");
   if (isDodging){
     m_player.animator->getParams().setFloat("moveSpeed", 0.0f);
@@ -1605,42 +1276,32 @@ void ForgeGame::handleInput(float dt) {
     return;
   }
 
-  if (!m_lockedOn) {
-    glm::vec3 camFwd = m_tpCamera->getHorizontalForward();
-    glm::vec3 camRight = m_tpCamera->getHorizontalRight();
-
-    if (isKeyDown(GLFW_KEY_W)) move += camFwd;
-    if (isKeyDown(GLFW_KEY_S)) move -= camFwd;
-    if (isKeyDown(GLFW_KEY_A)) move -= camRight;
-    if (isKeyDown(GLFW_KEY_D)) move += camRight;
-  } else {
-    // Lock-on: strafe around locked enemy
-    glm::vec3 pp = m_player.transform->getPosition();
-    glm::vec3 toTarget = m_lockOnEnemyPos - pp;
+  glm::vec3 move = m_input.getWorldMoveDir();
+  if (m_lockedOn) {
+    glm::vec3 toTarget = m_lockOnEnemyPos - m_player.transform->getPosition();
     toTarget.y = 0.0f;
     if (glm::length(toTarget) > 0.001f) toTarget = glm::normalize(toTarget);
-    glm::vec3 strafeRight = glm::normalize(glm::cross(toTarget, glm::vec3(0.0f, 1.0f, 0.0f)));
+    glm::vec3 strafeRight = glm::normalize(glm::cross(toTarget, glm::vec3(0, 1, 0)));
+    move = glm::vec3(0.0f);
 
-    if (isKeyDown(GLFW_KEY_W)) move += toTarget;
-    if (isKeyDown(GLFW_KEY_S)) move -= toTarget;
-    if (isKeyDown(GLFW_KEY_A)) move -= strafeRight;
-    if (isKeyDown(GLFW_KEY_D)) move += strafeRight;
+    if (m_input.isHeld(InputAction::MoveForward)) move += toTarget;
+    if (m_input.isHeld(InputAction::MoveBack)) move -= toTarget;
+    if (m_input.isHeld(InputAction::MoveRight)) move -= strafeRight;
+    if (m_input.isHeld(InputAction::MoveLeft)) move += strafeRight;
   }
 
   // Sprint
-  bool sprinting = isKeyDown(GLFW_KEY_LEFT_SHIFT);
-  float walkSpeed = m_playerWalkSpeed;
-  float sprintSpeed = m_playerSprintSpeed;
-  float speed = sprinting ? sprintSpeed : walkSpeed;
+  bool sprinting = m_input.isHeld(InputAction::Sprint);
+  float speed = sprinting ? m_playerSprintSpeed : m_playerWalkSpeed; 
 
   // Dodge
 
-  if (isKeyPressed(GLFW_KEY_SPACE)&& !m_inputLocked && !m_player.combat->isAttacking()) {
+  if (m_input.isPressed(InputAction::Dodge) && !m_player.inputLocked && !m_player.combat->isAttacking()) {
     glm::vec3 dodgeDir = (glm::length(move) > 0.001f)
       ? glm::normalize(move)
       : m_player.forward;
-    m_dodgeFacingAngle = atan2f(dodgeDir.x, dodgeDir.z);
-    m_dodgePending = true;
+    m_player.dodgeFacingAngle = atan2f(dodgeDir.x, dodgeDir.z);
+    m_player.dodgePending = true;
     m_player.animator->getParams().setTrigger("dodge");
     LOG_INFO("[Game] Dodge initiated.");
   }
@@ -1708,7 +1369,7 @@ void ForgeGame::applyMovement(float dt) {
     float facingAngle = atan2f(m_player.forward.x, m_player.forward.z);
 
     if (isDodging)
-      facingAngle = m_dodgeFacingAngle;
+      facingAngle = m_player.dodgeFacingAngle;
 
     glm::quat facing = glm::angleAxis(facingAngle, glm::vec3(0.0f, 1.0f, 0.0f));
     displacement = facing * localDelta;
@@ -1717,7 +1378,7 @@ void ForgeGame::applyMovement(float dt) {
   }
 
   m_player.controller->setWalkDirection(displacement);
-  m_dodgePending = false;
+  m_player.dodgePending = false;
 }
 
 void ForgeGame::spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns) {

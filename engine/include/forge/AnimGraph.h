@@ -25,10 +25,12 @@ class AnimParamTable {
 public:
   void setFloat(const std::string& k, float v) { m_floats[k] = v; }
   void setBool(const std::string& k, bool v) { m_bools[k] = v; }
+  void setInt(const std::string& k, int v) { m_ints[k] = v; }
   void setTrigger(const std::string& k) { m_triggers.insert(k); }
 
   float getFloat(const std::string& k, float def = 0.0f) const;
   bool getBool(const std::string& k, bool def = false) const;
+  int getInt(const std::string& k, int def = 0) const;
 
   // Return true and remove trigger - called only once per eval
   bool consumeTrigger(const std::string& k);
@@ -41,11 +43,13 @@ public:
   // Read-only accessors for DebugUI
   const std::unordered_map<std::string, float>& getFloats() const { return m_floats; }
   const std::unordered_map<std::string, bool>& getBools() const { return m_bools; }
+  const std::unordered_map<std::string, int>& getInts() const { return m_ints; }
   const std::unordered_set<std::string>& getTriggers() const { return m_triggers; }
 
 private:
   std::unordered_map<std::string, float> m_floats;
   std::unordered_map<std::string, bool> m_bools;
+  std::unordered_map<std::string, int> m_ints;
   std::unordered_set<std::string> m_triggers;
 };
 
@@ -190,6 +194,73 @@ private:
   float m_param = 0.0f;
   int m_lowerIdx = 0; // Index of lower bracketing entry
   float m_localAlpha = 0.0f; 
+
+  glm::vec3 m_rootDelta = glm::vec3(0.0f);
+};
+
+// Blend2DNode
+// 2D blended animation: clips are registered at 2D positions in a param
+// space (e.g. moveX/moveZ for locked locomotion). At build() time, a
+// Delaunay triangulation ofthose positions is computed, along with the
+// convex-hull edges. Each frame, the current parameter point is located
+// in the Triangulation and the three surrounding clips are blended using
+// barycentric coordinates. Both poses and root motion deltas are blended
+// by the same weights.
+//
+// All child clip nodes advance simultaneously every frame to keep looping
+// clips phase-synced across triangle edge crossings.
+//
+// Outside convex-hull behavior: the parameter is clamped to the closest
+// point on the hull boundary; the blend is computed for the triangle
+// adjacent to that hull edge.
+
+class Blend2DNode : public AnimGraphNode {
+public:
+  Blend2DNode(std::string xParam, std::string zParam);
+
+  // Register clip at 2D parameter space pos. Call before build()
+  void addClip(glm::vec2 position, std::shared_ptr<AnimationClip> clip);
+
+  // computer delaunay triangulation and hull edges from registered positions
+  // Must be called once after all addClip() calls, before first update()
+  void build();
+
+  void update(float dt, AnimParamTable& params) override;
+  void evaluate(std::vector<glm::mat4>& outPose) const override;
+  glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
+
+  bool isFinished() const override { return false; }
+
+  void setSkeleton(const std::vector<Bone>* skeleton) override;
+  void swapClipByKey(const std::string& key,
+                     std::shared_ptr<AnimationClip> clip) override;
+  void setActiveTime(float t) override;
+
+  float getActiveClipTime() const override;
+  float getActiveClipDuration() const override;
+  std::string getDebugStateInfo() const override;
+
+private:
+  std::string m_xParam, m_zParam;
+
+  struct BlendClip {
+    glm::vec2 position;
+    std::shared_ptr<ClipNode> node;
+  };
+  std::vector<BlendClip> m_clips;
+
+  struct Triangle { int a, b, c; }; // indices into m_clips
+  std::vector<Triangle> m_triangles; // computed once in build()
+
+  // Hill edge with the idx of its single adjacent triangle
+  // computed once in build and reused by the nearest edge clamp
+  struct HullEdge { int u, v, tri; };
+  std::vector<HullEdge> m_hullEdges;
+
+  // curr frame blend state
+  int m_idxA = 0, m_idxB = 0, m_idxC = 0;
+  glm::vec3 m_weights { 1.0f, 0.0f, 0.0f };
+  glm::vec2 m_currentParam { 0.0f, 0.0f };
 
   glm::vec3 m_rootDelta = glm::vec3(0.0f);
 };

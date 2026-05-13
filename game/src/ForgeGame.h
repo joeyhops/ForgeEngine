@@ -1,20 +1,20 @@
 #pragma once
+
+#include "PlayerEntity.h"
+#include "EnemyEntity.h"
+#include "InputManager.h"
+
 #include <forge/Application.h>
 #include <forge/AssetManager.h>
 #include <forge/Shader.h>
 #include <forge/Camera.h>
 #include <forge/ThirdPersonCamera.h>
-#include <forge/CharacterController.h>
 #include <forge/Transform.h>
 #include <forge/RigidBodyComponent.h>
 #include <forge/CombatComponent.h>
-#include <forge/AIComponent.h>
-#include <forge/Animator.h>
-#include <forge/AnimationClip.h>
 #include <forge/LevelLoader.h>
 #include <forge/TriggerVolume.h>
 #include <forge/WeaponDef.h>
-#include <forge/EquipmentComponent.h>
 #include <forge/map/MapScene.h>
 #include <forge/map/EntityAssembler.h>
 
@@ -39,9 +39,7 @@ private:
   enum class GameState { Playing, DeathSequence, YouDied, Respawning };
   std::string m_initialMap = "bonfire";
 
-  void setupPlayer();
-  void setupPlayerAnimEvents();
-  void setupEnemy();
+  void setupRootMotionAnimEvents();
   void setupLevel(const std::string& levelName = "level_01");
   void setupScripts();
   void registerEntityFactories();
@@ -84,37 +82,9 @@ private:
 
   stbtt_bakedchar m_glyphData[96]; // one entry per baked char
 
-
-  // Player
-  struct PlayerEntity {
-    forge::SkinnedModelData skinnedModel;
-    std::unique_ptr<forge::Transform> transform;
-    std::unique_ptr<forge::CharacterController> controller;
-    std::unique_ptr<forge::CombatComponent> combat;
-    std::unique_ptr<forge::EquipmentComponent> equipment;
-    std::unique_ptr<forge::Animator> animator;
-    forge::ModelData weaponModel;
-    std::unordered_map<std::string,
-      std::shared_ptr<forge::AnimationClip>> clips;
-    glm::vec3 forward = { 0, 0, -1 };
-  } m_player;
-
-  // Enemy
-  struct EnemyEntity {
-    bool active = false;
-    bool respawns = true;
-    int deathFlag = -1;
-    forge::SkinnedModelData skinnedModel;
-    std::unique_ptr<forge::Transform> transform;
-    std::unique_ptr<forge::CharacterController> controller;
-    std::unique_ptr<forge::CombatComponent> combat;
-    std::unique_ptr<forge::EquipmentComponent> equipment;
-    std::unique_ptr<forge::AIComponent> ai;
-    std::unique_ptr<forge::Animator> animator;
-    forge::ModelData weaponModel;
-    std::unordered_map<std::string,
-      std::shared_ptr<forge::AnimationClip>> clips;
-  } m_enemy;
+  PlayerEntity m_player;
+  EnemyEntity m_enemy;
+  InputManager m_input;
 
   struct BonfireVolume {
     std::unique_ptr<forge::TriggerVolume> trigger;
@@ -151,10 +121,6 @@ private:
   std::vector<forge::EntityInstance> m_mapEntities;
   std::vector<std::pair<forge::ModelData, glm::mat4>> m_staticProps;
 
-  // Input
-  double m_prevMouseX = 0.0;
-  double m_prevMouseY = 0.0;
-  bool m_firstMouse = true;
   bool m_uiMouseMode = false;
 
   float m_playerWalkSpeed = 3.0f;
@@ -164,12 +130,9 @@ private:
   glm::vec3 m_lockOnEnemyPos = { 0.0f, 0.0f, 0.0f };
   bool m_lockedOn = false;
 
-  // Dodge state
+  // Per-frame movement output - written by handleInput() consumed by applyMovement()
   glm::vec3 m_moveDir = { 0.0f, 0.0f, 0.0f }; // desired direction, unit or zero
   float m_moveSpeed = 0.0f;
-  bool m_dodgePending = false;
-  float m_dodgeFacingAngle = 0.0f;
-  bool m_inputLocked = false; // set by LockInput TAE event
 
   // Death and Respawn
   GameState m_gameState = GameState::Playing;
@@ -177,7 +140,6 @@ private:
   float m_gameStateDuration = 0.0f;
 
   glm::vec3 m_lastBonfirePos = { 0.0f, 1.0f, 0.0f }; // updated on bonfire rest
-  glm::vec3 m_enemySpawnPos = { 0.0f, 0.0f, -4.0f }; // Saved at level load
 
   void enterDeathSequence();
   void enterYouDied();
@@ -210,8 +172,6 @@ private:
   std::vector<DamageNumber> m_damageNumbers;
   static constexpr float k_damNumberLifetime = 1.0f; // seconds visible
   static constexpr float k_damNumberRiseSpeed = 1.2f; // m/s upward drift
-
-  struct InputState { bool j, k, l; } m_prevInput = {};
 
   static constexpr const char* k_saveFilePath = "saves/flags.json";
   

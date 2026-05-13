@@ -2,6 +2,10 @@ add_executable(game
   src/main.cpp
   src/stb_impl.cpp
   src/ForgeGame.cpp
+  src/PlayerEntity.cpp
+  src/EnemyEntity.cpp
+  src/CharacterGraph.cpp
+  src/InputManager.cpp
 )
 
 target_link_libraries(game PRIVATE forge_engine)

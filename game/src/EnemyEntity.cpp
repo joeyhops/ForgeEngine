@@ -101,6 +101,8 @@ void EnemyEntity::setup(forge::PhysicsWorld& physics,
   LOG_INFO("[Enemy] ready - skeleton: {} bones", skinnedModel.skeleton.size());
 }
 
+void EnemyEntity::teardown() {}
+
 void EnemyEntity::reset() {
   if (!combat || !controller || !ai) return;
   combat->revive();

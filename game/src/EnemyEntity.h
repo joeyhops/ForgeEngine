@@ -35,7 +35,7 @@ public:
 
   forge::SkinnedModelData skinnedModel;
   std::unique_ptr<forge::Transform> transform;
-  std::unique_ptr<forge::CharacterController> controller;;
+  std::unique_ptr<forge::CharacterController> controller;
   std::unique_ptr<forge::CombatComponent> combat;
   std::unique_ptr<forge::EquipmentComponent> equipment;
   std::unique_ptr<forge::AIComponent> ai;
