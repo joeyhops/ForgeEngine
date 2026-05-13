@@ -14,6 +14,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <assimp/config.h>
 #include <map>
 #include <memory>
 #include <string>
@@ -114,6 +115,18 @@ void AssetManager::setAssetRoot(const std::string& root) {
 const std::string& AssetManager::getAssetRoot() { return s_assetRoot; }
 
 std::string AssetManager::resolvePath(const std::string& rel) {
+  if (rel.empty()) return s_assetRoot;
+
+  // Already absolute (Unix /... or Windows C:\...) — pass through untouched.
+  if (rel[0] == '/' || (rel.size() > 1 && rel[1] == ':'))
+    return rel;
+
+  // Path already starts with the asset root prefix — don't double it.
+  // This happens when users type paths like "assets/anim/..." in the TAE editor
+  // while the asset root is also "assets/".
+  if (!s_assetRoot.empty() && rel.rfind(s_assetRoot, 0) == 0)
+    return rel;
+
   return s_assetRoot + rel;
 }
 
@@ -391,6 +404,8 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
   std::string absPath = resolvePath(path);
 
   Assimp::Importer importer;
+  importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+  importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_OPTIMIZE_EMPTY_ANIMATION_CURVES, false);
   const unsigned int flags =
     aiProcess_Triangulate | // Quads -> triangles
     aiProcess_GenSmoothNormals | // gen normals if missing
@@ -630,9 +645,18 @@ std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
  
   // For animation-only loading we skip mesh processing entirely.
   Assimp::Importer importer;
-  const aiScene* scene = importer.ReadFile(absPath, 0);
-  if (!scene || scene->mNumAnimations == 0) {
-    LOG_WARN("[Assets] No animations in: {}", path);
+  importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+  importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_OPTIMIZE_EMPTY_ANIMATION_CURVES, false);
+  const aiScene* scene = importer.ReadFile(absPath, aiProcess_PopulateArmatureData | aiProcess_GlobalScale);
+  if (!scene) {
+    LOG_ERROR("[Assets] Assimp failed to open '{}': {}", path, importer.GetErrorString());
+    return nullptr;
+  }
+
+  if (scene->mNumAnimations == 0) {
+    LOG_WARN("[Assets] '{}' parsed OK but contains 0 animation tracks. "
+           "File may be mesh-only, or the FBX animation layer uses an "
+           "unsupported format.", path);
     return nullptr;
   }
  

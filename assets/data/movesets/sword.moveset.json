@@ -1,0 +1,8 @@
+{
+  "clips": {
+    "r1": "anim/movesets/sword/slash_1.glb",
+    "r1_2": "assets/anim/glb/Anim_Sword_1H_Attack_Slash4.glb",
+    "r1_3": "assets/anim/glb/Anim_Sword_1H_Attack_Slash2.glb"
+  },
+  "id": "sword"
+}
