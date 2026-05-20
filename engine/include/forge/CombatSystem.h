@@ -8,7 +8,6 @@
 namespace forge {
 
 class CombatComponent;
-class PhysicsWorld;
 class LuaState;
 
 struct HitFlags {
@@ -36,7 +35,6 @@ class CombatSystem {
 public:
   CombatSystem() = default;
 
-  void setPhysicsWorld(PhysicsWorld* world) { m_physicsWorld = world; }
   void setLuaState(LuaState* lua) { m_lua = lua; }
 
   // Register a combatant - must be called before update
@@ -68,7 +66,6 @@ private:
                            const CombatComponent& defender) const;
 
   std::vector<CombatComponent*> m_combatants;
-  PhysicsWorld* m_physicsWorld = nullptr;
   LuaState* m_lua = nullptr;
 };
 

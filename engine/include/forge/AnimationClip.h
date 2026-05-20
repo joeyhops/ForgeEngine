@@ -1,5 +1,7 @@
 #pragma once
 #include <forge/Bone.h>
+#include <forge/HitboxTypes.h>
+
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -16,6 +18,7 @@ namespace forge {
 enum class AnimEventType {
   SpawnHitbox, // hitbox window - CombatComponent subscribes
   IFrame, // invincibility frame - CombatCo subscribes
+  RecoveryBegin, // one-shot: CombatComponent enters Recovering FSM State
   SoundOneShot, // fire and forget sound cue (payload = sfx path)
   SFXSpawn,// particle / VFX spawn (payload = effect name)
 
@@ -50,7 +53,7 @@ struct AnimEvent {
   float endTime; // == startTime for one-shot events?
   AnimEventType type;
   std::string payload; // e.g. "weapon_r" for hitbox bone, sfx path for sounds
-glm::vec3 hitboxExtents = { 0.3f, 0.8f, 0.15f };
+  std::vector<CapsuleSegment> capsules;
 };
 
 class AnimationClip {

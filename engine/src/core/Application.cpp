@@ -83,7 +83,7 @@ void Application::initSystems() {
   m_physics = std::make_unique<PhysicsWorld>();
   m_lua = std::make_unique<LuaState>();
   m_combat = std::make_unique<CombatSystem>();
-  m_combat->setPhysicsWorld(m_physics.get());
+ // m_combat->setPhysicsWorld(m_physics.get());
   m_combat->setLuaState(m_lua.get());
   m_flags = std::make_unique<FlagManager>();
 

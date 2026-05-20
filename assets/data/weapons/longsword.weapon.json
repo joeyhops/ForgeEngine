@@ -1,0 +1,44 @@
+    {
+      "attacks": {
+        "r1": {
+          "activeTime": 0.3,
+          "angle": 90.0,
+          "damage": 120.0,
+          "damageType": "slash",
+          "name": "r1",
+          "poiseDamage": 30.0,
+          "range": 1.8,
+          "recoveryTime": 0.5,
+          "staminaCost": 25.0,
+          "startupTime": 0.35
+        },
+        "r2": {
+          "activeTime": 0.25,
+          "angle": 100.0,
+          "damage": 200.0,
+          "damageType": "slash",
+          "name": "r2",
+          "poiseDamage": 60.0,
+          "range": 2.0,
+          "recoveryTime": 0.7,
+          "staminaCost": 40.0,
+          "startupTime": 0.45
+        }
+      },
+      "boneAttach": "weapon_h_r",
+      "id": "longsword",
+      "mesh": "models/weapons/long_sword.glb",
+      "meshOffset": {
+        "pos": [
+          -0.028999999165534973,
+          0.039000000804662704,
+          0.08500000089406967
+        ],
+        "rot": [
+          -50.0,
+          0.0,
+          0.0
+        ]
+	},
+	"movesetId": "sword2"
+}

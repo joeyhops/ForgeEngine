@@ -32,6 +32,11 @@ public:
                       float cylinderHalfHeight,
                       const glm::vec3& color = { 0.0f, 1.0f, 0.0f });
 
+  static void capsulePQ(const glm::vec3& p0,
+                        const glm::vec3& p1,
+                        float radius,
+                        const glm::vec3& color = { 1.0f, 0.45f, 0.1f });
+
   static void box(const glm::vec3& center,
                   const glm::vec3& halfExtents,
                   const glm::vec3& color = { 1.0f, 1.0f, 1.0f });

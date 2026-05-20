@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace forge {
 
@@ -127,6 +128,57 @@ void DebugDraw::capsule(const glm::vec3& center, float radius, float cylinderHal
 
   pushArcXY(botCenter, radius, 0.0f, -glm::pi<float>(), color);
   pushArcZY(botCenter, radius, 0.0f, -glm::pi<float>(), color);
+}
+
+void DebugDraw::capsulePQ(const glm::vec3& p0,
+                          const glm::vec3& p1,
+                          float radius,
+                          const glm::vec3& color)
+{
+  constexpr int M = 8;
+  constexpr int N = 12;
+
+  glm::vec3 axis = p1 - p0;
+  float len = glm::length(axis);
+  if (len < 1e-6f) { sphere(p0, radius, color); return; }
+  axis /= len;
+
+  glm::vec3 ref = (std::abs(axis.y) < 0.9f) ? glm::vec3(0,1,0) : glm::vec3(1,0,0);
+  glm::vec3 u = glm::normalize(glm::cross(ref, axis));
+  glm::vec3 v = glm::cross(axis, u);
+
+  // Axis line
+  line(p0, p1, color);
+
+  // two end rings + connector lines
+  std::vector<glm::vec3> ring0(N), ring1(N);
+  for (int i = 0; i < N; ++i) {
+    float a = glm::two_pi<float>() * i / N;
+    glm::vec3 offset = radius * (std::cos(a) * u + std::sin(a) * v);
+    ring0[i] = p0 + offset;
+    ring1[i] = p1 + offset;
+  }
+  for (int i = 0; i < N; ++i) {
+    line(ring0[i], ring0[(i + 1) % N], color);
+    line(ring1[i], ring1[(i + 1) % N], color);
+    line(ring0[i], ring1[i], color);
+  }
+
+  auto pushHemisphere = [&](const glm::vec3& center, const glm::vec3& poleDir) {
+    for (int plane = 0; plane < 2; ++plane) {
+      const glm::vec3& tangent = (plane == 0) ? u : v;
+      glm::vec3 prev = center + radius * tangent;
+      for (int j = 0; j <= M; ++j) {
+        float t = glm::pi<float>() * j / M;
+        glm::vec3 curr = center + radius * (std::cos(t) * tangent
+                                            + std::sin(t) * poleDir);
+        line(prev, curr, color);
+        prev = curr;
+      }
+    }
+  };
+  pushHemisphere(p1, axis);
+  pushHemisphere(p0, -axis);
 }
 
 void DebugDraw::box(const glm::vec3& center,

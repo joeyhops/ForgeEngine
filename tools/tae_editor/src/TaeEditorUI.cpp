@@ -1340,9 +1340,61 @@ void TaeEditorUI::drawEventList() {
 
       // Hitbox extents
       ImGui::TableSetColumnIndex(4);
-      ImGui::SetNextItemWidth(-1.0f);
-      if (usesHitboxExtents(ev.type)) {
-        ImGui::DragFloat3("##ext", &ev.hitboxExtents.x, 0.005f, 0.01f, 5.0f, "%.3f");
+      if (ev.type == forge::AnimEventType::SpawnHitbox) {
+        ImGui::Text("%d seg%s", (int)ev.capsules.size(),
+                    ev.capsules.size() == 1 ? "" : "s");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Edit##capsules")) {
+          m_editingCapsuleEventIdx = selIdx;
+          ImGui::OpenPopup("CapsuleSegments");
+        }
+
+        if (ImGui::BeginPopup("CapsuleSegments")) {
+          auto& events = m_app.events();
+          if (m_editingCapsuleEventIdx >= 0 &&
+              m_editingCapsuleEventIdx < (int)events.size()) {
+            auto& ev = events[m_editingCapsuleEventIdx];
+            ImGui::Text("Capsule segments - %s [%.2fs-%.2fs]",
+                        ev.payload.c_str(), ev.startTime, ev.endTime);
+            ImGui::Separator();
+
+            for (int s = 0; s < (int)ev.capsules.size(); s++) {
+              auto& seg = ev.capsules[s];
+              ImGui::PushID(s);
+
+              ImGui::Text("Seg %d", s);
+              ImGui::SameLine(60.0f);
+              ImGui::SetNextItemWidth(180.0f);
+              ImGui::DragFloat3("P0##cp0", &seg.localP0.x, 0.005f, -5.0f, 5.0f, "%.3f");
+              ImGui::SameLine();
+              ImGui::SetNextItemWidth(180.0f);
+              ImGui::DragFloat3("P1##cp1", &seg.localP1.x, 0.005f, -5.0f, 5.0f, "%.3f");
+              ImGui::SameLine();
+              ImGui::SetNextItemWidth(70.0f);
+              ImGui::DragFloat("R##cr", &seg.radius, 0.002f, 0.005f, 1.0f, "%.3f");
+              ImGui::SameLine();
+              if (ImGui::SmallButton("x")) {
+                ev.capsules.erase(ev.capsules.begin() + s);
+                ImGui::PopID();
+                break;
+              }
+
+              ImGui::PopID();
+            }
+
+            ImGui::Spacing();
+            if (ImGui::Button("+ Add Segment")) {
+              forge::CapsuleSegment newSeg;
+              if (!ev.capsules.empty()) {
+                newSeg.localP0 = ev.capsules.back().localP1;
+                newSeg.localP1 = newSeg.localP0 + glm::vec3(0.0f, 0.5f, 0.0f);
+                newSeg.radius = ev.capsules.back().radius;
+              }
+              ev.capsules.push_back(newSeg);
+            }
+          }
+          ImGui::EndPopup();
+        }
       } else {
         ImGui::BeginDisabled(true);
         ImGui::TextUnformatted("-");
@@ -1369,12 +1421,13 @@ void TaeEditorUI::drawEventList() {
     ImGui::EndTable();
   }
 
+
   if (ImGui::Button("Add Event")) {
     forge::AnimEvent ev;
     ev.type         = forge::AnimEventType::SpawnHitbox;
     ev.startTime    = m_app.scrubTime();
     ev.endTime      = std::min(m_app.scrubTime() + 0.1f, clip->duration);
-    ev.hitboxExtents = { 0.3f, 0.8f, 0.15f };
+    ev.capsules.push_back({ {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.08f });
     events.push_back(ev);
     selIdx = (int)events.size() - 1;
   }

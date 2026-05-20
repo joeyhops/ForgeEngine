@@ -105,7 +105,7 @@ void ClipNode::tickTAEEvents(float prevTime, float curTime) {
     if (ev.startTime == ev.endTime) {
       // One-shot: fire both activated + deactived on first crossing
       if (!wasActive && prevTime <= ev.startTime && curTime > ev.startTime) {
-        EventBus::publish(AnimEventActivated{ m_ownerName, ev.type, ev.payload });
+        EventBus::publish(AnimEventActivated{ m_ownerName, ev.type, ev.payload, ev.capsules });
         EventBus::publish(AnimEventDeactivated{ m_ownerName, ev.type, ev.payload });
         m_activeEventIndices.insert(i);
       }
@@ -113,7 +113,7 @@ void ClipNode::tickTAEEvents(float prevTime, float curTime) {
       bool shouldBeActive = (curTime >= ev.startTime && curTime < ev.endTime);
       if (!wasActive && shouldBeActive) {
         m_activeEventIndices.insert(i);
-        EventBus::publish(AnimEventActivated{ m_ownerName, ev.type, ev.payload });
+        EventBus::publish(AnimEventActivated{ m_ownerName, ev.type, ev.payload, ev.capsules });
       } else if (wasActive && !shouldBeActive) {
         m_activeEventIndices.erase(i);
         EventBus::publish(AnimEventDeactivated{ m_ownerName, ev.type, ev.payload });

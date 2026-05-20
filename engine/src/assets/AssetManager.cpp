@@ -838,19 +838,19 @@ void AssetManager::loadWeaponDefs(const std::string& relativePath) {
     return;
   }
 
-  for (const auto& w : j.at("weapons")) {
+  auto parseEntry = [](const nlohmann::json& entry) {
     WeaponDef def;
-    def.id = w.at("id").get<std::string>();
-    def.meshPath = w.value("mesh", "");
+    def.id = entry.at("id").get<std::string>();
+    def.meshPath = entry.value("mesh", "");
 
-    if (w.contains("boneAttach"))
-      def.boneAttach = w.at("boneAttach").get<std::string>();
+    if (entry.contains("boneAttach"))
+      def.boneAttach = entry.at("boneAttach").get<std::string>();
     else
       throw std::runtime_error(
         "WeaponDef '" + def.id + "': missing boneAttach");
 
-    if (w.contains("meshOffset")) {
-      const auto& mo = w.at("meshOffset");
+    if (entry.contains("meshOffset")) {
+      const auto& mo = entry.at("meshOffset");
       glm::vec3 pos(0.0f), scale(1.0f);
       glm::quat rot = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
@@ -874,24 +874,40 @@ void AssetManager::loadWeaponDefs(const std::string& relativePath) {
       def.meshOffset = T * R * S;
     }
 
-    def.movesetId = w.value("movesetId", "");
-    def.weaponArtId = w.value("weaponArtId", "");
+    def.movesetId = entry.value("movesetId", "");
+    def.weaponArtId = entry.value("weaponArtId", "");
 
-    for (const auto& [atkName, atkData] : w.at("attacks").items()) {
+    for (const auto& [atkName, atkData] : entry.at("attacks").items()) {
       AttackData atk;
       atk.name = atkName;
       atk.damage = atkData.value("damage", atk.damage);
       atk.poiseDamage = atkData.value("poiseDamage", atk.poiseDamage);
       atk.staminaCost = atkData.value("staminaCost", atk.staminaCost);
-      atk.startupTime = atkData.value("startupTime", atk.startupTime);
-      atk.activeTime = atkData.value("activeTime", atk.activeTime);
-      atk.recoveryTime = atkData.value("recoveryTime", atk.recoveryTime);
-      atk.range = atkData.value("range", atk.range);
-      atk.angle = atkData.value("angle", atk.angle);
       atk.damageType = atkData.value("damageType", atk.damageType);
       def.attacks[atkName] = atk;
     }
 
+    return def;
+  };
+
+  for (const auto& w : j.at("weapons")) {
+    nlohmann::json entryJson = w;
+
+    if (w.contains("file")) {
+      std::string extPath = resolvePath(w.at("file").get<std::string>());
+      std::ifstream extFile(extPath);
+      if (!extFile.is_open()) {
+        LOG_ERROR("[AssetManager] loadWeaponDefs: Could not open '{}'", extPath);
+        continue;
+      }
+      try { extFile >> entryJson; }
+      catch (nlohmann::json::exception& e) {
+        LOG_ERROR("[AssetManager] loadWeaponDefs: parse error in '{}': {}", extPath, e.what());
+        continue;
+      }
+    }
+
+    WeaponDef def = parseEntry(entryJson);
     std::string defId = def.id;
     s_weaponDefs[defId] = std::move(def);
     LOG_INFO("[AssetManager] Loaded weapon def '{}'", defId);

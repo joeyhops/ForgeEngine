@@ -1,7 +1,10 @@
 #pragma once
-#include <string>
-#include <glm/glm.hpp>
 #include <forge/AnimationClip.h>
+#include <forge/HitboxTypes.h>
+
+#include <glm/glm.hpp>
+
+#include <string>
 
 namespace forge {
 
@@ -47,6 +50,7 @@ struct AnimEventActivated {
   std::string ownerName;
   AnimEventType type;
   std::string payload;
+  std::vector<CapsuleSegment> capsules;
 };
 
 struct AnimEventDeactivated {

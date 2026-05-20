@@ -55,7 +55,9 @@ void ForgeGame::onInit() {
   forge::AssetManager::loadMovesetDefs("data/movesets.json");
 
   m_player.setup(getPhysics(), getLua(), getCombat(), getDebugUI());
+  m_player.combat->setBodyCapsule(0.3f, 0.9f);
   m_enemy.setup(getPhysics(), getLua(), getCombat(), getDebugUI());
+  m_enemy.combat->setBodyCapsule(0.3f, 0.75f);
 
   setupRootMotionAnimEvents();
 
@@ -839,21 +841,29 @@ void ForgeGame::onUpdate(float dt) {
 
     // Push to trail during active window
     if (playerPhase == forge::CombatComponent::AttackPhase::Active)
-        m_playerTrail.push(m_player.combat->getHitboxTransform(),
-                           m_player.combat->getHitboxHalfExtents());
+        m_playerTrail.push(m_player.combat->getWorldCapsules());
     if (enemyPhase == forge::CombatComponent::AttackPhase::Active)
-        m_enemyTrail.push(m_enemy.combat->getHitboxTransform(),
-                          m_enemy.combat->getHitboxHalfExtents());
+        m_enemyTrail.push(m_enemy.combat->getWorldCapsules());
 
     // Store for next frame
     m_prevPlayerPhase = playerPhase;
     m_prevEnemyPhase  = enemyPhase;
     
     if (m_player.combat->getAttackPhase() != forge::CombatComponent::AttackPhase::None) {
-      const forge::WeaponDef* wpnDef = m_player.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND);
-      glm::mat4 wpnWorld = m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
-      glm::vec3 halfExt(0.3f, 0.8f, 0.15f);
-      m_player.combat->setHitboxTransform(wpnWorld, halfExt);
+      const auto& localCaps = m_player.combat->getLocalCapsules();
+      if (!localCaps.empty()) {
+        glm::mat4 wpnWorld = m_player.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
+        std::vector<forge::WorldCapsule> worldCaps;
+        worldCaps.reserve(localCaps.size());
+        for (const auto& seg : localCaps) {
+          worldCaps.push_back({
+            glm::vec3(wpnWorld * glm::vec4(seg.localP0, 1.0f)),
+            glm::vec3(wpnWorld * glm::vec4(seg.localP1, 1.0f)),
+            seg.radius
+          });
+        }
+        m_player.combat->setWorldCapsules(std::move(worldCaps));
+      }
     }
   }
 
@@ -873,10 +883,20 @@ void ForgeGame::onUpdate(float dt) {
 
 
       if (m_enemy.combat->getAttackPhase() != forge::CombatComponent::AttackPhase::None) {
-        const forge::WeaponDef* wpnDef = m_enemy.equipment->getEquipped(forge::EquipmentComponent::RIGHT_HAND);
-        glm::mat4 wpnWorld = m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
-        glm::vec3 halfExt(0.3f, 0.8f, 0.15f);
-        m_enemy.combat->setHitboxTransform(wpnWorld, halfExt);
+        const auto& localCaps = m_enemy.combat->getLocalCapsules();
+        if (!localCaps.empty()) {
+          glm::mat4 wpnWorld = m_enemy.equipment->getWeaponTransform(forge::EquipmentComponent::RIGHT_HAND);
+          std::vector<forge::WorldCapsule> worldCaps;
+          worldCaps.reserve(localCaps.size());
+          for (const auto& seg : localCaps) {
+            worldCaps.push_back({
+              glm::vec3(wpnWorld * glm::vec4(seg.localP0, 1.0f)),
+              glm::vec3(wpnWorld * glm::vec4(seg.localP1, 1.0f)),
+              seg.radius
+            });
+          }
+          m_enemy.combat->setWorldCapsules(std::move(worldCaps));
+        }
       }
     }
 
@@ -1039,21 +1059,17 @@ void ForgeGame::renderDebugOverlays() {
       glm::vec3 col = m_player.combat->getHitFlash()
         ? kHitFlashColor
         : kHitboxColors[static_cast<int>(phase)];
-      forge::DebugDraw::boxOBB(
-        m_player.combat->getHitboxTransform(),
-        m_player.combat->getHitboxHalfExtents(),
-        col
-      );
+
+      for (const auto& cap : m_player.combat->getWorldCapsules())
+        forge::DebugDraw::capsulePQ(cap.worldP0, cap.worldP1, cap.radius, col);
+
       #ifdef SHOW_HITBOX_TRAILS
       for (int i = 0; i < m_playerTrail.count; i++) {
         int idx = (m_playerTrail.head - 1 - i + HitboxTrail::N) % HitboxTrail::N;
-        float brightness = 1.0f - (float)i / (float)m_playerTrail.N;
-        glm::vec3 trailCol = glm::vec3(1.0f, 0.5f, 0.0f) * brightness;
-        forge::DebugDraw::boxOBB(
-          m_playerTrail.transforms[idx],
-          m_playerTrail.halfExtents[idx],
-          trailCol
-        );
+        float alpha = 1.0f - (float)i / (float)HitboxTrail::N;
+        glm::vec3 col = { 1.0f * alpha, 0.3f * alpha, 0.0f };
+        for (const auto& cap : m_playerTrail.entries[idx])
+          forge::DebugDraw::capsulePQ(cap.worldP0, cap.worldP1, cap.radius, col);
       }
       #endif
     }
@@ -1074,21 +1090,18 @@ void ForgeGame::renderDebugOverlays() {
         glm::vec3 col = m_enemy.combat->getHitFlash()
           ? kHitFlashColor
           : kHitboxColors[static_cast<int>(phase)];
-        forge::DebugDraw::boxOBB(
-          m_enemy.combat->getHitboxTransform(),
-          m_enemy.combat->getHitboxHalfExtents(),
-          col
-        );
+        //forge::DebugDraw::boxOBB(
+        //  m_enemy.combat->getHitboxTransform(),
+        //  m_enemy.combat->getHitboxHalfExtents(),
+        //  col
+        //);
         #ifdef SHOW_HITBOX_TRAILS
         for (int i = 0; i < m_enemyTrail.count; i++) {
           int idx = (m_enemyTrail.head - 1 - i + HitboxTrail::N) % HitboxTrail::N;
-          float brightness = 1.0f - (float)i / (float)m_enemyTrail.N;
-          glm::vec3 trailCol = glm::vec3(1.0f, 0.5f, 0.0f) * brightness;
-          forge::DebugDraw::boxOBB(
-            m_enemyTrail.transforms[idx],
-            m_enemyTrail.halfExtents[idx],
-            trailCol
-          );
+          float alpha = 1.0f - (float)i / (float)HitboxTrail::N;
+          glm::vec3 col = { 1.0f * alpha, 0.3f * alpha, 0.0f };
+          for (const auto& cap : m_enemyTrail.entries[idx])
+            forge::DebugDraw::capsulePQ(cap.worldP0, cap.worldP1, cap.radius, col);
         }
         #endif
       }

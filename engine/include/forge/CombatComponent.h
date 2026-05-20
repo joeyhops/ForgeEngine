@@ -2,7 +2,10 @@
 #include <forge/StateMachine.h>
 #include <forge/AttackData.h>
 #include <forge/WeaponDef.h>
+#include <forge/HitboxTypes.h>
+
 #include <glm/glm.hpp>
+
 #include <functional>
 #include <string>
 #include <memory>
@@ -117,14 +120,20 @@ public:
   void setGhostObject(btPairCachingGhostObject* ghost) { m_ghostObject = ghost; }
   btPairCachingGhostObject* getGhostObject() const { return m_ghostObject; }
 
-  // Per-frame hitbox transform - setby game during active attack window
-  void setHitboxTransform(const glm::mat4& worldTransform,
-                          const glm::vec3& halfExtents) {
-    m_hitboxTransform = worldTransform;
-    m_hitboxHalfExtents = halfExtents;
+  void setBodyCapsule(float radius, float halfHeight) {
+    m_bodyRadius = radius;
+    m_bodyHalfHeight = halfHeight;
   }
-  const glm::mat4& getHitboxTransform() const { return m_hitboxTransform; }
-  const glm::vec3& getHitboxHalfExtents() const { return m_hitboxHalfExtents; }
+  float getBodyRadius() const { return m_bodyRadius; }
+  float getBodyHalfHeight() const { return m_bodyHalfHeight; }
+
+  // Local-space segments (in weapon mesh space)
+  // Set when SpawnHitbox event fires; cleared on deactivation
+  const std::vector<CapsuleSegment>& getLocalCapsules() const { return m_localCapsules; }
+
+  // World-space capsules - updated each frame during active attack window
+  void setWorldCapsules(std::vector<WorldCapsule> caps) { m_worldCapsules = std::move(caps); }
+  const std::vector<WorldCapsule>& getWorldCapsules() const { return m_worldCapsules; }
 
   // Callback - set from Lua or C++ to react to being hit
   std::function<void(const HitEvent&)> onHit;
@@ -144,7 +153,6 @@ public:
   void setHitboxActive(bool active) { m_hitboxActive = active; }
 
   AttackPhase getAttackPhase() const;
-  float getAttackTimer() const { return m_attackTimer; }
 
   // Hit-flash support: set by the game when hit is confirmed
   void notifyHitLanded();
@@ -184,11 +192,9 @@ private:
 
   // Attack state
   AttackData m_currentAttack;
-  float m_attackTimer = 0.0f; // counts up through startup + active + recovery
   bool m_hitboxActive = false;
   bool m_hitLanded = false; // Prevents multi-hit in one swing
-  bool m_usingTAEHitboxes = false;
-  bool m_taeAttackComplete = false;
+  bool m_attackAnimStarted = false;
 
   // Stagger state
   float m_staggerTimer = 0.0f;
@@ -197,9 +203,11 @@ private:
   glm::vec3 m_worldPos = { 0,0,0 };
   glm::vec3 m_worldForward = { 0,0,1 };
 
-  // Bone attached hitbox (set by ForgeGame during active attack window)
-  glm::mat4 m_hitboxTransform = glm::mat4(1.0f);
-  glm::vec3 m_hitboxHalfExtents = { 0.08f, 0.45f, 0.08f };
+  // Hitbox capsule data
+  std::vector<CapsuleSegment> m_localCapsules;
+  std::vector<WorldCapsule> m_worldCapsules;
+  float m_bodyRadius = 0.3f;
+  float m_bodyHalfHeight = 0.9f;
 
   // non-owning pointer to entities phys ghost obj
   btPairCachingGhostObject* m_ghostObject = nullptr;

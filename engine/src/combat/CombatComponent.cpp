@@ -15,27 +15,17 @@ namespace forge {
 // Bare hand attack data
 const AttackData CombatComponent::k_bareHandR1 = {
   "r1", // name
-  40.0f, // damage
-  10.0f, // poiseDamage
-  15.0f, // staminaCost
-  0.15f, // startupTime
-  0.10f, // activeTIme
-  0.40f, // recoveryTime
-  1.2f, // range
-  80.0f, // angle
+  25.0f, // damage
+  5.0f, // poiseDamage
+  10.0f, // staminaCost
   "blunt" // damageType
 };
 
 const AttackData CombatComponent::k_bareHandR2 = {
   "r2", // name
-  60.0f, // damage
-  15.0f, // poiseDamage
-  25.0f, // staminaCost
-  0.25f, // startupTime
-  0.12f, // activeTIme
-  0.55f, // recoveryTime
-  1.4f, // range
-  90.0f, // angle
+  40.0f, // damage
+  10.0f, // poiseDamage
+  15.0f, // staminaCost
   "blunt" // damageType
 };
 
@@ -73,8 +63,9 @@ void CombatComponent::subscribeToTAEEvents() {
         case AnimEventType::SpawnHitbox:
           m_hitboxActive = true;
           m_hitLanded = false;
-          m_usingTAEHitboxes = true;
-          LOG_TRACE("[Combat] {} TAE Hitbox ACTIVE", m_ownerName);
+          m_localCapsules = e.capsules;
+          LOG_TRACE("[Combat] {} TAE Hitbox ACTIVE ({} capsule segs)",
+                    m_ownerName, m_localCapsules.size());
           break;
         case AnimEventType::ComboWindow:
           m_inComboWindow = true;
@@ -105,7 +96,8 @@ void CombatComponent::subscribeToTAEEvents() {
       switch(e.type) {
         case AnimEventType::SpawnHitbox:
           m_hitboxActive = false;
-          m_taeAttackComplete = true;
+          m_localCapsules.clear();
+          m_worldCapsules.clear();
           LOG_TRACE("[Combat] {} SpawnHitbox CLOSED", m_ownerName);
           break;
         case AnimEventType::ComboWindow: {
@@ -134,6 +126,15 @@ void CombatComponent::subscribeToTAEEvents() {
           break;
       }
   });
+
+  EventBus::subscribe<AnimEventActivated>([this](const AnimEventActivated& e) {
+    if (e.ownerName != m_ownerName) return;
+    if (e.type != forge::AnimEventType::RecoveryBegin) return;
+    if (!m_fsm.isIn(CombatState::Attacking)) return;
+    m_fsm.transition(CombatState::Recovering);
+    LOG_TRACE("[Combat] {} RecoveryBegin -> Recovering", m_ownerName);
+  });
+
 }
 
 // FSM Setup
@@ -150,10 +151,9 @@ void CombatComponent::setupFSM() {
   // Attacking - counts through startup/active/recovery timing
   m_fsm.addState(CombatState::Attacking, {
     .onEnter = [this]{
-      m_attackTimer = 0.0f;
       m_hitboxActive = false;
       m_hitLanded = false;
-      m_taeAttackComplete = false;
+      m_attackAnimStarted = false;
 
       writeTriggerForAttack(m_currentAttack.name);
 
@@ -168,14 +168,13 @@ void CombatComponent::setupFSM() {
 
   // Recovering - attack finished, briefly vulnerable
   m_fsm.addState(CombatState::Recovering, {
-    .onEnter = [this]{ m_attackTimer = 0.0f; },
+    .onEnter = [this]{},
     .onUpdate = [this](float dt) {
       // Recovery handled inside tickAttack - just regen
-      m_attackTimer += dt;
       tickStamina(dt);
-
-      if (m_attackTimer >= m_currentAttack.recoveryTime)
+      if (m_animator && m_animator->getCurrentStateName() != "Attacking")
         m_fsm.transition(CombatState::Idle);
+
     },
     .onExit = nullptr
   });
@@ -281,10 +280,7 @@ void CombatComponent::revive() {
   // Clear all transient attack state
   m_hitboxActive = false;
   m_hitLanded = false;
-  m_usingTAEHitboxes = false;
-  m_taeAttackComplete = false;
   m_staggerTimer = 0.0f;
-  m_attackTimer = 0.0f;
   m_hitFlash = false;
   m_hitFlashTimer = 0.0f;
 
@@ -314,22 +310,13 @@ const AttackData& CombatComponent::getAttackData(const std::string& name) const 
 } 
 
 void CombatComponent::tickAttack(float dt) {
-  m_attackTimer += dt;
-
-  // if TAE events are driving the hitbox, just watch for the clip to end
-  // then transition to recovery
-  if (m_usingTAEHitboxes && m_animator && 
-    (m_taeAttackComplete || m_animator->isFinished())) {
-    m_taeAttackComplete = false;
-    m_fsm.transition(CombatState::Recovering);
+  if (!m_attackAnimStarted) {
+    if (m_animator && m_animator->getCurrentStateName() == "Attacking")
+      m_attackAnimStarted = true;
     return;
   }
-
-  if (!m_usingTAEHitboxes) {
-    const AttackData& atk = m_currentAttack;
-    if (m_attackTimer < atk.startupTime) m_hitboxActive = false;
-    else if (m_attackTimer < atk.startupTime + atk.activeTime) m_hitboxActive = true;
-    else { m_hitboxActive = false; m_fsm.transition(CombatState::Recovering); }
+  if (m_animator && m_animator->getCurrentStateName() != "Attacking") {
+    m_fsm.transition(CombatState::Idle);
   }
 }
 
@@ -434,8 +421,7 @@ std::string CombatComponent::getStateName() const {
 
 CombatComponent::AttackPhase CombatComponent::getAttackPhase() const {
   if (m_fsm.isIn(CombatState::Attacking)) {
-    if (m_attackTimer < m_currentAttack.startupTime) return AttackPhase::Startup;
-    return AttackPhase::Active; // timer is in active window if hitbox is live
+    return m_hitboxActive ? AttackPhase::Active : AttackPhase::Startup;
   }
   if (m_fsm.isIn(CombatState::Recovering)) return AttackPhase::Recovery;
   return AttackPhase::None;
@@ -460,8 +446,6 @@ void CombatComponent::startCombo(const std::string& actionKey) {
 
   m_hitboxActive = false;
   m_hitLanded = false;
-  m_taeAttackComplete = false;
-  m_usingTAEHitboxes = true;
 
   LOG_TRACE("[Combat] {} started combo '{}'", m_ownerName, actionKey);
 }

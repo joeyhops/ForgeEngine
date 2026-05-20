@@ -677,6 +677,7 @@ void TaeEditorApp::renderActiveHitboxes() {
   for (const auto& ev : m_editedEvents) {
     if (ev.type != forge::AnimEventType::SpawnHitbox) continue;
     if (m_scrubTime < ev.startTime || m_scrubTime >= ev.endTime) continue;
+    if (ev.capsules.empty()) continue;
  
     int boneIdx = -1;
     for (size_t i = 0; i < m_skeleton.size(); i++) {
@@ -685,13 +686,20 @@ void TaeEditorApp::renderActiveHitboxes() {
     if (boneIdx < 0) continue;
  
     glm::mat4 boneWorld = glm::scale(glm::mat4(1.0f), glm::vec3(kScale)) * gt[boneIdx];
- 
-    // Strip scale from the basis vectors so the OBB box stays unit-sized
     for (int c = 0; c < 3; c++) {
       float len = glm::length(glm::vec3(boneWorld[c]));
       if (len > 1e-6f) boneWorld[c] /= len;
     }
-    forge::DebugDraw::boxOBB(boneWorld, ev.hitboxExtents, { 1.0f, 0.45f, 0.1f });
+
+    glm::mat4 weaponWorld = boneWorld;
+    if (m_weaponDef && m_weaponBoneIndex == boneIdx)
+      weaponWorld = boneWorld * buildOffsetMatrix();
+
+    for (const auto& seg : ev.capsules) {
+      glm::vec3 wp0 = glm::vec3(weaponWorld * glm::vec4(seg.localP0, 1.0f));
+      glm::vec3 wp1 = glm::vec3(weaponWorld * glm::vec4(seg.localP1, 1.0f));
+      forge::DebugDraw::capsulePQ(wp0, wp1, seg.radius, { 1.0f, 0.45f, 0.1f });
+    }
   }
 }
 

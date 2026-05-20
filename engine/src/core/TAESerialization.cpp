@@ -1,4 +1,5 @@
 #include <forge/TAESerialization.h>
+#include <forge/HitboxTypes.h>
 #include <forge/Logger.h>
 
 #include <nlohmann/json.hpp>
@@ -97,12 +98,17 @@ std::vector<AnimEvent> TAESerialization::load(const std::string& absPath,
     e.payload = ev.value("payload", std::string{});
     e.type = parseEventType(ev.value("type", std::string{}));
 
-    if (ev.contains("hitboxExtents") && ev["hitboxExtents"].is_array() && ev["hitboxExtents"].size() == 3) {
-      e.hitboxExtents = glm::vec3(
-        ev["hitboxExtents"][0].get<float>(),
-        ev["hitboxExtents"][1].get<float>(),
-        ev["hitboxExtents"][2].get<float>()
-      );
+    if (ev.contains("capsules") && ev["capsules"].is_array()) {
+      for (const auto& seg : ev["capsules"]) {
+        forge::CapsuleSegment cs;
+        if (seg.contains("p0") && seg["p0"].size() == 3)
+          cs.localP0 = { seg["p0"][0], seg["p0"][1], seg["p0"][2] };
+        if (seg.contains("p1") && seg["p1"].size() == 3)
+          cs.localP1 = { seg["p1"][0], seg["p1"][1], seg["p1"][2] };
+        if (seg.contains("r"))
+          cs.radius = seg["r"].get<float>();
+        e.capsules.push_back(cs);
+      }
     }
     result.push_back(e);
   }
@@ -132,8 +138,16 @@ void TAESerialization::save(const std::string& absPath, const AnimationClip& cli
     ev["endTime"] = e.endTime;
     if (!e.payload.empty())
       ev["payload"] = e.payload;
-    if (e.type == AnimEventType::SpawnHitbox) {
-      ev["hitboxExtents"] = { e.hitboxExtents.x, e.hitboxExtents.y, e.hitboxExtents.z };
+    if (e.type == AnimEventType::SpawnHitbox && !e.capsules.empty()) {
+      auto arr = nlohmann::json::array();
+      for (const auto& seg : e.capsules) {
+        arr.push_back({
+          {"p0", { seg.localP0.x, seg.localP0.y, seg.localP0.z }},
+          {"p1", { seg.localP1.x, seg.localP1.y, seg.localP1.z }},
+          {"r", seg.radius }
+        });
+      }
+      ev["capsules"] = arr;
     }
     eventsArr.push_back(ev);
   }

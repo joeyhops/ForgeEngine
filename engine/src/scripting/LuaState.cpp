@@ -111,11 +111,6 @@ void LuaState::registerCombat() {
                                  "damage", &AttackData::damage,
                                  "poiseDamage", &AttackData::poiseDamage,
                                  "staminaCost", &AttackData::staminaCost,
-                                 "startupTime", &AttackData::startupTime,
-                                 "activeTime", &AttackData::activeTime,
-                                 "recoveryTime", &AttackData::recoveryTime,
-                                 "range", &AttackData::range,
-                                 "angle", &AttackData::angle,
                                  "damageType", &AttackData::damageType
                                  );
 

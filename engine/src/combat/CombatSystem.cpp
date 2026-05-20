@@ -1,7 +1,6 @@
 #include <forge/CombatSystem.h>
 #include <forge/CombatComponent.h>
 #include <forge/Logger.h>
-#include <forge/PhysicsWorld.h>
 #include <forge/Events.h>
 #include <forge/EventBus.h>
 #include <forge/LuaState.h>
@@ -77,79 +76,61 @@ void CombatSystem::update(float dt) {
   }
 }
 
-// hit detection (cone check)
+// hit detection
+
+static float segSegSqDist(
+  const glm::vec3& P0, const glm::vec3& P1,
+  const glm::vec3& Q0, const glm::vec3& Q1)
+{
+  glm::vec3 d1 = P1 - P0, d2 = Q1 - Q0, r = P0 - Q0;
+  float a = glm::dot(d1, d1);
+  float e = glm::dot(d2, d2);
+  float f = glm::dot(d2, r);
+  float s, t;
+
+  if (a <= 1e-8f && e <= 1e-8f) { return glm::dot(r, r); }
+  if (a <= 1e-8f) {
+    s = 0.0f;
+    t = glm::clamp(f / e, 0.0f, 1.0f);
+  } else {
+    float c = glm::dot(d1, r);
+    if (e <= 1e-8f) {
+      t = 0.0f;
+      s = glm::clamp(-c / a, 0.0f, 1.0f);
+    } else {
+      float b = glm::dot(d1, d2);
+      float denom = a * e - b * b;
+      s = (denom > 1e-8f) ? glm::clamp((b * f - c * e) / denom, 0.0f, 1.0f) : 0.0f;
+      t = (b * s + f) / e;
+      if (t < 0.0f) { t = 0.0f; s = glm::clamp(-c / a, 0.0f, 1.0f); }
+      else if (t > 1.0f) { t = 1.0f; s = glm::clamp((b - c) / a, 0.0f, 1.0f); }
+    }
+  }
+  glm::vec3 diff = (P0 + d1 * s) - (Q0 + d2 * t);
+  return glm::dot(diff, diff);
+}
 
 bool CombatSystem::checkHit(const CombatComponent& attacker,
                             const CombatComponent& defender) const
 {
-  if (m_physicsWorld && attacker.getGhostObject() != nullptr && defender.getGhostObject() != nullptr) {
-    const glm::mat4& wpnMat = attacker.getHitboxTransform();
-    const glm::vec3& halfExt = attacker.getHitboxHalfExtents();
+  const auto& worldCaps = attacker.getWorldCapsules();
+  if (worldCaps.empty()) return false;
 
-    btBoxShape hitboxShape(btVector3(
-      static_cast<btScalar>(halfExt.x),
-      static_cast<btScalar>(halfExt.y),
-      static_cast<btScalar>(halfExt.z)
-    ));
+  // Build defenders upright body capsule from stored dimensions + world pos
+  // worldPos is feet; capsule axis runs vertically
+  const glm::vec3 defPos = defender.getWorldPos();
+  const float defR = defender.getBodyRadius();
+  const float defHH = defender.getBodyHalfHeight();
+  const glm::vec3 defP0 = defPos + glm::vec3(0.0f, defR, 0.0f);
+  const glm::vec3 defP1 = defPos + glm::vec3(0.0f, defHH * 2.0f - defR, 0.0f);
 
-    btTransform hitboxBT;
-    hitboxBT.setFromOpenGLMatrix(glm::value_ptr(wpnMat));
-
-    btCollisionObject hitboxObj;
-    hitboxObj.setCollisionShape(&hitboxShape);
-    hitboxObj.setWorldTransform(hitboxBT);
-
-    struct HitCallback : public btCollisionWorld::ContactResultCallback {
-      bool hit = false;
-      btScalar addSingleResult(btManifoldPoint&,
-                               const btCollisionObjectWrapper*, int, int,
-                               const btCollisionObjectWrapper*, int, int) override
-      {
-        hit = true;
-        return btScalar(0);
-      }
-    } cb;
-
-    m_physicsWorld->getBulletWorld()->contactPairTest(
-      &hitboxObj,
-      defender.getGhostObject(),
-      cb
-    );
-
-    LOG_TRACE("[CombatSystem] checkHit (box): {} vs {} -> {}",
-              attacker.getName(), defender.getName(), cb.hit ? "HIT" : "MISS");
-    return cb.hit;
+  for (const auto& cap : worldCaps) {
+    float sqDist = segSegSqDist(cap.worldP0, cap.worldP1, defP0, defP1);
+    float radSum = cap.radius + defR;
+    if (sqDist <= radSum * radSum)
+      return true;
   }
-
-  const AttackData& atk = attacker.getCurrentAttack();
-
-  // 1. range check
-  glm::vec3 toDefender = defender.getWorldPos() - attacker.getWorldPos();
-  float distance = glm::length(toDefender);
-
-  LOG_TRACE("[CombatSystem] checkHit: {} vs {} dist={:.2f} range={:.2f}",
-            attacker.getName(), defender.getName(), distance, atk.range);
-
-  if (distance > atk.range) {
-    LOG_TRACE("[CombatSystem] -> MISS (Out of range)");
-    return false;
-  }
-
-  // 2. Angle check (cone in front of attacker)
-  // Normalize both vectors for dot product
-  glm::vec3 forward = glm::normalize(attacker.getWorldForward());
-  glm::vec3 direction = glm::normalize(toDefender);
-
-  // dot product gives cos(angle between vectors)
-  float dot = glm::dot(forward, direction);
-  float halfAngle = glm::radians(atk.angle * 0.5f);
-  float cosHalf = glm::cos(halfAngle);
-
-  LOG_TRACE("[CombatSystem] -> dot={:.2f} cosHalf={:.2f} inCone={}",
-            dot, cosHalf, dot >= cosHalf ? "YES" : "NO");
-
-  // dot >= cosHalf means the defender is inside the cone
-  return dot >= cosHalf;
+  return false;
 }
 
 void CombatSystem::resolveHit(CombatComponent& attacker,

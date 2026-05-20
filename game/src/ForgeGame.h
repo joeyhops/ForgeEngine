@@ -15,6 +15,7 @@
 #include <forge/LevelLoader.h>
 #include <forge/TriggerVolume.h>
 #include <forge/WeaponDef.h>
+#include <forge/HitboxTypes.h>
 #include <forge/map/MapScene.h>
 #include <forge/map/EntityAssembler.h>
 
@@ -179,19 +180,20 @@ private:
 
   struct HitboxTrail {
     static constexpr int N = 10;
-    glm::mat4 transforms[N];
-    glm::vec3 halfExtents[N];
+    std::array<std::vector<forge::WorldCapsule>, N> entries;
     int head = 0;
     int count = 0;
 
-    void push(const glm::mat4& t, const glm::vec3& h) {
-      transforms[head] = t;
-      halfExtents[head] = h;
+    void push(const std::vector<forge::WorldCapsule>& caps) {
+      entries[head] = caps;
       head = (head + 1) % N;
       if (count < N) count++;
     }
 
-    void clear() { head = 0; count = 0; }
+    void clear() {
+      head = 0; count = 0; 
+      for (auto& e : entries) e.clear();
+    }
   };
   HitboxTrail m_playerTrail;
   HitboxTrail m_enemyTrail;

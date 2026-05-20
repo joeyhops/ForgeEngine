@@ -83,21 +83,11 @@ void AIComponent::setupFSM() {
         chosenAttack.damage = (choice == "R2") ? 50.0f : 200.0f;
         chosenAttack.poiseDamage = (choice == "R2") ? 45.0f : 20.0f;
         chosenAttack.staminaCost = (choice == "R2") ? 30.0f : 15.0f;
-        chosenAttack.startupTime = (choice == "R2") ? 0.4f : 0.2f;
-        chosenAttack.activeTime = 0.12f;
-        chosenAttack.recoveryTime = (choice == "R2") ? 0.6f : 0.3f;
-        chosenAttack.range = m_attackRadius;
-        chosenAttack.angle = 100.0f;
       } else {
         chosenAttack.name = "EnemySwipe";
         chosenAttack.damage = 40.f; 
         chosenAttack.poiseDamage = 20.f; 
         chosenAttack.staminaCost = 15.0f; 
-        chosenAttack.startupTime = 0.2f; 
-        chosenAttack.activeTime = 0.12f; 
-        chosenAttack.recoveryTime = 0.35f; 
-        chosenAttack.range = m_attackRadius; 
-        chosenAttack.angle = 100.0f;
       }
 
       m_combat.tryAttack(chosenAttack);
