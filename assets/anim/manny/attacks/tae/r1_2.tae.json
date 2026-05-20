@@ -1,0 +1,24 @@
+{
+  "clip": "Unreal Take",
+  "events": [
+    {
+      "endTime": 0.9145002365112305,
+      "hitboxExtents": [
+        0.26499998569488525,
+        0.8949999809265137,
+        0.13500000536441803
+      ],
+      "payload": "weapon_r",
+      "startTime": 0.6823607087135315,
+      "type": "SpawnHitbox"
+    },
+    {
+      "endTime": 1.0206453800201416,
+      "payload": "r1_3",
+      "startTime": 0.9206454157829285,
+      "type": "ComboWindow"
+    }
+  ],
+  "extractRootY": false,
+  "rootBone": "root"
+}

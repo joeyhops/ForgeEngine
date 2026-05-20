@@ -3,6 +3,7 @@
 
 #include <forge/AssetManager.h>
 #include <forge/MovesetDef.h>
+#include <forge/WeaponDef.h>
 #include <forge/Logger.h>
 #include <forge/DebugUI.h>
 
@@ -151,6 +152,7 @@ void TaeEditorUI::draw() {
 
   // ---- Main content ----
   if (m_app.isLoaded()) {
+    drawWeaponPreviewPanel();
     drawClipInfo();
     drawTimeline();
     drawEventList();
@@ -956,6 +958,80 @@ void TaeEditorUI::drawSaveMovesetDialog() {
 }
 
 // ---------------------------------------------------------------------------
+// Weapon preview panel
+// ---------------------------------------------------------------------------
+
+void TaeEditorUI::drawWeaponPreviewPanel() {
+  if (!ImGui::Begin("Weapon Preview")) { ImGui::End(); return; }
+
+  const forge::WeaponDef* active = m_app.getActiveWeapon();
+  const char* previewLabel = active ? active->id.c_str() : "None";
+
+  ImGui::SetNextItemWidth(160.0f);
+  if (ImGui::BeginCombo("##wpn_select", previewLabel)) {
+    // None always first
+    if (ImGui::Selectable("None", active == nullptr))
+      m_app.clearWeapon();
+
+    for (const auto& [id, def] : forge::AssetManager::getAllWeaponDefs()) {
+      bool selected = (active && active->id == id);
+      if (ImGui::Selectable(id.c_str(), selected))
+        m_app.loadWeapon(id);
+      if (selected)
+        ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndCombo();
+  }
+
+  if (active) {
+    ImGui::SameLine();
+    if (ImGui::Button("Clear"))
+      m_app.clearWeapon();
+
+    ImGui::Spacing();
+
+    int boneIdx = m_app.getWeaponBoneIndex();
+    if (boneIdx >= 0) {
+      ImGui::TextDisabled("Bone: %s  [%d]", active->boneAttach.c_str(), boneIdx);
+    } else {
+      ImGui::TextColored({ 1.0f, 0.35f, 0.35f, 1.0f },
+                         "Bone '%s' not in skeleton", active->boneAttach.c_str());
+    }
+
+    // Offset editor
+    ImGui::Separator();
+    ImGui::Text("Mesh Offset");
+    ImGui::Spacing();
+
+    auto& edit = m_app.getOffsetEdit();
+    bool changed = false;
+
+    changed |= ImGui::DragFloat3("Position (m)", &edit.pos.x, 0.001f);
+    changed |= ImGui::DragFloat3("Rotation (deg)", &edit.euler.x, 0.25f);
+    changed |= ImGui::DragFloat3("Scale", &edit.scale.x, 0.01f, 0.01f, 10.0f);
+
+    if (changed) edit.dirty = true;
+
+    ImGui::Spacing();
+
+    const char* saveLabel = edit.dirty ? "Save to weapons.json *" : "Save to weapons.json";
+    if (ImGui::Button(saveLabel))
+      m_app.saveWeaponOffset();
+
+    ImGui::SameLine();
+    if (ImGui::Button("Reset"))
+      m_app.resetWeaponOffset();
+
+    if (edit.dirty)
+      ImGui::TextColored({ 1.0f, 0.8f, 0.3f, 1.0f }, "Unsaved changes");
+  } else {
+    ImGui::TextDisabled("Select a weapon to preview it in the viewport.");
+  }
+
+  ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
 // Clip Info panel (unchanged from original)
 // ---------------------------------------------------------------------------
 
@@ -1330,10 +1406,7 @@ void TaeEditorUI::scanAnimFolder(const std::string& dirPath) {
     return;
   }
 
-  std::string assetRoot = forge::AssetManager::resolvePath(".");
-  // Normalise trailing separator
-  if (!assetRoot.empty() && assetRoot.back() != '/' && assetRoot.back() != '\\')
-    assetRoot += '/';
+  const std::string& assetRoot = forge::AssetManager::getAssetRoot();
 
   for (const auto& entry : fs::directory_iterator(absDir)) {
     if (!entry.is_regular_file()) continue;

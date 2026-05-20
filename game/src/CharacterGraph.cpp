@@ -18,7 +18,10 @@ std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
   auto idleNode = std::make_shared<ClipNode>(idleClip, true);
   auto walkNode = std::make_shared<ClipNode>(walkClip, true); //todo walk clip
   idleNode->setOwnerName(ownerName);
+  idleNode->setActionKey("idle");
+
   walkNode->setOwnerName(ownerName);
+  walkNode->setActionKey("walk");
 
   auto locomotionNode = std::make_shared<Blend1DNode>("moveSpeed");
   locomotionNode->addEntry(0.0f, idleNode);
@@ -27,6 +30,7 @@ std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
   if (sprintClip) {
     auto sprintNode = std::make_shared<ClipNode>(sprintClip, true);
     sprintNode->setOwnerName(ownerName);
+    sprintNode->setActionKey("sprint");
     locomotionNode->addEntry(2.0f, sprintNode);
   }
 
@@ -38,6 +42,7 @@ std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
   // death
   auto deathNode = std::make_shared<ClipNode>(deathClip, false);
   deathNode->setOwnerName(ownerName);
+  deathNode->setActionKey("death");
 
   // graph root
   auto root = std::make_shared<StateMachineNode>();

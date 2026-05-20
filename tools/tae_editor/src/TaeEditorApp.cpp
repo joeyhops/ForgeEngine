@@ -14,6 +14,8 @@
 
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/matrix_decompose.hpp>
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
@@ -119,6 +121,7 @@ void TaeEditorApp::onRender() {
     }
 
     renderActiveHitboxes();
+    renderWeapon();
 
     glm::mat4 vp = m_camera.projMatrix(aspect) * m_camera.viewMatrix();
     forge::DebugDraw::flush(vp);
@@ -141,6 +144,7 @@ void TaeEditorApp::loadModel(const std::string& charPath) {
   }
   m_skinnedModel = data;
   m_skeleton = data.skeleton;
+  resolveWeaponBone();
   m_charPath = charPath;
 
   if (!m_skinnedModel.material.albedo)
@@ -331,6 +335,13 @@ void TaeEditorApp::renameEntryKey(int idx, const std::string& newKey) {
   m_editableMovesetDirty           = true;
 }
  
+static std::string toRelativePath(const std::string& path) {
+  const std::string& root = forge::AssetManager::getAssetRoot();
+  if (!root.empty() && path.rfind(root, 0) == 0)
+    return path.substr(root.size());
+  return path;
+}
+
 void TaeEditorApp::saveMovesetToJson(const std::string& outputPath) {
   if (m_editableMovesetId.empty()) {
     LOG_ERROR("[TaeEditor] saveMovesetToJson: no moveset loaded for editing");
@@ -347,7 +358,7 @@ void TaeEditorApp::saveMovesetToJson(const std::string& outputPath) {
   j["id"]    = m_editableMovesetId;
   j["clips"] = nlohmann::json::object();
   for (const auto& entry : m_editableMoveset)
-    j["clips"][entry.actionKey] = entry.clipPath;
+    j["clips"][entry.actionKey] = toRelativePath(entry.clipPath);
  
   std::string absPath = forge::AssetManager::resolvePath(savePath);
   fs::create_directories(fs::path(absPath).parent_path());
@@ -366,6 +377,146 @@ void TaeEditorApp::saveMovesetToJson(const std::string& outputPath) {
   LOG_INFO("[TaeEditor] Saved moveset '{}' to {}", m_editableMovesetId, absPath);
 }
  
+// ---------------------------------------------------------------------------
+// Weapon preview
+// ---------------------------------------------------------------------------
+
+void TaeEditorApp::loadWeapon(const std::string& weaponId) {
+  const forge::WeaponDef* def = forge::AssetManager::getWeaponDef(weaponId);
+  if (!def) {
+    LOG_ERROR("[TaeEditor] loadWeapon: '{}' not found in loaded defs", weaponId);
+    return;
+  }
+
+  m_weaponDef = def;
+  m_weaponModel = forge::ModelData{};
+
+  if (!def->meshPath.empty())
+    m_weaponModel = forge::AssetManager::loadModel(def->meshPath);
+  else
+    LOG_WARN("[TaeEditor] Weapon '{}' has no meshPath - transform will be visible via skeleton only",
+             weaponId);
+
+  decomposeOffset(def->meshOffset);
+  resolveWeaponBone();
+  LOG_INFO("[TaeEditor] Weapon preview: '{}' (bone '{}' -> idx {})",
+           weaponId, def->boneAttach, m_weaponBoneIndex);
+
+  saveConfig();
+}
+
+void TaeEditorApp::clearWeapon() {
+  m_weaponDef = nullptr;
+  m_weaponModel = forge::ModelData{};
+  m_offsetEdit = WeaponOffsetEdit{};
+  m_weaponBoneIndex = -1;
+  saveConfig();
+}
+
+void TaeEditorApp::resolveWeaponBone() {
+  m_weaponBoneIndex = -1;
+  if (!m_weaponDef || m_skeleton.empty()) return;
+
+  for (int i = 0; i < static_cast<int>(m_skeleton.size()); ++i) {
+    if (m_skeleton[i].name == m_weaponDef->boneAttach) {
+      m_weaponBoneIndex = i;
+      return;
+    }
+  }
+
+  LOG_WARN("[TaeEditor] Weapon bone '{}' not found in skeleton ({} bones) - weapon will not render",
+           m_weaponDef->boneAttach, m_skeleton.size());
+}
+
+glm::mat4 TaeEditorApp::buildOffsetMatrix() const {
+  glm::mat4 T = glm::translate(glm::mat4(1.0f), m_offsetEdit.pos);
+  glm::mat4 R = glm::mat4_cast(glm::quat(glm::radians(m_offsetEdit.euler)));
+  glm::mat4 S = glm::scale(glm::mat4(1.0f), m_offsetEdit.scale);
+  return T * R * S;
+}
+
+void TaeEditorApp::decomposeOffset(const glm::mat4& m) {
+  glm::vec3 scale, translation, skew;
+  glm::vec4 perspective;
+  glm::quat rotation;
+
+  if (!glm::decompose(m, scale, rotation, translation, skew, perspective)) {
+    LOG_WARN("[TaeEditor] decomposeOffset: glm::decompose failed -- resetting to identity");
+    m_offsetEdit = WeaponOffsetEdit{};
+    return;
+  }
+
+  m_offsetEdit.pos = translation;
+  m_offsetEdit.scale = scale;
+  m_offsetEdit.euler = glm::degrees(glm::eulerAngles(rotation));
+  m_offsetEdit.dirty = false;
+}
+
+void TaeEditorApp::resetWeaponOffset() {
+  if (!m_weaponDef) return;
+  decomposeOffset(m_weaponDef->meshOffset);
+}
+
+void TaeEditorApp::saveWeaponOffset() {
+  if (!m_weaponDef) return;
+
+  const std::string jsonPath = forge::AssetManager::resolvePath("data/weapons.json");
+
+  nlohmann::json j;
+  {
+    std::ifstream in(jsonPath);
+    if (!in.is_open()) {
+      LOG_ERROR("[TaeEditor] saveWeaponOffset: cannot open: '{}'", jsonPath);
+      return;
+    }
+    try { in >> j; }
+    catch (const nlohmann::json::exception& e) {
+      LOG_ERROR("[TaeEditor] saveWeaponOffset: JSON parse error: {}", e.what());
+      return;
+    }
+  }
+
+  const std::string targetId = m_weaponDef->id;
+  bool found = false;
+  for (auto& w : j.at("weapons")) {
+    if (w.at("id").get<std::string>() != targetId) continue;
+
+    w["meshOffset"]["pos"] = { m_offsetEdit.pos.x, 
+                               m_offsetEdit.pos.y,
+                               m_offsetEdit.pos.z };
+    w["meshOffset"]["rot"] = { m_offsetEdit.euler.x, 
+                               m_offsetEdit.euler.y,
+                               m_offsetEdit.euler.z };
+    w["meshOffset"]["scale"] = { m_offsetEdit.scale.x, 
+                               m_offsetEdit.scale.y,
+                               m_offsetEdit.scale.z };
+
+    found = true;
+    break;
+  }
+
+  if (!found) {
+    LOG_ERROR("[TaeEditor] saveWeaponOffset: '{}' not found in weapons array", targetId);
+    return;
+  }
+
+  {
+    std::ofstream out(jsonPath);
+    if (!out.is_open()) {
+      LOG_ERROR("[TaeEditor] saveWeaponOffset: cannot write to '{}'", jsonPath);
+      return;
+    }
+    out << j.dump(2);
+  }
+
+  forge::AssetManager::loadWeaponDefs("data/weapons.json");
+  m_weaponDef = forge::AssetManager::getWeaponDef(targetId);
+
+  m_offsetEdit.dirty = false;
+
+  LOG_INFO("[TaeEditor] Saved meshOffset for '{}' -> weapons.json", targetId);
+}
+
 // ---------------------------------------------------------------------------
 // TAE sidecar
 // ---------------------------------------------------------------------------
@@ -483,6 +634,24 @@ void TaeEditorApp::renderSkinnedModel() {
   const auto& boneMatrices    = m_animator.getBoneMatrices();
   getRenderer().drawSkinnedMesh(m_skinnedModel, modelMatrix, boneMatrices);
 }
+
+void TaeEditorApp::renderWeapon() {
+  if (!m_weaponDef || m_weaponBoneIndex < 0) return;
+  if (!m_weaponModel.hasRenderData()) return;
+
+  const auto& gt = m_animator.getGlobalTransforms();
+  if (m_weaponBoneIndex >= static_cast<int>(gt.size())) return;
+
+  glm::mat4 boneWorld = glm::scale(glm::mat4(1.0f), glm::vec3(m_modelUnitScale))
+                        * gt[m_weaponBoneIndex];
+
+  for (int c = 0; c < 3; ++c) {
+    float len = glm::length(glm::vec3(boneWorld[c]));
+    if (len > 1e-6f) boneWorld[c] /= len;
+  }
+
+  getRenderer().drawMesh(m_weaponModel, boneWorld * buildOffsetMatrix());
+}
  
 void TaeEditorApp::renderSkeleton() {
   const auto& gt   = m_animator.getGlobalTransforms();
@@ -538,6 +707,11 @@ void TaeEditorApp::loadConfig() {
       m_animDir = j["animDir"].get<std::string>();
     if (j.contains("modelUnitScale"))
       m_modelUnitScale = j["modelUnitScale"].get<float>();
+    if (j.contains("weaponId")) {
+      std::string wid = j["weaponId"].get<std::string>();
+      if (!wid.empty())
+        loadWeapon(wid);
+    }
   } catch (nlohmann::json::exception& e) {
     LOG_WARN("[TaeEditor] tae_editor.json parse failed - using defaults ({})", e.what());
   }
@@ -548,6 +722,7 @@ void TaeEditorApp::saveConfig() {
   if (!m_charPath.empty()) j["charPath"] = m_charPath;
   if (!m_animDir.empty()) j["animDir"] = m_animDir;
   j["modelUnitScale"] = m_modelUnitScale;
+  if (m_weaponDef) j["weaponId"] = m_weaponDef->id;
   if (std::ofstream f("tae_editor.json"); f.is_open())
     f << j.dump(2);
 }

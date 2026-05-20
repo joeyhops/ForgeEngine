@@ -92,6 +92,9 @@ private:
   void drawTimeline();
   void drawEventList();
 
+  // Weapon info
+  void drawWeaponPreviewPanel();
+
   // -----------------------------------------------------------------------
   // Helpers
   // -----------------------------------------------------------------------

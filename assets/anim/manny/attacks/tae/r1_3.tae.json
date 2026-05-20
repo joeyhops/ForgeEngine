@@ -1,0 +1,17 @@
+{
+  "clip": "Unreal Take",
+  "events": [
+    {
+      "endTime": 0.8427056074142456,
+      "hitboxExtents": [
+        0.30000001192092896,
+        0.800000011920929,
+        0.15000000596046448
+      ],
+      "startTime": 0.7427055835723877,
+      "type": "SpawnHitbox"
+    }
+  ],
+  "extractRootY": false,
+  "rootBone": "root"
+}

@@ -388,9 +388,9 @@ void ForgeGame::setupRootMotionAnimEvents() {
     if (e.ownerName != "player") return;
     if (e.type != forge::AnimEventType::RootMotionBegin) return;
 
-    m_rmOverride = true;
-    m_rmScale = 1.0f;
-    m_rmAxes = { true, false, true };
+    this->m_rmOverride = true;
+    this->m_rmScale = 1.0f;
+    this->m_rmAxes = { true, false, true };
 
     // Parse payload: "scale;axes;maxVel"
     if (!e.payload.empty()) {
@@ -398,32 +398,32 @@ void ForgeGame::setupRootMotionAnimEvents() {
       std::string token;
       int idx = 0;
       while (std::getline(ss, token, ';')) {
-        if (idx == 0 && !token.empty()) m_rmScale = std::stof(token);
+        if (idx == 0 && !token.empty()) this->m_rmScale = std::stof(token);
         if (idx == 1 && !token.empty()) {
-          m_rmAxes.x = token.find('x') != std::string::npos;
-          m_rmAxes.y = token.find('y') != std::string::npos;
-          m_rmAxes.z = token.find('z') != std::string::npos;
+          this->m_rmAxes.x = token.find('x') != std::string::npos;
+          this->m_rmAxes.y = token.find('y') != std::string::npos;
+          this->m_rmAxes.z = token.find('z') != std::string::npos;
         }
         idx++;
       }
     }
-    LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{}", m_rmScale,
-             m_rmAxes.x ? "x" : "",m_rmAxes.y ? "y" : "",m_rmAxes.z ? "z" : "");
+    LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{}", this->m_rmScale,
+             this->m_rmAxes.x ? "x" : "",this->m_rmAxes.y ? "y" : "",this->m_rmAxes.z ? "z" : "");
   });
 
   forge::EventBus::subscribe<forge::AnimEventDeactivated>([this](const forge::AnimEventDeactivated& e) {
     if (e.ownerName != "player") return;
     if (e.type != forge::AnimEventType::RootMotionEnd) return;
-    m_rmOverride = false;
-    m_rmScale = 1.0f;
-    m_rmAxes = { true, false, true };
+    this->m_rmOverride = false;
+    this->m_rmScale = 1.0f;
+    this->m_rmAxes = { true, false, true };
     LOG_INFO("[RM] RootMotionEnd");
   });
 
   forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
     if (e.ownerName != "player") return;
     if (e.type != forge::AnimEventType::RootMotionScale) return;
-    if (!e.payload.empty()) m_rmScale = std::stof(e.payload);
+    if (!e.payload.empty()) this->m_rmScale = std::stof(e.payload);
   });
 
   forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
@@ -1340,11 +1340,6 @@ void ForgeGame::handleInput(float dt) {
 }
 
 void ForgeGame::applyMovement(float dt) {
-  if (m_rmOverride && m_player.animator->getCurrentStateName() != "Dodging") {
-    m_rmOverride = false;
-    m_rmScale = 1.0f;
-    m_rmAxes = { true, false, true };
-  }
   if (!m_player.combat->isAlive()) {
     m_player.controller->setWalkDirection(glm::vec3(0.0f));
     return;
@@ -1353,7 +1348,9 @@ void ForgeGame::applyMovement(float dt) {
   glm::vec3 displacement(0.0f);
 
   bool isDodging = (m_player.animator->getCurrentStateName() == "Dodging");
-  bool useRM = m_player.animator->isRootMotionActive() || m_rmOverride || isDodging;
+  bool isLocomotion = (m_player.animator->getCurrentStateName() == "Locomotion");
+  //bool useRM = (isLocomotion && m_player.animator->isRootMotionActive()) || m_rmOverride;
+  bool useRM = (isLocomotion && m_player.animator->isRootMotionActive()) || m_rmOverride || isDodging;
 
   if (useRM) {
     glm::vec3 localDelta = m_player.animator->getRootMotionDelta();

@@ -1,0 +1,35 @@
+{
+  "clip": "Unreal Take",
+  "events": [
+    {
+      "endTime": 0.4172413945198059,
+      "payload": "0.5;xz",
+      "startTime": 0.3172414004802704,
+      "type": "RootMotionBegin"
+    },
+    {
+      "endTime": 0.6277191042900085,
+      "hitboxExtents": [
+        0.30000001192092896,
+        0.800000011920929,
+        0.15000000596046448
+      ],
+      "payload": "weapon_r",
+      "startTime": 0.4987400770187378,
+      "type": "SpawnHitbox"
+    },
+    {
+      "endTime": 0.729907214641571,
+      "payload": "r1_2",
+      "startTime": 0.6299071907997131,
+      "type": "ComboWindow"
+    },
+    {
+      "endTime": 1.036472201347351,
+      "startTime": 0.9364721775054932,
+      "type": "RootMotionEnd"
+    }
+  ],
+  "extractRootY": false,
+  "rootBone": "root"
+}

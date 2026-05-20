@@ -5,6 +5,7 @@
 #include <forge/AssetManager.h>
 #include <forge/Camera.h>
 #include <forge/Renderer.h>
+#include <forge/WeaponDef.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -55,6 +56,13 @@ public:
     std::string clipPath;
   };
 
+  struct WeaponOffsetEdit {
+    glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
+    glm::vec3 euler = {0.0f, 0.0f, 0.0f};
+    glm::vec3 scale = {0.0f, 0.0f, 0.0f};
+    bool dirty = false;
+  };
+
   std::vector<MovesetEntry>& editableMoveset() { return m_editableMoveset; }
   const std::string& editableMovesetId() const { return m_editableMovesetId; }
   const std::string& editableMovesetOutputPath() const { return m_editableMovesetOutputPath; }
@@ -79,6 +87,14 @@ public:
   void renameEntryKey(int idx, const std::string& newKey);
 
   void saveMovesetToJson(const std::string& outputPath = "");
+
+  void loadWeapon(const std::string& weaponId);
+  void clearWeapon();
+  const forge::WeaponDef* getActiveWeapon() const { return m_weaponDef; }
+  int getWeaponBoneIndex() const { return m_weaponBoneIndex; }
+  WeaponOffsetEdit& getOffsetEdit() { return m_offsetEdit; }
+  void resetWeaponOffset();
+  void saveWeaponOffset();
 
   void setScrubTime(float t);
 
@@ -115,6 +131,12 @@ private:
   std::string m_startupClipPath;
   float m_modelUnitScale = 1.0f;
 
+  // weapon preview
+  forge::ModelData m_weaponModel;
+  const forge::WeaponDef* m_weaponDef = nullptr;
+  int m_weaponBoneIndex = -1;
+  WeaponOffsetEdit m_offsetEdit;
+
   // Payload validation
   std::vector<std::string> m_knownBones; // Boneattach from weapons.json
   std::vector<std::string> m_knownComboKeys; // clip keys from all movesets
@@ -144,10 +166,15 @@ private:
   char m_clipPathBuff[1024] = {};
 
   void renderSkinnedModel();
+  void renderWeapon();
   void renderSkeleton();
   void renderActiveHitboxes();
   void handleCameraInput();
   void loadPayloadValidationData();
+  void resolveWeaponBone();
+
+  glm::mat4 buildOffsetMatrix() const;
+  void decomposeOffset(const glm::mat4& m);
 
   void loadConfig();
   void saveConfig();

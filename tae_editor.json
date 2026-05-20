@@ -1,5 +1,6 @@
 {
-  "animDir": "anim/manny/die",
-  "charPath": "models/base_skele_fbx.glb",
-  "modelUnitScale": 1.0
+  "animDir": "anim/manny/idle_weapon",
+  "charPath": "models/bone_exp1.glb",
+  "modelUnitScale": 1.0,
+  "weaponId": "longsword"
 }

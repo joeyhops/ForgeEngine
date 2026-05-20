@@ -96,7 +96,7 @@ void EnemyEntity::setup(forge::PhysicsWorld& physics,
 
   debugUI.registerAnimator(animator.get(), "Enemy");
   debugUI.registerAIComponent(ai.get());
-  debugUI.registerEquipmentComponent(equipment.get());
+//  debugUI.registerEquipmentComponent(equipment.get());
 
   LOG_INFO("[Enemy] ready - skeleton: {} bones", skinnedModel.skeleton.size());
 }

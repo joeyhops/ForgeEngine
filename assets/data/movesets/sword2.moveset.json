@@ -1,0 +1,9 @@
+{
+  "clips": {
+    "idle": "anim/manny/idle_weapon/Anim_DSS3_Idle_RM.glb",
+    "r1": "anim/manny/attacks/Anim_SwordV2_Slash1.glb",
+    "r1_2": "anim/manny/attacks/Anim_HSAS_Slash_Up.glb",
+    "r1_3": "anim/manny/attacks/Anim_HSAS_Slash_Up_01.glb"
+  },
+  "id": "sword2"
+}

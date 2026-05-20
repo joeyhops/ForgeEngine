@@ -921,19 +921,38 @@ void AssetManager::loadMovesetDefs(const std::string& relativePath) {
     return;
   }
 
-  for (const auto& m : j.at("movesets")) {
+  auto parseEntry = [](const nlohmann::json& entry) {
     MovesetDef def;
-    def.id = m.at("id").get<std::string>();
+    def.id = entry.at("id").get<std::string>();
 
-    if (m.contains("clips")) {
-      for (const auto& [key, path] : m.at("clips").items())
+    if (entry.contains("clips")) {
+      for (const auto& [key, path] : entry.at("clips").items())
         def.clips[key] = path.get<std::string>();
     }
+    return def;
+  };
 
+  for (const auto& m : j.at("movesets")) {
+    nlohmann::json entryJson = m; 
+
+    if (m.contains("file")) {
+      std::string extPath = resolvePath(m.at("file").get<std::string>());
+      std::ifstream extFile(extPath);
+      if (!extFile.is_open()) {
+        LOG_ERROR("[AssetManager] loadMovesetDefs: Could not open '{}'", extPath);
+        continue;
+      }
+      try { extFile >> entryJson; }
+      catch (nlohmann::json::exception& e) {
+        LOG_ERROR("[AssetManager] loadMovesetDefs: parse error in '{}': {}", extPath, e.what());
+        continue;
+      }
+    }
+
+    MovesetDef def = parseEntry(entryJson);
     std::string defId = def.id;
     s_movesetDefs[defId] = std::move(def);
-    LOG_INFO("[AssetManager] Loaded moveset def '{}' ({} clips)",
-             defId, s_movesetDefs[defId].clips.size());
+    LOG_INFO("[AssetManager] Loaded Moveset Def {} ({} clips)", defId, s_movesetDefs[defId].clips.size());
   }
   LOG_INFO("[AssetManager] loadMovesetDefs: {} movesets loaded from '{}'",
            s_movesetDefs.size(), relativePath);

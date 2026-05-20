@@ -1,73 +1,80 @@
 {
   "weapons": [
     {
-      "id":         "longsword",
-      "mesh":       "models/weapons/long_sword.glb",
-      "boneAttach": "weapon_r",
-      "movesetId": "sword",
-      "meshOffset": { 
-        "pos": [0.0000,0.0490,-0.0280],
-        "rot": [0.00,0.00,-90.00]
-      },
       "attacks": {
         "r1": {
-          "name":         "r1",
-          "damage":       120.0,
-          "poiseDamage":  30.0,
-          "staminaCost":  25.0,
-          "startupTime":  0.20,
-          "activeTime":   0.30,
-          "recoveryTime": 0.50,
-          "range":        1.8,
-          "angle":        90.0,
-          "damageType":   "slash"
+          "activeTime": 0.3,
+          "angle": 90.0,
+          "damage": 120.0,
+          "damageType": "slash",
+          "name": "r1",
+          "poiseDamage": 30.0,
+          "range": 1.8,
+          "recoveryTime": 0.5,
+          "staminaCost": 25.0,
+          "startupTime": 0.2
         },
         "r2": {
-          "name":         "r2",
-          "damage":       200.0,
-          "poiseDamage":  60.0,
-          "staminaCost":  40.0,
-          "startupTime":  0.45,
-          "activeTime":   0.25,
-          "recoveryTime": 0.70,
-          "range":        2.0,
-          "angle":        100.0,
-          "damageType":   "slash"
+          "activeTime": 0.25,
+          "angle": 100.0,
+          "damage": 200.0,
+          "damageType": "slash",
+          "name": "r2",
+          "poiseDamage": 60.0,
+          "range": 2.0,
+          "recoveryTime": 0.7,
+          "staminaCost": 40.0,
+          "startupTime": 0.45
         }
-      }
+      },
+      "boneAttach": "weapon_h_r",
+      "id": "longsword",
+      "mesh": "models/weapons/long_sword.glb",
+      "meshOffset": {
+        "pos": [
+          -0.028999999165534973,
+          0.039000000804662704,
+          0.08500000089406967
+        ],
+        "rot": [
+          -50.0,
+          0.0,
+          0.0
+        ]
+      },
+      "movesetId": "sword2"
     },
     {
-      "id":         "dagger",
-      "mesh":       "models/weapons/dagger.glb",
-      "boneAttach": "weapon_r",
-      "movesetId": "dagger",
       "attacks": {
         "r1": {
-          "name":         "r1",
-          "damage":       45.0,
-          "poiseDamage":  5.0,
-          "staminaCost":  10.0,
-          "startupTime":  0.05,
-          "activeTime":   0.12,
-          "recoveryTime": 0.10,
-          "range":        0.5,
-          "angle":        90.0,
-          "damageType":   "slash"
+          "activeTime": 0.12,
+          "angle": 90.0,
+          "damage": 45.0,
+          "damageType": "slash",
+          "name": "r1",
+          "poiseDamage": 5.0,
+          "range": 0.5,
+          "recoveryTime": 0.1,
+          "staminaCost": 10.0,
+          "startupTime": 0.05
         },
         "r2": {
-          "name":         "r2",
-          "damage":       45.0,
-          "poiseDamage":  5.0,
-          "staminaCost":  10.0,
-          "startupTime":  0.05,
-          "activeTime":   0.12,
-          "recoveryTime": 0.10,
-          "range":        0.5,
-          "angle":        90.0,
-          "damageType":   "slash"
+          "activeTime": 0.12,
+          "angle": 90.0,
+          "damage": 45.0,
+          "damageType": "slash",
+          "name": "r2",
+          "poiseDamage": 5.0,
+          "range": 0.5,
+          "recoveryTime": 0.1,
+          "staminaCost": 10.0,
+          "startupTime": 0.05
         }
-      }
+      },
+      "boneAttach": "weapon_r",
+      "id": "dagger",
+      "mesh": "models/weapons/dagger.glb",
+      "movesetId": "dagger"
     }
   ]
 }
-
