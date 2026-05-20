@@ -22,6 +22,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "ufbx.h"
+
 //stb_image
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -398,12 +400,7 @@ ModelData AssetManager::loadModel(const std::string& path) {
   return result;
 }
 
-SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
-  auto it = s_skinnedModels.find(path);
-  if (it != s_skinnedModels.end()) return it->second;
-
-  std::string absPath = resolvePath(path);
-
+static SkinnedModelData loadSkinnedModelAssimp_impl(const std::string& path, const std::string& absPath) {
   Assimp::Importer importer;
   importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
   importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_OPTIMIZE_EMPTY_ANIMATION_CURVES, false);
@@ -624,7 +621,7 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
       };
       for (auto& cand : candidates) {
         if (fs::exists(cand)) {
-          texture = loadTextureAbsolute(cand.generic_string());
+          texture = AssetManager::loadTextureAbsolute(cand.generic_string());
           break;
         }
       }
@@ -674,7 +671,7 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
 
   // Apply single material sidecar if present (skinned models are single-surface)
   {
-    std::string sidecarAbs = resolvePath(path + ".mat.json");
+    std::string sidecarAbs = AssetManager::resolvePath(path + ".mat.json");
     std::ifstream sf(sidecarAbs);
     if (sf.is_open()) {
       try {
@@ -686,25 +683,219 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
     }
   }
 
+  return result;
+}
+
+static SkinnedModelData loadSkinnedModelFBX_impl(const std::string& cachePath,
+                                                 const std::string& absPath)
+{
+  ufbx_load_opts opts = {};
+  //opts.target_axes = ufbx_axes_right_handed_y_up;
+  opts.target_unit_meters = 1.0f;
+
+  ufbx_error error;
+  ufbx_scene* scene = ufbx_load_file(absPath.c_str(), &opts, &error);
+  if (!scene) {
+    throw std::runtime_error("[Assets] ufbx failed on '" + cachePath
+                             + "': " + error.description.data);
+  }
+
+  // Pass 1 - collect bone nodes with skin weight entries
+  // ufbx exposes skin clusters directly; each cluster names a node
+  std::unordered_set<uint32_t> skinNodeIds;
+  std::unordered_map<uint32_t, glm::mat4> nodeOffsetMatrices;
+
+  for (size_t mi = 0; mi < scene->meshes.count; mi++) {
+    ufbx_mesh* mesh = scene->meshes.data[mi];
+    for (size_t di = 0; di < mesh->skin_deformers.count; di++) {
+      ufbx_skin_deformer* deformer = mesh->skin_deformers.data[di];
+      for (size_t ci = 0; ci < deformer->clusters.count; ci++) {
+        ufbx_skin_cluster* cluster = deformer->clusters.data[ci];
+        uint32_t nodeId = cluster->bone_node->element.element_id;
+        skinNodeIds.insert(nodeId);
+        const ufbx_matrix& m = cluster->geometry_to_bone;
+        nodeOffsetMatrices[nodeId] = glm::mat4(
+          m.m00, m.m10, m.m20, 0,
+          m.m01, m.m11, m.m21, 0,
+          m.m02, m.m12, m.m22, 0,
+          m.m03, m.m13, m.m23, 1
+        );
+      }
+    }
+  }
+
+  // Pass 2 - Propagate to structural ancestors
+  // Mark any node that is an ancestor of a skin node as a skeleton member
+  std::unordered_set<uint32_t> skeletonNodeIds = skinNodeIds;
+  for (size_t ni = 0; ni < scene->nodes.count; ni++) {
+    ufbx_node* node = scene->nodes.data[ni];
+    if (skinNodeIds.count(node->element_id) == 0) continue;
+    ufbx_node* parent = node->parent;
+    while (parent && parent != scene->root_node) {
+      skeletonNodeIds.insert(parent->element_id);
+      parent = parent->parent;
+    }
+  }
+
+  // Pass 3 - DFS index assignment
+  std::unordered_map<uint32_t, int> nodeToIndex;
+  std::vector<Bone> skeleton;
+
+  std::function<void(ufbx_node*, int)> walkNodes;
+  walkNodes = [&](ufbx_node* node, int parentIdx) {
+    if (!node) return;
+    uint32_t id = node->element_id;
+    int thisIdx = parentIdx;
+    if (skeletonNodeIds.count(id)) {
+      thisIdx = (int)skeleton.size();
+      nodeToIndex[id] = thisIdx;
+
+      Bone bone;
+      bone.name = std::string(node->name.data, node->name.length);
+      bone.parentIndex = parentIdx;
+
+      ufbx_transform lt = node->local_transform;
+      glm::vec3 t((float)lt.translation.x, (float)lt.translation.y, (float)lt.translation.z);
+      glm::quat r((float)lt.rotation.w, (float)lt.rotation.x,
+                  (float)lt.rotation.y, (float)lt.rotation.z);
+      glm::vec3 s((float)lt.scale.x, (float)lt.scale.y, (float)lt.scale.z);
+      bone.localTransform = glm::translate(glm::mat4(1.0f), t)
+                            * glm::mat4_cast(r)
+                            * glm::scale(glm::mat4(1.0f), s);
+
+      auto it = nodeOffsetMatrices.find(id);
+      bone.offsetMatrix = (it != nodeOffsetMatrices.end())
+                          ? it->second : glm::mat4(1.0f);
+      skeleton.push_back(std::move(bone));
+    }
+    for (size_t ci = 0; ci < node->children.count; ci++)
+      walkNodes(node->children.data[ci], thisIdx);
+  };
+
+  for (size_t ci = 0; ci < scene->root_node->children.count; ci++)
+    walkNodes(scene->root_node->children.data[ci], -1);
+
+  ufbx_mesh* mesh = nullptr;
+  for (size_t mi = 0; mi < scene->meshes.count; mi++) {
+    if (scene->meshes.data[mi]->skin_deformers.count > 0) {
+      mesh = scene->meshes.data[mi]; break;
+    }
+  }
+  if (!mesh) {
+    ufbx_free_scene(scene);
+    throw std::runtime_error("[Assets] No skinned mesh in FBX: " + cachePath);
+  }
+
+  std::vector<SkinnedVertex> verts;
+  verts.reserve(mesh->num_triangles * 3);
+  std::vector<unsigned int> indices;
+  indices.reserve(mesh->num_triangles * 3);
+
+  for (size_t fi = 0; fi < mesh->faces.count; fi++) {
+    ufbx_face face = mesh->faces.data[fi];
+    // triangulate face using ufbx util
+    uint32_t triBase = (uint32_t)verts.size();
+    uint32_t tris[64];
+    uint32_t numTri = ufbx_triangulate_face(tris, 64, mesh, face);
+    for (uint32_t t = 0; t < numTri; t++) {
+      for (int corner = 0; corner < 3; corner++) {
+        uint32_t vidx = mesh->vertex_indices.data[tris[t * 3 + corner]];
+        SkinnedVertex v = {};
+        ufbx_vec3 pos = ufbx_get_vertex_vec3(&mesh->vertex_position,
+                                             tris[t * 3 + corner]);
+        v.position[0] = (float)pos.x;
+        v.position[1] = (float)pos.y;
+        v.position[2] = (float)pos.z;
+        if (mesh->vertex_normal.exists) {
+          ufbx_vec3 n = ufbx_get_vertex_vec3(&mesh->vertex_normal,
+                                             tris[t * 3 + corner]);
+          v.normal[0] = (float)n.x;
+          v.normal[1] = (float)n.y;
+          v.normal[2] = (float)n.z;
+        }
+        if (mesh->vertex_uv.exists) {
+          ufbx_vec2 uv = ufbx_get_vertex_vec2(&mesh->vertex_uv,
+                                              tris[t * 3 + corner]);
+          v.texCoord[0] = (float)uv.x;
+          v.texCoord[1] = (float)uv.y;
+        }
+
+        ufbx_skin_deformer* skin = mesh->skin_deformers.count > 0
+                                  ? mesh->skin_deformers.data[0] : nullptr;
+        if (skin) {
+          ufbx_skin_vertex sv = skin->vertices.data[vidx];
+          struct Inf { int idx; float w; };
+          std::vector<Inf> infs;
+          for (size_t wi = sv.weight_begin;
+               wi < sv.weight_begin + sv.num_weights; wi++) {
+            ufbx_skin_weight sw = skin->weights.data[wi];
+            uint32_t cid = skin->clusters.data[sw.cluster_index]->bone_node->element_id;
+            auto it = nodeToIndex.find(cid);
+            if (it != nodeToIndex.end())
+              infs.push_back({ it->second, (float)sw.weight });
+          }
+          std::sort(infs.begin(), infs.end(),
+                    [](const Inf& a, const Inf& b) { return a.w > b.w; });
+          if (infs.size() > 4) infs.resize(4);
+          float total = 0.0f;
+          for (auto& in : infs) total += in.w;
+          for (int j = 0; j < (int)infs.size(); j++) {
+            v.boneIds[j] = infs[j].idx;
+            v.boneWeights[j] = total > 1e-6f ? infs[j].w / total : 0.0f;
+          }
+        }
+        verts.push_back(v);
+        indices.push_back((unsigned int)(verts.size() - 1));
+      }
+    }
+  }
+
+  SkinnedModelData result;
+  result.mesh = std::make_shared<SkinnedMesh>(verts, indices);
+  result.skeleton = std::move(skeleton);
+
+  {
+    std::string sidecarAbs = AssetManager::resolvePath(cachePath + ".mat.json");
+    std::ifstream sf(sidecarAbs);
+    if (sf.is_open()) {
+      try {
+        nlohmann::json j = nlohmann::json::parse(sf);
+        applyMaterialJSON(result.material, j);
+      } catch (nlohmann::json::exception& e) {
+        LOG_WARN("[Assets] Material sidecar parse error (fbx) for {}: {}", cachePath, e.what());
+      }
+    }
+  }
+
+  ufbx_free_scene(scene);
+  LOG_INFO("[Assets] loadSkinnedModel(ufbx) '{}' - {} verts, {} bones",
+           cachePath, verts.size(), result.skeleton.size());
+  return result;
+}
+
+SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
+  auto it = s_skinnedModels.find(path);
+  if (it != s_skinnedModels.end()) return it->second;
+
+  std::string absPath = resolvePath(path);
+  std::string ext = fs::path(absPath).extension().string();
+  std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+  SkinnedModelData result;
+  if (ext == ".fbx")
+    result = loadSkinnedModelFBX_impl(path, absPath);
+  else
+    result = loadSkinnedModelAssimp_impl(path, absPath);
+
   s_skinnedModels[path] = result;
   return result;
 }
 
-std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
-    const std::string& path,
-    const std::string& clipName,
-    const std::string& taeKey)
+static std::shared_ptr<AnimationClip> loadAnimationClipAssimp_impl(const std::string& path,
+                                                  const std::string& absPath,
+                                                  const std::string& clipName,
+                                                  const std::string& taeKey)
 {
-  // Cache key combines path + clip name so the same file can yield
-  // multiple named clips without reloading.
-  std::string cacheKey = path + "|" + clipName;
-  if (!taeKey.empty()) cacheKey += "|" + taeKey;
-
-  auto it = s_clips.find(cacheKey);
-  if (it != s_clips.end()) return it->second;
- 
-  std::string absPath = resolvePath(path);
- 
   // For animation-only loading we skip mesh processing entirely.
   Assimp::Importer importer;
   importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
@@ -806,7 +997,7 @@ std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
                             / (sidecarStem + ".tae.json"))
     .generic_string();
 
-  std::string sidecarAbs = resolvePath(sidecarRel);
+  std::string sidecarAbs = AssetManager::resolvePath(sidecarRel);
 
   if (fs::exists(sidecarAbs)) {
     std::string rootBone;
@@ -818,7 +1009,151 @@ std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
       clip->extractRootY = extractY;
     }
   }
-  s_clips[cacheKey] = clip;
+
+  LOG_INFO("[Assets] loadAnimationClip(Assimp) '{}' — {:.2f}s, {} tracks",
+           path, clip->duration, clip->tracks.size());
+
+  return clip;
+}
+
+static std::shared_ptr<AnimationClip> loadAnimationClipFBX_impl(const std::string& cachePath,
+                                                                const std::string& absPath,
+                                                                const std::string& clipName,
+                                                                const std::string& taeKey)
+{
+  ufbx_load_opts opts = {};
+  //opts.target_axes = ufbx_axes_right_handed_y_up;
+  opts.target_unit_meters = 1.0f;
+
+  ufbx_error error;
+  ufbx_scene* scene = ufbx_load_file(absPath.c_str(), &opts, &error);
+  if (!scene) {
+      LOG_ERROR("[Assets] ufbx clip load failed '{}': {}", cachePath, error.description.data);
+      return nullptr;
+  }
+
+  ufbx_anim_stack* stack = scene->anim_stacks.count > 0
+                          ? scene->anim_stacks.data[0] : nullptr;
+  if (!clipName.empty()) {
+    for (size_t i = 0; i < scene->anim_stacks.count; i++) {
+      if (std::string(scene->anim_stacks.data[i]->name.data) == clipName) {
+        stack = scene->anim_stacks.data[i];
+        break;
+      }
+    }
+  }
+  if (!stack) {
+    LOG_WARN("[Assets] No animation in FBX '{}'", cachePath);
+    ufbx_free_scene(scene); return nullptr;
+  }
+
+  ufbx_bake_opts bake_opts = {};
+  bake_opts.resample_rate = 60.0f;
+  ufbx_error bake_error;
+  ufbx_baked_anim* baked = ufbx_bake_anim(scene, stack->anim, &bake_opts, &bake_error);
+  if (!baked) {
+    LOG_ERROR("[Assets] ufbx bake failed '{}': {}", cachePath, bake_error.description.data);
+    ufbx_free_scene(scene); return nullptr;
+  }
+
+  float duration = (float)(stack->time_end - stack->time_begin);
+
+  auto clip = std::make_shared<AnimationClip>();
+  clip->name = clipName.empty() ? std::string(stack->name.data) : clipName;
+  clip->ticksPerSec = 60.0f;
+  clip->duration = duration;
+  clip->looping = true;
+
+  clip->tracks.reserve(baked->nodes.count);
+  for (size_t ni = 0; ni < baked->nodes.count; ni++) {
+    ufbx_baked_node& bn = baked->nodes.data[ni];
+    ufbx_node* node = scene->nodes.data[bn.typed_id];
+    std::string boneName(node->name.data, node->name.length);
+
+    BoneTrack track;
+    track.boneName = boneName;
+    size_t numKeys = std::max({bn.translation_keys.count,
+                              bn.rotation_keys.count,
+                              bn.scale_keys.count});
+    track.keyframes.reserve(numKeys);
+
+    for (size_t ki = 0; ki < numKeys; ki++) {
+      BoneKeyFrame frame;
+      size_t ti = std::min(ki, bn.translation_keys.count - 1);
+      size_t ri = std::min(ki, bn.rotation_keys.count - 1);
+
+      frame.time = (float)bn.translation_keys.data[ti].time;
+      ufbx_vec3 p = bn.translation_keys.data[ti].value;
+      ufbx_quat rq = bn.rotation_keys.data[ri].value;
+
+      frame.position = glm::vec3((float)p.x, (float)p.y, (float)p.z);
+      frame.rotation = glm::quat((float)rq.w,
+                                 (float)rq.x,
+                                 (float)rq.y,
+                                 (float)rq.z);
+      track.keyframes.push_back(frame);
+    }
+    if (!track.keyframes.empty()) {
+      clip->tracks.push_back(std::move(track));
+    }
+  }
+
+  for (int ti = 0; ti < (int)clip->tracks.size(); ti++)
+    clip->trackIndex[clip->tracks[ti].boneName] = ti;
+
+  ufbx_free_baked_anim(baked);
+  ufbx_free_scene(scene);
+
+  fs::path clipFsPath(cachePath);
+  std::string sidecarStem = taeKey.empty() ? clipFsPath.stem().string() : taeKey;
+  std::string sidecarRel = (clipFsPath.parent_path()
+                            / "tae"
+                            / (sidecarStem + ".tae.json"))
+    .generic_string();
+
+  std::string sidecarAbs = AssetManager::resolvePath(sidecarRel);
+
+  if (fs::exists(sidecarAbs)) {
+    std::string rootBone;
+    bool extractY = false;
+    clip->events = TAESerialization::load(sidecarAbs, rootBone, extractY);
+    if (!rootBone.empty()) {
+      clip->useRootMotion = true;
+      clip->rootBoneName = rootBone;
+      clip->extractRootY = extractY;
+    }
+  }
+
+  LOG_INFO("[Assets] loadAnimationClip(ufbx) '{}' — {:.2f}s, {} tracks",
+           cachePath, clip->duration, clip->tracks.size());
+
+  return clip;
+}
+
+std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
+    const std::string& path,
+    const std::string& clipName,
+    const std::string& taeKey)
+{
+  // Cache key combines path + clip name so the same file can yield
+  // multiple named clips without reloading.
+  std::string cacheKey = path + "|" + clipName;
+  if (!taeKey.empty()) cacheKey += "|" + taeKey;
+
+  auto it = s_clips.find(cacheKey);
+  if (it != s_clips.end()) return it->second;
+ 
+  std::string absPath = resolvePath(path);
+  std::string ext = fs::path(absPath).extension().string();
+  std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+ 
+  std::shared_ptr<AnimationClip> clip;
+  if (ext == ".fbx")
+    clip = loadAnimationClipFBX_impl(path, absPath, clipName, taeKey);
+  else
+    clip = loadAnimationClipAssimp_impl(path, absPath, clipName, taeKey);
+
+  AssetManager::s_clips[cacheKey] = clip;
   return clip;
 }
 

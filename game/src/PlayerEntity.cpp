@@ -40,7 +40,8 @@ void PlayerEntity::setup(forge::PhysicsWorld& physics,
   // Idle is embadded in the base model - load the first animation from it
 
   clips["idle"] = forge::AssetManager::loadAnimationClip("anim/manny/idle/am_Stand_Idle_01.glb", "idle");
-  clips["walk"] = forge::AssetManager::loadAnimationClip("anim/manny/walk/am_Loco_Walk_Fwd_NoRM.glb", "walk");
+  //clips["walk"] = forge::AssetManager::loadAnimationClip("anim/manny/walk/am_Loco_Walk_Fwd_NoRM.glb", "walk");
+  clips["walk"] = forge::AssetManager::loadAnimationClip("anim/manny/walk_fbx/am_Loco_Walk_Fwd_NoRM.FBX", "walk");
   clips["sprint"] = forge::AssetManager::loadAnimationClip("anim/manny/run/am_Loco_Run_Fwd_NoRM.glb", "sprint");
   clips["attack_r1"] = forge::AssetManager::loadAnimationClip("anim/manny/attacks/Anim_SwordV2_Slash1.glb", "attack_r1");
   clips["dodge"] = forge::AssetManager::loadAnimationClip("anim/manny/roll/A_DiveRoll_F_L_Retargeted.glb", "dodge");

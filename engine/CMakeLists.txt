@@ -33,6 +33,7 @@ add_library(forge_engine STATIC
   src/events/FlagManager.cpp
   src/ai/AIComponent.cpp
   src/assets/AssetManager.cpp
+  vendor/ufbx/ufbx.c
 )
 
 target_include_directories(forge_engine PUBLIC
@@ -40,6 +41,7 @@ target_include_directories(forge_engine PUBLIC
     ${LUA_INCLUDE_DIR}
     ${BULLET_INCLUDE_DIRS}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+          ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ufbx
 )
 
 find_package(glfw3 CONFIG REQUIRED)
