@@ -19,11 +19,13 @@ void PlayerEntity::setup(forge::PhysicsWorld& physics,
 {
   using namespace forge;
 
-  skinnedModel = AssetManager::loadSkinnedModel("models/characters/anim/base_skeleton.glb");
+  skinnedModel = AssetManager::loadSkinnedModel("models/characters/base_skele_manny.glb");
+  //skinnedModel = AssetManager::loadSkinnedModel("models/another_skel.glb");
 
   transform = std::make_unique<Transform>();
   transform->setPosition({ 0.0f, 0.0f, 0.0f });
-  transform->setScale({ 0.01f, 0.01f, 0.01f });
+  //transform->setScale({ 0.01f, 0.01f, 0.01f });
+  transform->setScale({ 1.0f, 1.0f, 1.0f });
   transform->setEulerAngles({ 0.0f, 180.0f, 0.0f });
 
   controller = std::make_unique<CharacterController>(physics, *transform, 0.3f, 0.9f);
@@ -33,14 +35,24 @@ void PlayerEntity::setup(forge::PhysicsWorld& physics,
   animator->setOwnerName("player");
   animator->setSkeleton(skinnedModel.skeleton);
 
+  //clips["walk"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Logo_Run_Fwd.glb", "walk");
   // Load anim clips
   // Idle is embadded in the base model - load the first animation from it
-  clips["idle"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/idle.glb", "idle");
-  clips["walk"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/walk_f_2.glb", "walk");
-  clips["sprint"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/sprint_f_rm.glb", "sprint");
-  clips["attack_r1"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash");
-  clips["death"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death");
-  clips["dodge"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/roll_f_rm.glb", "dodge");
+
+  clips["idle"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Loco_Run_Fwd.glb", "idle");
+  clips["walk"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Loco_Run_Fwd.glb", "walk");
+  clips["sprint"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Loco_Run_Fwd.glb", "sprint");
+  clips["attack_r1"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Loco_Run_Fwd.glb", "attack_r1");
+  clips["dodge"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Loco_Run_Fwd.glb", "dodge");
+  clips["death"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Loco_Run_Fwd.glb", "death");
+  //clips["idle"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/idle.glb", "idle");
+  //clips["walk"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/walk_f_2.glb", "walk");
+  ////clips["walk"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Logo_Run_Fwd.glb", "walk");
+  //clips["sprint"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/sprint_f_rm.glb", "sprint");
+  //clips["sprint"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Loco_Run_Fwd.glb", "walk");
+  //clips["attack_r1"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash");
+  //clips["death"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death");
+  //clips["dodge"] = forge::AssetManager::loadAnimationClip("anim/movesets/sword/roll_f_rm.glb", "dodge");
   
   if (clips["attack_r1"]) {
     auto& clip = clips["attack_r1"];

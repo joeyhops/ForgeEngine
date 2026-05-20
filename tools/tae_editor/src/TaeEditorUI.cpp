@@ -322,9 +322,25 @@ void TaeEditorUI::drawModelLoadDialog() {
 
   ImGui::Text("Model GLB (relative to asset root):");
   ImGui::SetNextItemWidth(-1.0f);
+  if (m_modelPathBuff[0] == '\0' && !m_app.charPath().empty())
+    strncpy(m_modelPathBuff, m_app.charPath().c_str(), sizeof(m_modelPathBuff) - 1);
+
   bool enter = ImGui::InputText("##modelpath", m_modelPathBuff, sizeof(m_modelPathBuff),
                                 ImGuiInputTextFlags_EnterReturnsTrue);
   ImGui::Spacing();
+
+  float scale = m_app.modelUnitScale();
+  if (ImGui::InputFloat("Unit Scale", &scale, 0.01f, 0.1f, "%.3f")) {
+    scale = std::clamp(scale, 0.001f, 10.0f);
+    m_app.setModelUnitScale(scale);
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("cm (0.01)")) m_app.setModelUnitScale(0.01f);
+  ImGui::SameLine();
+  if (ImGui::Button("m (1.0)"))   m_app.setModelUnitScale(1.0f);
+
+  ImGui::Spacing();
+
   bool load = ImGui::Button("Load", { 80.0f, 0.0f });
   ImGui::SameLine();
   if (ImGui::Button("Cancel", { 80.0f, 0.0f }))
@@ -332,6 +348,7 @@ void TaeEditorUI::drawModelLoadDialog() {
 
   if ((load || enter) && m_modelPathBuff[0] != '\0') {
     m_app.loadModel(m_modelPathBuff);
+    m_app.setStartupChar(m_charPathBuff);
     m_showModelLoadDialog = false;
   }
 
@@ -532,13 +549,17 @@ void TaeEditorUI::drawAnimBrowserDialog() {
   // ---- Directory input + scan ----
   ImGui::Text("Directory (relative to asset root, or absolute):");
   ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 70.0f);
+  if (m_animBrowserDirBuff[0] == '\0' && !m_app.animDir().empty())
+    strncpy(m_animBrowserDirBuff, m_app.animDir().c_str(), sizeof(m_animBrowserDirBuff) - 1);
   bool scanEnter = ImGui::InputText("##animdir", m_animBrowserDirBuff,
                                     sizeof(m_animBrowserDirBuff),
                                     ImGuiInputTextFlags_EnterReturnsTrue);
   ImGui::SameLine();
   bool scanClick = ImGui::Button("Scan", { 64.0f, 0.0f });
-  if (scanEnter || scanClick)
+  if (scanEnter || scanClick) {
     scanAnimFolder(m_animBrowserDirBuff);
+    m_app.setAnimDir(m_animBrowserDirBuff);
+  }
 
   ImGui::Spacing();
 

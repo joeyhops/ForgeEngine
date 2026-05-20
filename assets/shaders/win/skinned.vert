@@ -13,7 +13,7 @@ out mat3 v_TBN;
 
 uniform mat4 u_mvp;
 uniform mat4 u_model;
-uniform mat4 u_boneMatrices[100];
+uniform mat4 u_boneMatrices[128];
 uniform bool u_hasBones;
 
 void main() {

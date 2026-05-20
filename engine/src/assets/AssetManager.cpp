@@ -20,6 +20,7 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 
 //stb_image
 #define STB_IMAGE_IMPLEMENTATION
@@ -418,59 +419,113 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
   if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
     throw std::runtime_error("[Assets] loadSkinnedModel failed for '" + path + "': " + importer.GetErrorString());
 
-  // step 1: collect bone names + offset matrices
-  // Walk every mesh and register unique bones into boneNameToIndex
-  std::unordered_map<std::string, int> boneNameToIndex;
-  std::vector<glm::mat4> offsetMatrices;
+  // Build Skeleton from scene graph in topological order (DFS):
+  //
+  // Two passes plus final DFS walk:
+  //    Pass 1: collect skin bones (/w vertex weights) and offset
+  //    matrices from aiMesh->mBones across all meshes
+  //
+  //    pass 2: Mark every scene-graph node that is itself a skin 
+  //    bone or has any descendants this is. This add STRUCTURAL
+  //    bones (e.g. UE5 Manny's thigh_r/calf_r - pure parents
+  //    with no weights, bu thier childrens bind rotations need
+  //    to cascade through them) to the bone set
+  //
+  //    pass 3: walk the scene graph in DFS order. Each marked node
+  //    gets the next sequential engine index. DFS gurantees 
+  //    parent_index < own_index for every bone which is what
+  //    Animator::computeBoneMatrices single-pass iteration requires
+  //
+  // The old code (which iterated over aiMesh->mBones for both bone set
+  // and index assignment) silently produced wrong results for skeletons
+  // that violate either of these properties.
 
+  // Pass 1 - skins bones /w offset matrices, keyed by name
+  std::unordered_map<std::string, glm::mat4> skinBoneOffsets;
   for (unsigned int m = 0; m < scene->mNumMeshes; m++) {
     aiMesh* aiM = scene->mMeshes[m];
     for (unsigned int b = 0; b < aiM->mNumBones; b++) {
       aiBone* bone = aiM->mBones[b];
       std::string bname(bone->mName.C_Str());
-      if (boneNameToIndex.find(bname) == boneNameToIndex.end()) {
-        int idx = (int)boneNameToIndex.size();
-        boneNameToIndex[bname] = idx;
-        offsetMatrices.push_back(aiMat4ToGlm(bone->mOffsetMatrix));
+      if (skinBoneOffsets.find(bname) == skinBoneOffsets.end())
+        skinBoneOffsets[bname] = aiMat4ToGlm(bone->mOffsetMatrix);
+    }
+  }
+
+  // Pass 2 - mark all bone nodes (skin bones + structural ancestors)
+  std::unordered_set<std::string> boneNodeNames;
+  std::function<bool(aiNode*)> markBones;
+  markBones = [&](aiNode* node) -> bool {
+    std::string nodeName(node->mName.C_Str());
+    bool subtreeHasBone = (skinBoneOffsets.count(nodeName) > 0);
+    for (unsigned int i = 0; i < node->mNumChildren; i++) {
+      if (markBones(node->mChildren[i])) {
+        subtreeHasBone = true;
       }
     }
-  }
-
-  int boneCount = (int)boneNameToIndex.size();
-  LOG_INFO("[Assets] '{}' - {} bones", path, boneCount);
-
-  // Step 2: Build skeleton with parent indices + local transforms
-  // Walk the aiNode tree to find each bones parent and default-pose transform
-  std::vector<Bone> skeleton(boneCount);
-  for (auto& [bname, idx] : boneNameToIndex) {
-    skeleton[idx].name = bname;
-    skeleton[idx].offsetMatrix = offsetMatrices[idx];
-    skeleton[idx].parentIndex = -1;
-    skeleton[idx].localTransform = glm::mat4(1.0f);
-  }
-
-  std::function<void(aiNode*, int)> walkNodes;
-  walkNodes = [&](aiNode* node, int parentBoneIdx) {
-    std::string nodeName(node->mName.C_Str());
-    int thisBoneIdx = -1;
-
-    auto found = boneNameToIndex.find(nodeName);
-    if (found != boneNameToIndex.end()) {
-      thisBoneIdx = found->second;
-      skeleton[thisBoneIdx].parentIndex = parentBoneIdx;
-      skeleton[thisBoneIdx].localTransform = aiMat4ToGlm(node->mTransformation);
+    if (subtreeHasBone) {
+      boneNodeNames.insert(nodeName);
     }
-
-    int nextParent = (thisBoneIdx >= 0) ? thisBoneIdx : parentBoneIdx;
-    for (unsigned int i = 0; i < node->mNumChildren; i++)
-      walkNodes(node->mChildren[i], nextParent);
+    return subtreeHasBone;
   };
-  walkNodes(scene->mRootNode, -1);
+  markBones(scene->mRootNode);
 
-  for (auto& bone: skeleton)
-    LOG_INFO(" bone: {}", bone.name);
+  // Pass 2b - extend bone-set to include attachment only
+  // descendants of already marked bones. These leaves don't
+  // get caught by Pass 2's "has skin-bone descendants" rule
+  // because they have no descendants, but they belong in the
+  // skeleton so socket based systems (EquipmentComponent,
+  // IK based systems) can find them by name
+  std::function<void(aiNode*, bool)> propagateDown;
+  propagateDown = [&](aiNode* node, bool insideSkeleton) {
+    std::string nodeName(node->mName.C_Str());
+    bool isMeshCarrier = (node->mNumMeshes > 0);
+    if (boneNodeNames.count(nodeName)) {
+      insideSkeleton = true;
+    } else if (insideSkeleton && !isMeshCarrier){
+      boneNodeNames.insert(nodeName);
+    }
+    for (unsigned int i = 0; i < node->mNumChildren; i++) {
+      propagateDown(node->mChildren[i], insideSkeleton);
+    }
+  };
+  propagateDown(scene->mRootNode, false);
 
-  // Step 3: Build skinned vertex array
+  // Pass 3 - DFS index assignment + skeleton population
+  // Skip the scene root itself (it carries the mesh, not
+  // a deformation transform); start the recursion at its
+  // children. Top level bones therefore recieve parentIndex
+  // = -1
+  std::unordered_map<std::string, int> boneNameToIndex;
+  std::vector<Bone> skeleton;
+  std::function<void(aiNode*, int)> assignIndices;
+  assignIndices = [&](aiNode* node, int parentBoneIdx) {
+    std::string nodeName(node->mName.C_Str());
+    int thisBoneIdx = parentBoneIdx;
+    if (boneNodeNames.count(nodeName)) {
+      thisBoneIdx = static_cast<int>(skeleton.size());
+      boneNameToIndex[nodeName] = thisBoneIdx;
+      Bone bone;
+      bone.name = nodeName;
+      bone.parentIndex = parentBoneIdx;
+      bone.localTransform = aiMat4ToGlm(node->mTransformation);
+      auto it = skinBoneOffsets.find(nodeName);
+      bone.offsetMatrix = (it != skinBoneOffsets.end()) ? it->second : glm::mat4(1.0f);
+      skeleton.push_back(std::move(bone));
+    }
+    for (unsigned int i = 0; i < node->mNumChildren; i++) {
+      assignIndices(node->mChildren[i], thisBoneIdx);
+    }
+  };
+  for (unsigned int i = 0; i < scene->mRootNode->mNumChildren; i++) {
+    assignIndices(scene->mRootNode->mChildren[i], -1);
+  }
+
+  int boneCount = static_cast<int>(skeleton.size());
+  LOG_INFO("[Assets] '{}' - {} bones ({} skin-weighted, {} structural)",
+           path, boneCount, static_cast<int>(skinBoneOffsets.size()),
+           boneCount - static_cast<int>(skinBoneOffsets.size()));
+
   std::vector<SkinnedVertex> allVerts;
   std::vector<unsigned int> allIdx;
   unsigned int indexOffset = 0;
@@ -484,7 +539,14 @@ SkinnedModelData AssetManager::loadSkinnedModel(const std::string& path) {
 
     for (unsigned int b = 0; b < aiM->mNumBones; b++) {
       aiBone* bone = aiM->mBones[b];
-      int boneIdx = boneNameToIndex[bone->mName.C_Str()];
+      std::string bname(bone->mName.C_Str());
+      auto it = boneNameToIndex.find(bname);
+      if (it == boneNameToIndex.end()) {
+        LOG_WARN("[Assets] '{}' skinned to unregistered bone '{}', skipping weights",
+                 path, bname);
+        continue;
+      }
+      int boneIdx = it->second;
       for (unsigned int w = 0; w < bone->mNumWeights; w++) {
         unsigned int vi = bone->mWeights[w].mVertexId;
         inf[vi].push_back({ boneIdx, bone->mWeights[w].mWeight });

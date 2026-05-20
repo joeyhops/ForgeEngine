@@ -10,7 +10,7 @@
 
 namespace forge {
 
-constexpr int MAX_BONES = 100;
+constexpr int MAX_BONES = 128;
 
 class Animator {
 public:

@@ -55,6 +55,13 @@ find_package(imgui CONFIG REQUIRED)
 
 find_package(spdlog CONFIG REQUIRED)
 
+option(FORGE_AUDIO_FMOD "Enable FMOD Studio Audio Backend" ON)
+if(FORGE_AUDIO_FMOD)
+  list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+  find_package(FMOD REQUIRED)
+  target_compile_definitions(forge_engine PUBLIC FORGE_HAS_FMOD)
+endif()
+
 target_link_libraries(forge_engine PUBLIC
   glfw 
   OpenGL::GL
@@ -68,4 +75,6 @@ target_link_libraries(forge_engine PUBLIC
   imgui::imgui
   spdlog::spdlog 
   $<$<PLATFORM_ID:Linux>:stdc++fs>
+  $<$<BOOL:${FORGE_AUDIO_FMOD}>:FMOD::Core>
+  $<$<BOOL:${FORGE_AUDIO_FMOD}>:FMOD::Studio>
 )

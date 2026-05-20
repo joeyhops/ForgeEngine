@@ -82,8 +82,11 @@ void TaeEditorApp::onInit() {
 
   m_ui = std::make_unique<TaeEditorUI>(*this);
 
+  loadConfig();
   if (!m_startupCharPath.empty() && !m_startupClipPath.empty())
     loadClipAndSkeleton(m_startupCharPath, m_startupClipPath);
+  else if (!m_startupCharPath.empty())
+    loadModel(m_startupCharPath);
 }
 
 void TaeEditorApp::onShutdown() {
@@ -148,6 +151,7 @@ void TaeEditorApp::loadModel(const std::string& charPath) {
 
   LOG_INFO("[TaeEditor] Loaded model: {} ({} bones)",
            charPath, m_skeleton.size()); 
+  saveConfig();
 }
 
 void TaeEditorApp::loadClipFromPath(const std::string& clipPath,
@@ -475,14 +479,14 @@ void TaeEditorApp::handleCameraInput() {
 void TaeEditorApp::renderSkinnedModel() {
   // The bone positions in global transforms are in cm-scale space; the model
   // matrix scales them down to meters for the renderer.
-  const glm::mat4 modelMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f));
+  const glm::mat4 modelMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(m_modelUnitScale));
   const auto& boneMatrices    = m_animator.getBoneMatrices();
   getRenderer().drawSkinnedMesh(m_skinnedModel, modelMatrix, boneMatrices);
 }
  
 void TaeEditorApp::renderSkeleton() {
   const auto& gt   = m_animator.getGlobalTransforms();
-  const float kScale          = 0.01f;
+  const float kScale          = m_modelUnitScale;
   const glm::vec3 boneColor   = { 0.3f, 0.9f, 0.4f };
   const glm::vec3 jointColor  = { 1.0f, 0.8f, 0.2f };
  
@@ -499,7 +503,7 @@ void TaeEditorApp::renderSkeleton() {
  
 void TaeEditorApp::renderActiveHitboxes() {
   const auto& gt       = m_animator.getGlobalTransforms();
-  const float kScale   = 0.01f;
+  const float kScale   = m_modelUnitScale;
  
   for (const auto& ev : m_editedEvents) {
     if (ev.type != forge::AnimEventType::SpawnHitbox) continue;
@@ -521,3 +525,41 @@ void TaeEditorApp::renderActiveHitboxes() {
     forge::DebugDraw::boxOBB(boneWorld, ev.hitboxExtents, { 1.0f, 0.45f, 0.1f });
   }
 }
+
+void TaeEditorApp::loadConfig() {
+  std::ifstream f("tae_editor.json");
+  if (!f.is_open()) return;
+  try {
+    nlohmann::json j;
+    f >> j;
+    if (m_startupCharPath.empty() && j.contains("charPath"))
+      m_startupCharPath = j["charPath"].get<std::string>();
+    if (j.contains("animDir"))
+      m_animDir = j["animDir"].get<std::string>();
+    if (j.contains("modelUnitScale"))
+      m_modelUnitScale = j["modelUnitScale"].get<float>();
+  } catch (nlohmann::json::exception& e) {
+    LOG_WARN("[TaeEditor] tae_editor.json parse failed - using defaults ({})", e.what());
+  }
+}
+
+void TaeEditorApp::saveConfig() {
+  nlohmann::json j;
+  if (!m_charPath.empty()) j["charPath"] = m_charPath;
+  if (!m_animDir.empty()) j["animDir"] = m_animDir;
+  j["modelUnitScale"] = m_modelUnitScale;
+  if (std::ofstream f("tae_editor.json"); f.is_open())
+    f << j.dump(2);
+}
+
+void TaeEditorApp::setStartupChar(const std::string& charPath) {
+  m_startupCharPath = charPath;
+  saveConfig();
+}
+
+void TaeEditorApp::setAnimDir(const std::string& dir) {
+  m_animDir = dir;
+  saveConfig();
+}
+
+

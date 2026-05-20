@@ -37,9 +37,30 @@ def import_fbx(path, use_legacy=False):
     else:
         bpy.ops.wm.fbx_import(            # NEW C++ default in 5.x
             filepath=path, use_anim=True, anim_offset=1.0,
-            ignore_leaf_bones=False, use_custom_normals=True,
+            ignore_leaf_bones=True, use_custom_normals=True,
             use_custom_props=True, validate_meshes=True,
             import_colors='SRGB', global_scale=1.0)
+def apply_root_scale():
+    """
+    FBX imports often land with a 0.01 scale on the root armature due to cm→m
+    unit conversion. Bake it into the object data so GLB export sees scale=1.0.
+    """
+    # Deselect everything first
+    bpy.ops.object.select_all(action='DESELECT')
+
+    for obj in bpy.data.objects:
+        if obj.type == 'ARMATURE' and obj.parent is None:
+            # Check if scale is non-trivial (i.e. not already 1.0)
+            if any(abs(s - 1.0) > 1e-4 for s in obj.scale):
+                print(f"  Applying scale {tuple(obj.scale)} on '{obj.name}'")
+                bpy.context.view_layer.objects.active = obj
+                obj.select_set(True)
+                # Also select child meshes so their data gets rescaled too
+                for child in obj.children_recursive:
+                    child.select_set(True)
+                bpy.ops.object.transform_apply(
+                    location=False, rotation=False, scale=True)
+                bpy.ops.object.select_all(action='DESELECT')
 
 def push_actions_to_nla():
     """glTF exporter only emits Actions that are active OR on an NLA track.
@@ -95,7 +116,7 @@ def export_glb(path):
     add('export_normals',          False)
     add('export_skins',            False)
     add('export_all_influences',   False)
-    add('export_morph',            False)
+    add('export_morph',            True)
     add('export_morph_normal',     False)
 
     # Animation — use only long-standing parameter names
@@ -117,13 +138,91 @@ def export_glb(path):
 
     bpy.ops.export_scene.gltf(**kwargs)
 
+def iter_fcurves(action):
+    """Compatibility wrapper: yields all FCurves from a Blender 5.x slotted action."""
+    for layer in action.layers:
+        for strip in layer.strips:
+            # strip.channelbags is a collection keyed by slot
+            for channelbag in strip.channelbags:
+                yield from channelbag.fcurves
+
+def debug_scale_keyframes():
+    for action in bpy.data.actions:
+        scale_curves = [fc for fc in iter_fcurves(action) if 'scale' in fc.data_path.lower()]
+        if scale_curves:
+            print(f"  Action '{action.name}' has {len(scale_curves)} scale curve(s)")
+            for fc in scale_curves:
+                print(f"    {fc.data_path} [{fc.array_index}]")
+
+def clear_root_scale_fcurves():
+    """Remove scale keyframes from root bones caused by FBX unit baking."""
+    root_bone_names = {'root', 'Root', 'ROOT', 'Hips', 'hips', 'pelvis'}
+    for action in bpy.data.actions:
+        for layer in action.layers:
+            for strip in layer.strips:
+                for channelbag in strip.channelbags:
+                    to_remove = [
+                        fc for fc in channelbag.fcurves
+                        if 'scale' in fc.data_path and
+                           any(name in fc.data_path for name in root_bone_names)
+                    ]
+                    for fc in to_remove:
+                        channelbag.fcurves.remove(fc)
+def fix_ue_unit_scale():
+    """
+    Unreal FBX exports bake a 0.01 (cm→m) scale onto the armature object.
+    global_scale=100 does NOT fix this in the C++ importer.
+    This function sets the armature to unit scale and multiplies all
+    location keyframes by the inverse factor so nothing collapses.
+    """
+    for obj in bpy.data.objects:
+        if obj.type != 'ARMATURE':
+            continue
+
+        scale = obj.scale[0]
+        if abs(scale - 1.0) < 0.0001:
+            print(f"  '{obj.name}' already unit scale, skipping")
+            continue
+
+        factor = 1.0 / scale  # typically 100.0
+        print(f"  Fixing '{obj.name}': {scale:.6f} → 1.0 (loc ×{factor:.1f})")
+
+        # Scale location keyframes in every action.
+        # Handles both Blender 5.x slotted API and 4.x flat API.
+        for action in bpy.data.actions:
+            fcurve_lists = []
+            try:
+                # Blender 5.x slotted action
+                for layer in action.layers:
+                    for strip in layer.strips:
+                        for channelbag in strip.channelbags:
+                            fcurve_lists.append(channelbag.fcurves)
+            except AttributeError:
+                # Blender 4.x / flat action
+                fcurve_lists.append(action.fcurves)
+
+            for fcurves in fcurve_lists:
+                for fc in fcurves:
+                    if not fc.data_path.endswith('.location'):
+                        continue
+                    for kp in fc.keyframe_points:
+                        kp.co.y           *= factor
+                        kp.handle_left.y  *= factor
+                        kp.handle_right.y *= factor
+                    fc.update()
+
+        # Set unit scale directly — do NOT use transform_apply here,
+        # as that would rescale the bone rest positions and corrupt the rig.
+        obj.scale = (1.0, 1.0, 1.0)
+        obj.location *= factor  # fix object location too if non-zero
+
 def main():
     a = parse_args()
     in_dir, out_dir = Path(a.indir).resolve(), Path(a.outdir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     pattern = "**/*.fbx" if a.recursive else "*.fbx"
 #    pattern = "**/*.FBX" if a.recursive else "*.FBX"
-    files = sorted(p for p in in_dir.glob(pattern) if p.is_file())
+    files = sorted(p for p in in_dir.glob(pattern, case_sensitive=False) if p.is_file())
     failed = []
     for i, fbx in enumerate(files, 1):
         glb = (out_dir / fbx.relative_to(in_dir)).with_suffix(".glb")

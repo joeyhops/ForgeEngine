@@ -22,11 +22,18 @@ public:
     m_startupClipPath = clipPath;
   }
 
+  void setStartupChar(const std::string& charPath);
+
+  const std::string& animDir() const { return m_animDir; }
+  void setAnimDir(const std::string& dir);
+
   // Accessors used by UI
   forge::AnimationClip* clip() { return m_clip.get(); }
   forge::Animator& animator() { return m_animator; }
   std::vector<forge::AnimEvent>& events() { return m_editedEvents; }
   const std::vector<forge::Bone>& skeleton() { return m_skeleton; }
+  float modelUnitScale() const { return m_modelUnitScale; }
+  void setModelUnitScale(float s) { m_modelUnitScale = s; saveConfig(); }
   float scrubTime() const { return m_scrubTime; }
   int& selectedEvent() { return m_selectedEvent; }
   const std::vector<std::string>& knownBones() const { return m_knownBones; }
@@ -101,10 +108,12 @@ private:
   std::string m_sidecarPath;
   std::string m_charPath;
   std::string m_clipPath;
+  std::string m_animDir;
   std::string m_activeMovesetId;
   std::string m_activeActionKey;
   std::string m_startupCharPath;
   std::string m_startupClipPath;
+  float m_modelUnitScale = 1.0f;
 
   // Payload validation
   std::vector<std::string> m_knownBones; // Boneattach from weapons.json
@@ -139,5 +148,8 @@ private:
   void renderActiveHitboxes();
   void handleCameraInput();
   void loadPayloadValidationData();
+
+  void loadConfig();
+  void saveConfig();
 
 };
