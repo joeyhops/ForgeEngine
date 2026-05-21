@@ -13,8 +13,9 @@ namespace forge {
 //   location 2 texCoord float[2]
 //   location 3 boneIds int[4] -- glVertexAttribIPointer (int, not float)
 //   location 4 boneWeights float[4]
+//   location 5 tangent float[4] -- xyz = tangent vector, w = handedness sign
 //
-//   Draw() is identical to mesh so the rest of the engine can treat both
+//   Draw() is identical to Mesh so the rest of the engine can treat both
 //   the same way
 
 class SkinnedMesh {

@@ -262,7 +262,7 @@ ModelData AssetManager::loadModel(const std::string& path) {
     aiProcess_Triangulate           |   // Quads → triangles
     aiProcess_GenSmoothNormals      |   // Generate normals if absent
     aiProcess_CalcTangentSpace      |   // Populates mTangents[] and mBitangents[]
-    //aiProcess_FlipUVs               |   // OpenGL UV origin = bottom-left
+    aiProcess_FlipUVs               |   // FBX/GLTF UV origin is top-left; OpenGL is bottom-left
     aiProcess_JoinIdenticalVertices |   // Deduplicate verts
     aiProcess_PreTransformVertices  |   // Bake node transforms into mesh
     aiProcess_OptimizeMeshes;           // Merge small meshes where possible
@@ -365,6 +365,80 @@ ModelData AssetManager::loadModel(const std::string& path) {
       aiString matName;
       aiMat->Get(AI_MATKEY_NAME, matName);
       sub.name = matName.C_Str();
+
+      // Load textures from FBX/GLTF material data. The .mat.json sidecar
+      // loaded below can override any of these on a per-material basis.
+      auto tryLoadTex = [&](aiTextureType texType) -> std::shared_ptr<Texture> {
+        aiString texPath;
+        if (aiMat->GetTexture(texType, 0, &texPath) != AI_SUCCESS) return nullptr;
+        std::string tp = texPath.C_Str();
+        if (tp.empty()) return nullptr;
+
+        // Embedded texture — index prefixed with '*' (common in GLB files)
+        if (tp[0] == '*') {
+          int embIdx = 0;
+          try { embIdx = std::stoi(tp.substr(1)); } catch (...) { return nullptr; }
+          if (embIdx >= 0 && embIdx < (int)scene->mNumTextures) {
+            std::string cacheKey = absPath + "[embedded:" + std::to_string(embIdx) + "]";
+            auto cit = s_textures.find(cacheKey);
+            if (cit != s_textures.end()) return cit->second;
+
+            const aiTexture* emb = scene->mTextures[embIdx];
+            if (emb->mHeight == 0) {
+              stbi_set_flip_vertically_on_load_thread(true);
+              int w, h, ch;
+              unsigned char* data = stbi_load_from_memory(
+                reinterpret_cast<const unsigned char*>(emb->pcData),
+                emb->mWidth, &w, &h, &ch, 0);
+              if (data) {
+                GLenum fmt = (ch == 4) ? GL_RGBA : GL_RGB;
+                auto tex = std::make_shared<Texture>();
+                tex->width = w; tex->height = h; tex->path = cacheKey;
+                glGenTextures(1, &tex->id);
+                glBindTexture(GL_TEXTURE_2D, tex->id);
+                glTexImage2D(GL_TEXTURE_2D, 0, fmt, w, h, 0, fmt, GL_UNSIGNED_BYTE, data);
+                glGenerateMipmap(GL_TEXTURE_2D);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glBindTexture(GL_TEXTURE_2D, 0);
+                stbi_image_free(data);
+                s_textures[cacheKey] = tex;
+                return tex;
+              }
+            }
+          }
+          return nullptr;
+        }
+
+        // External texture file: search several candidate locations.
+        // FBX files often embed absolute Windows paths — strip to filename and
+        // check relative to the model directory and a conventional Textures/ subdir.
+        std::vector<fs::path> candidates = {
+          fs::path(tp),
+          modelDir / tp,
+          modelDir / fs::path(tp).filename(),
+          modelDir / "Textures" / fs::path(tp).filename(),
+        };
+        for (auto& cand : candidates) {
+          if (fs::exists(cand))
+            return loadTextureAbsolute(cand.generic_string());
+        }
+        return nullptr;
+      };
+
+      sub.material.albedo = tryLoadTex(aiTextureType_DIFFUSE);
+      if (!sub.material.albedo)
+        sub.material.albedo = tryLoadTex(aiTextureType_BASE_COLOR);
+      sub.material.normalMap = tryLoadTex(aiTextureType_NORMALS);
+      if (!sub.material.normalMap)
+        sub.material.normalMap = tryLoadTex(aiTextureType_HEIGHT);
+      sub.material.metallicMap = tryLoadTex(aiTextureType_METALNESS);
+      sub.material.roughnessMap = tryLoadTex(aiTextureType_DIFFUSE_ROUGHNESS);
+      sub.material.aoMap = tryLoadTex(aiTextureType_AMBIENT_OCCLUSION);
+      if (!sub.material.aoMap)
+        sub.material.aoMap = tryLoadTex(aiTextureType_LIGHTMAP);
     }
 
     result.subMeshes.push_back(std::move(sub));
