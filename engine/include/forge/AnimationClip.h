@@ -1,6 +1,7 @@
 #pragma once
 #include <forge/Bone.h>
 #include <forge/HitboxTypes.h>
+#include <forge/TypeSystem.h>
 
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ namespace forge {
 // CombatComponent, audio, and VFX systems subscribe - meaning
 // they never have to manage state regardng animation timing
 
+FORGE_REFLECT_ENUM(AnimEventType)
 enum class AnimEventType {
   SpawnHitbox, // hitbox window - CombatComponent subscribes
   IFrame, // invincibility frame - CombatCo subscribes
@@ -49,10 +51,19 @@ enum class AnimEventType {
 };
 
 struct AnimEvent {
-  float startTime; // seconds into clip
-  float endTime; // == startTime for one-shot events?
-  AnimEventType type;
-  std::string payload; // e.g. "weapon_r" for hitbox bone, sfx path for sounds
+  FORGE_REFLECT_TYPE(AnimEvent)
+
+  FORGE_REFLECT()
+  float startTime = 0.0f;
+
+  FORGE_REFLECT()
+  float endTime = 0.0f;
+
+  AnimEventType type = AnimEventType::SpawnHitbox;
+
+  FORGE_REFLECT()
+  std::string payload;
+
   std::vector<CapsuleSegment> capsules;
 };
 
