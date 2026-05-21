@@ -1,3 +1,5 @@
+#include <BulletCollision/BroadphaseCollision/btBroadphaseInterface.h>
+#include <BulletCollision/BroadphaseCollision/btDispatcher.h>
 #include <forge/PhysicsWorld.h>
 #include <forge/Logger.h>
 
@@ -96,6 +98,14 @@ RaycastHit PhysicsWorld::raycast(const glm::vec3& from, const glm::vec3& to) con
     result.distance = glm::length(result.point - from);
   }
   return result;
+}
+
+btBroadphaseInterface* PhysicsWorld::getBroadphase() const {
+  return m_broadphase.get();
+}
+
+btDispatcher* PhysicsWorld::getDispatcher() const {
+  return m_dispatcher.get();
 }
 
 }

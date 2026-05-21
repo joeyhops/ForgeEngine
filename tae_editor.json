@@ -1,5 +1,5 @@
 {
-  "animDir": "anim/manny/idle_weapon",
+  "animDir": "anim/manny/roll",
   "charPath": "models/bone_exp1.glb",
   "modelUnitScale": 1.0,
   "weaponId": "longsword"

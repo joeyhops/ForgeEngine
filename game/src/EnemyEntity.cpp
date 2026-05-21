@@ -33,22 +33,24 @@ void EnemyEntity::setup(forge::PhysicsWorld& physics,
   animator->setOwnerName("enemy");
   animator->setSkeleton(skinnedModel.skeleton);
 
-  // Load anim clips
-  // Idle is embadded in the base model - load the first animation from it
-  clips["idle"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_idle.glb", "idle");
-  clips["walk"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_walk.glb", "walk");
-  clips["attack_r1"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash");
-  clips["death"] = forge::AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death");
-  
-  auto graph = buildCharacterGraph(
-    clips["idle"], 
-    clips["walk"],
-    nullptr,
-    clips["attack_r1"], 
-    nullptr,
-    clips["death"], 
-    "enemy"
-  );
+  // Enemy stays on ybot skeleton for now — no Manny clips
+  clips["idle"]      = AssetManager::loadAnimationClip("models/characters/anim/ybot_idle.glb",  "idle");
+  clips["walk"]      = AssetManager::loadAnimationClip("models/characters/anim/ybot_walk.glb",  "walk");
+  clips["attack_r1"] = AssetManager::loadAnimationClip("models/characters/anim/ybot_slash.glb", "slash");
+  clips["death"]     = AssetManager::loadAnimationClip("models/characters/anim/ybot_death.glb", "death");
+
+  if (clips["attack_r1"]) clips["attack_r1"]->looping = false;
+  if (clips["death"])     clips["death"]->looping = false;
+
+  CharacterClipSet clipSet;
+  clipSet.idle    = clips["idle"];
+  clipSet.walkFwd = clips["walk"];
+  clipSet.attack  = clips["attack_r1"];
+  clipSet.death   = clips["death"];
+  // hitReaction: null until enemy migrates to Manny skeleton
+  // dodgeClips:  all null — enemy does not dodge
+
+  auto graph = buildCharacterGraph(clipSet, "enemy");
   animator->setGraph(graph);
 
   this->combat = std::make_unique<CombatComponent>("enemy", 400.0f, 100.0f, 60.0f);

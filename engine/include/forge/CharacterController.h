@@ -40,6 +40,7 @@ public:
   void syncTransform();
 
   void warp(const glm::vec3& footPos);
+  void warpAndSettle(const glm::vec3& footPos);
 
   bool isOnGround() const;
   glm::vec3 getPosition() const;

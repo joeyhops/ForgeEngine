@@ -1,0 +1,18 @@
+{
+  "clip": "Unreal Take",
+  "events": [
+    {
+      "endTime": 0.4517241418361664,
+      "payload": "0.6;xz;6.0",
+      "startTime": 0.35172414779663086,
+      "type": "RootMotionBegin"
+    },
+    {
+      "endTime": 0.9049072265625,
+      "startTime": 0.8049072027206421,
+      "type": "RootMotionEnd"
+    }
+  ],
+  "extractRootY": false,
+  "rootBone": "root"
+}

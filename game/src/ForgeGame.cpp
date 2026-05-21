@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
+#include "CharacterGraph.h"
 #include "GameFlags.h"
 
 ForgeGame::ForgeGame()
@@ -1290,17 +1291,19 @@ void ForgeGame::handleInput(float dt) {
   }
 
   glm::vec3 move = m_input.getWorldMoveDir();
+  glm::vec3 toTarget = glm::vec3(0.0f);
+  glm::vec3 strafeRight = glm::vec3(1.0f, 0.0f, 0.0f);
   if (m_lockedOn) {
-    glm::vec3 toTarget = m_lockOnEnemyPos - m_player.transform->getPosition();
+    toTarget = m_lockOnEnemyPos - m_player.transform->getPosition();
     toTarget.y = 0.0f;
     if (glm::length(toTarget) > 0.001f) toTarget = glm::normalize(toTarget);
-    glm::vec3 strafeRight = glm::normalize(glm::cross(toTarget, glm::vec3(0, 1, 0)));
+    strafeRight = glm::normalize(glm::cross(toTarget, glm::vec3(0, 1, 0)));
     move = glm::vec3(0.0f);
 
     if (m_input.isHeld(InputAction::MoveForward)) move += toTarget;
     if (m_input.isHeld(InputAction::MoveBack)) move -= toTarget;
-    if (m_input.isHeld(InputAction::MoveRight)) move -= strafeRight;
-    if (m_input.isHeld(InputAction::MoveLeft)) move += strafeRight;
+    if (m_input.isHeld(InputAction::MoveRight)) move += strafeRight;
+    if (m_input.isHeld(InputAction::MoveLeft)) move -= strafeRight;
   }
 
   // Sprint
@@ -1309,14 +1312,50 @@ void ForgeGame::handleInput(float dt) {
 
   // Dodge
 
-  if (m_input.isPressed(InputAction::Dodge) && !m_player.inputLocked && !m_player.combat->isAttacking()) {
-    glm::vec3 dodgeDir = (glm::length(move) > 0.001f)
-      ? glm::normalize(move)
-      : m_player.forward;
-    m_player.dodgeFacingAngle = atan2f(dodgeDir.x, dodgeDir.z);
-    m_player.dodgePending = true;
+  if (m_input.isPressed(InputAction::Dodge) && !m_player.inputLocked
+      && !m_player.combat->isAttacking()) {
+    glm::vec3 inputDir = m_input.getWorldMoveDir();
+
+    DodgeDir dir = DodgeDir::Backward;
+    if (glm::length(inputDir) > 0.01f) {
+      if (m_lockedOn) {
+        glm::vec3 lockedDir = glm::vec3(0.0f);
+        if (m_input.isHeld(InputAction::MoveForward)) lockedDir += toTarget;
+        if (m_input.isHeld(InputAction::MoveBack))    lockedDir -= toTarget;
+        if (m_input.isHeld(InputAction::MoveRight))   lockedDir += strafeRight;
+        if (m_input.isHeld(InputAction::MoveLeft))    lockedDir -= strafeRight;
+
+        if (glm::length(lockedDir) > 0.01f) {
+          lockedDir = glm::normalize(lockedDir);
+          float dot = glm::dot(m_player.forward, lockedDir);
+          float cross_y = glm::cross(lockedDir, m_player.forward).y;
+          float angle = glm::degrees(std::atan2(cross_y, dot));
+
+          if (angle > -22.5f && angle <= 22.5f) dir = DodgeDir::Forward;
+          else if (angle > 22.5f && angle <= 67.5f) dir = DodgeDir::ForwardRight;
+          else if (angle > 67.5f && angle <= 112.5f) dir = DodgeDir::Right;
+          else if (angle > 112.5f && angle <= 157.5f) dir = DodgeDir::BackwardRight;
+          else if (angle > 157.5f || angle <= -157.5f) dir = DodgeDir::Backward;
+          else if (angle > -157.5f && angle <= -112.5f) dir = DodgeDir::BackwardLeft;
+          else if (angle > -112.5f && angle <= -67.5f) dir = DodgeDir::Left;
+          else dir = DodgeDir::ForwardLeft;
+        }
+      } else {
+        dir = DodgeDir::Forward;
+      }
+    }
+
+    m_player.animator->getParams().setInt("dodgeDir", static_cast<int>(dir));
+
+    if (glm::length(inputDir) > 0.01f) {
+      m_player.dodgeFacingQuat = glm::quatLookAt(
+        -inputDir, glm::vec3(0.0f, 1.0f, 0.0f));
+    } else {
+      m_player.dodgeFacingQuat = m_player.transform->getRotation();
+    }
+
     m_player.animator->getParams().setTrigger("dodge");
-    LOG_INFO("[Game] Dodge initiated.");
+    LOG_INFO("[Game] Dodge initiated dir={}", static_cast<int>(dir));
   }
 
   if (glm::length(move) > 0.001f) {
@@ -1332,14 +1371,28 @@ void ForgeGame::handleInput(float dt) {
       m_player.transform->setEulerAngles({ 0.0f, glm::degrees(angle), 0.0f });
       m_player.forward = glm::normalize(faceDir);
     }
-
-    float moveSpeedParam = sprinting ? 2.0f : 1.0f;
-    m_player.animator->getParams().setFloat("moveSpeed", moveSpeedParam);
+    if (m_lockedOn) {
+      glm::vec2 local = m_input.getLocalMoveVector();
+      float spd = m_input.getMoveSpeed();
+      m_player.animator->getParams().setFloat("moveX", local.x * spd);
+      m_player.animator->getParams().setFloat("moveZ", local.y * spd);
+      m_player.animator->getParams().setBool("isLockedOn", true);
+    } else {
+      float moveSpeedParam = sprinting ? 2.0f : 1.0f;
+      m_player.animator->getParams().setFloat("moveSpeed", moveSpeedParam);
+      m_player.animator->getParams().setBool("isLockedOn", false);
+    }
   } else {
     m_moveDir = glm::vec3(0.0f);
     m_moveSpeed = 0.0f;
-    m_player.animator->getParams().setFloat("moveSpeed", 0.0f);
-
+    if (m_lockedOn) {
+      m_player.animator->getParams().setFloat("moveX", 0.0f);
+      m_player.animator->getParams().setFloat("moveZ", 0.0f);
+      m_player.animator->getParams().setBool("isLockedOn", true);
+    } else {
+      m_player.animator->getParams().setFloat("moveSpeed", 0.0f);
+      m_player.animator->getParams().setBool("isLockedOn", false);
+    }
     if (m_lockedOn) {
       glm::vec3 faceDir = m_lockOnEnemyPos - m_player.transform->getPosition();
       faceDir.y = 0.0f;
@@ -1376,19 +1429,19 @@ void ForgeGame::applyMovement(float dt) {
       localDelta *= m_rmScale;
     }
 
-    float facingAngle = atan2f(m_player.forward.x, m_player.forward.z);
-
+    glm::quat facing;
     if (isDodging)
-      facingAngle = m_player.dodgeFacingAngle;
-
-    glm::quat facing = glm::angleAxis(facingAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+      facing = m_player.dodgeFacingQuat;
+    else {
+      float facingAngle = atan2f(m_player.forward.x, m_player.forward.z);
+      facing = glm::angleAxis(facingAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+    }
     displacement = facing * localDelta;
   } else {
     displacement = m_moveDir * m_moveSpeed * dt;
   }
 
   m_player.controller->setWalkDirection(displacement);
-  m_player.dodgePending = false;
 }
 
 void ForgeGame::spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns) {

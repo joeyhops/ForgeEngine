@@ -11,6 +11,7 @@ class btSequentialImpulseConstraintSolver;
 class btDiscreteDynamicsWorld;
 class btRigidBody;
 class btCollisionShape;
+class btDispatcher;
 
 class btActionInterface;
 class btCollisionObject;
@@ -59,6 +60,8 @@ public:
   void setGravity(const glm::vec3& gravity);
 
   btDiscreteDynamicsWorld* getBulletWorld() { return m_world.get(); }
+  btBroadphaseInterface* getBroadphase() const;
+  btDispatcher* getDispatcher() const;
 
 private:
   // Order matters, must be destroyed in reverse order of creation

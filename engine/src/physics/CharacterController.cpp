@@ -96,6 +96,22 @@ void CharacterController::warp(const glm::vec3& footPos) {
   m_transform.setPosition(footPos);
 }
 
+void CharacterController::warpAndSettle(const glm::vec3& footPos) {
+  warp(footPos);
+
+  m_ghost->activate(true);
+  btVector3 aabbMin, aabbMax;
+  m_ghost->getCollisionShape()->getAabb(m_ghost->getWorldTransform(),
+                                        aabbMin,
+                                        aabbMax);
+  m_world.getBroadphase()->setAabb(
+    m_ghost->getBroadphaseHandle(), aabbMin, aabbMax,
+    m_world.getDispatcher()
+  );
+
+  m_controller->setWalkDirection(btVector3(0, 0, 0));
+}
+
 bool CharacterController::isOnGround() const {
   return m_controller->onGround();
 }

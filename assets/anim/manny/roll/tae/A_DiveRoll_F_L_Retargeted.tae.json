@@ -2,14 +2,14 @@
   "clip": "Unreal Take",
   "events": [
     {
-      "endTime": 0.4517241418361664,
-      "payload": "0.6;xz;6.0",
-      "startTime": 0.35172414779663086,
+      "endTime": 0.15399999916553497,
+      "payload": "1.5;xz;6.0",
+      "startTime": 0.15399999916553497,
       "type": "RootMotionBegin"
     },
     {
-      "endTime": 0.9049072265625,
-      "startTime": 0.8049072027206421,
+      "endTime": 0.7433692216873169,
+      "startTime": 0.643369197845459,
       "type": "RootMotionEnd"
     }
   ],

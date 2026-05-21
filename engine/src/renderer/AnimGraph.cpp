@@ -316,6 +316,8 @@ void StateMachineNode::transitionTo(const std::string& toState, float blendTime,
   if (incomingNode) {
     if (auto* clip = dynamic_cast<ClipNode*>(incomingNode.get()))
       clip->reset();
+    else
+      incomingNode->setActiveTime(0.0f);
   }
 }
 
@@ -440,41 +442,89 @@ void Blend2DNode::addClip(glm::vec2 position,
 void Blend2DNode::build() {
   m_triangles.clear();
   m_hullEdges.clear();
-  if (m_clips.size() < 3) return; // degenerate: handle in update()
-  
-  // step 1 - Bowyer-Watson incremental Delaunay triangulations
-  //
-  // 1. create super-triangle of all input points
-  // 2. for each input point P:
-  //    a. find all triangles whose circumcircle contains P ("bad" triangles)
-  //    b. Form a polygonal hole by collecting the boundary edges of said triangles
-  //      (edges appearing in exactly one bad triangle)
-  //    c. Delete the bad triangles
-  //    d. Connect P to each edge of the hole, producing new triangles
-  // 3. Discard any triangle that uses a super-triangle vertex
-  //
-  // An edge is on the convex hull if it appears in exactly one
-  // triangle. Build a count map keyed by sorted vertex index pair,
-  // walk each triangles three edges, increment the count. Any entry
-  // with count == 1 is a hull edge; we also remember which triangle it
-  // came from (for the nearest edge clamp in update())
+  if (m_clips.size() < 3) return;
 
-  struct EdgeKey { int a, b; bool operator==(const EdgeKey& o) const {
-    return a == o.a && b == o.b;
-  } };
-  struct EdgeHash { size_t operator()(const EdgeKey& k) const {
-    return std::hash<int>()(k.a) ^ (std::hash<int>()(k.b) << 1);
-  } };
+  // --- Bowyer-Watson incremental Delaunay triangulation ---
+  int n = (int)m_clips.size();
+
+  float maxC = 0.0f;
+  for (auto& bc : m_clips)
+    maxC = std::max(maxC,
+                    std::max(std::abs(bc.position.x), std::abs(bc.position.y)));
+  float M = maxC * 4.0f + 2.0f;
+
+  // Real points 0..n-1; super-triangle vertices n, n+1, n+2
+  std::vector<glm::vec2> pts;
+  pts.reserve(n + 3);
+  for (auto& bc : m_clips) pts.push_back(bc.position);
+  pts.push_back({0.0f, 3.0f * M});
+  pts.push_back({-3.0f * M, -M});
+  pts.push_back({3.0f * M, -M});
+
+  struct Tri {
+    int a, b, c;
+  };
+  std::vector<Tri> tris;
+  tris.push_back({n, n + 1, n + 2});
+
+  // True if p is inside the circumcircle of (pts[ia], pts[ib], pts[ic])
+  auto inCircumcircle = [&](glm::vec2 p, int ia, int ib, int ic) -> bool {
+    glm::vec2 a = pts[ia] - p, b = pts[ib] - p, c = pts[ic] - p;
+    return (a.x * a.x + a.y * a.y) * (b.x * c.y - b.y * c.x) -
+               (b.x * b.x + b.y * b.y) * (a.x * c.y - a.y * c.x) +
+               (c.x * c.x + c.y * c.y) * (a.x * b.y - a.y * b.x) >
+           1e-7f;
+  };
+
+  for (int pi = 0; pi < n; pi++) {
+    glm::vec2 p = pts[pi];
+
+    std::vector<Tri> bad, good;
+    for (auto& t : tris)
+      (inCircumcircle(p, t.a, t.b, t.c) ? bad : good).push_back(t);
+
+    // Boundary: edges belonging to exactly one bad triangle
+    using Edge = std::pair<int, int>;
+    std::vector<Edge> boundary;
+    for (auto& t : bad) {
+      Edge es[3] = { {t.a, t.b}, {t.b, t.c}, {t.c, t.a} };
+      for (auto& e : es) {
+        Edge rev = { e.second, e.first };
+        auto it = std::find(boundary.begin(), boundary.end(), rev);
+        if (it == boundary.end())
+          boundary.push_back(e);
+        else
+          boundary.erase(it);
+      }
+    }
+
+    tris = good;
+    for (auto& e : boundary) tris.push_back({e.first, e.second, pi});
+  }
+
+  // Discard triangles touching super-triangle vertices
+  for (auto& t : tris)
+    if (t.a < n && t.b < n && t.c < n) m_triangles.push_back({t.a, t.b, t.c});
+
+  // --- Hull edge extraction (unchanged) ---
+  struct EdgeKey {
+    int a, b;
+    bool operator==(const EdgeKey& o) const { return a == o.a && b == o.b; }
+  };
+  struct EdgeHash {
+    size_t operator()(const EdgeKey& k) const {
+      return std::hash<int>()(k.a) ^ (std::hash<int>()(k.b) << 1);
+    }
+  };
 
   auto makeKey = [](int u, int v) -> EdgeKey {
     return (u < v) ? EdgeKey{u, v} : EdgeKey{v, u};
   };
 
-  // edge -> (count, last-seen triangle index)
   std::unordered_map<EdgeKey, std::pair<int, int>, EdgeHash> edges;
   for (size_t t = 0; t < m_triangles.size(); ++t) {
     const auto& tri = m_triangles[t];
-    int e[3][2] = { {tri.a, tri.b}, {tri.b, tri.c}, {tri.c, tri.a} };
+    int e[3][2] = {{tri.a, tri.b}, {tri.b, tri.c}, {tri.c, tri.a}};
     for (int i = 0; i < 3; i++) {
       EdgeKey k = makeKey(e[i][0], e[i][1]);
       auto& slot = edges[k];
@@ -483,8 +533,7 @@ void Blend2DNode::build() {
     }
   }
   for (const auto& [key, val] : edges) {
-    if (val.first == 1)
-      m_hullEdges.push_back({ key.a, key.b, val.second });
+    if (val.first == 1) m_hullEdges.push_back({key.a, key.b, val.second});
   }
 }
 
@@ -635,6 +684,90 @@ std::string Blend2DNode::getDebugStateInfo() const {
   return "Blend2D(" + m_xParam + "," + m_zParam + " @ "
         + std::to_string(m_currentParam.x).substr(0, 4) + ","
         + std::to_string(m_currentParam.y).substr(0, 4) + ")";
+}
+
+ClipSelectorNode::ClipSelectorNode(std::string paramName)
+    : m_paramName(std::move(paramName)) {}
+
+void ClipSelectorNode::addClip(int index, std::shared_ptr<AnimationClip> clip) {
+  if (!clip) return;
+  auto node = std::make_shared<ClipNode>(clip, false);
+  m_clips[index] = node;
+}
+
+void ClipSelectorNode::update(float dt, AnimParamTable& params) {
+  m_selected = params.getInt(m_paramName, 0);
+
+  if (m_selected != m_prevSelected) {
+    auto it = m_clips.find(m_selected);
+    if (it != m_clips.end() && it->second)
+      it->second->reset();
+    m_prevSelected = m_selected;
+  }
+
+  auto it = m_clips.find(m_selected);
+  if (it != m_clips.end() && it->second)
+    it->second->update(dt, params);
+}
+
+void ClipSelectorNode::evaluate(std::vector<glm::mat4>& outPose) const {
+  auto it = m_clips.find(m_selected);
+  if (it != m_clips.end() && it->second)
+    it->second->evaluate(outPose);
+}
+
+bool ClipSelectorNode::isFinished() const {
+  auto it = m_clips.find(m_selected);
+  if (it != m_clips.end() && it->second)
+    return it->second->isFinished();
+  return true;
+}
+
+glm::vec3 ClipSelectorNode::getRootMotionDelta() const {
+  auto it = m_clips.find(m_selected);
+  if (it != m_clips.end() && it->second)
+    return it->second->getRootMotionDelta();
+  return glm::vec3(0.0f);
+}
+
+float ClipSelectorNode::getActiveClipTime() const {
+  auto it = m_clips.find(m_selected);
+  if (it != m_clips.end() && it->second)
+    return it->second->getActiveClipTime();
+  return 0.0f;
+}
+
+float ClipSelectorNode::getActiveClipDuration() const {
+  auto it = m_clips.find(m_selected);
+  if (it != m_clips.end() && it->second)
+    return it->second->getActiveClipDuration();
+  return 0.0f;
+}
+
+void ClipSelectorNode::setSkeleton(const std::vector<Bone>* skeleton) {
+  for (auto& [idx, node] : m_clips)
+    if (node) node->setSkeleton(skeleton);
+}
+
+void ClipSelectorNode::swapClipByKey(const std::string& key,
+                                     std::shared_ptr<AnimationClip> clip) {
+  for (auto& [idx, node] : m_clips)
+    if (node) node->swapClipByKey(key, clip);
+}
+
+void ClipSelectorNode::setActiveTime(float t) {
+  m_prevSelected = -1;
+  auto it = m_clips.find(m_selected);
+  if (it != m_clips.end() && it->second)
+    it->second->setActiveTime(t);
+}
+
+std::string ClipSelectorNode::getDebugStateInfo() const {
+  auto it = m_clips.find(m_selected);
+  if (it != m_clips.end() && it->second)
+    return "ClipSelectorNode[" + std::to_string(m_selected) + "]:"
+            + it->second->getDebugStateInfo();
+  return "ClipSelectorNode[" + std::to_string(m_selected) + ":empty]";
 }
 
 }

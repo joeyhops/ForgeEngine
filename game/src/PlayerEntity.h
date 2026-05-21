@@ -8,6 +8,7 @@
 #include <forge/Transform.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <memory>
 #include <string>
@@ -57,9 +58,7 @@ public:
 
   glm::vec3 forward = { 0.0f, 0.0f, -1.0f };
 
-  // Dodge state - Phase 19 replaces with 8-way directional roll
-  bool dodgePending = false;
-  float dodgeFacingAngle = 0.0f;
+  glm::quat dodgeFacingQuat = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); // Identity
   bool inputLocked = false;
 
 };

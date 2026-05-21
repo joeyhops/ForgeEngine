@@ -265,6 +265,41 @@ private:
   glm::vec3 m_rootDelta = glm::vec3(0.0f);
 };
 
+// ClipSelectorNode
+// holds N child 'ClipNodes' keyed by int index. Each frame reads a named int
+// param from ANimParamTable and forwards all operations to the active child
+// when the selected index changes, the incoming 'ClipNode' is reset() so it
+// plays from t = 0. Identical in intent to a zero-blend-time StateMachineNode
+// transition but simpler and cheaper to store (no crossfade)
+class ClipSelectorNode : public AnimGraphNode {
+public:
+  explicit ClipSelectorNode(std::string paramName);
+
+  // Register clip at given int idx
+  // Indices need not be contiguous. Unregistered indices are
+  // silent no-ops
+  void addClip(int index, std::shared_ptr<AnimationClip> clip);
+
+  void update(float dt, AnimParamTable& params) override;
+  void evaluate(std::vector<glm::mat4>& outPose) const override;
+  bool isFinished() const override;
+  void setSkeleton(const std::vector<Bone>* skeleton) override;
+  void swapClipByKey(const std::string& key,
+                     std::shared_ptr<AnimationClip> clip) override;
+  void setActiveTime(float t) override;
+
+  glm::vec3 getRootMotionDelta()const override;
+  float getActiveClipTime() const override;
+  float getActiveClipDuration() const override;
+  std::string getDebugStateInfo() const override;
+
+private:
+  std::string m_paramName;
+  std::unordered_map<int, std::shared_ptr<ClipNode>> m_clips;
+  int m_selected = 0;
+  int m_prevSelected = -1;
+};
+
 // StateMachineNode
 // Owns a set of named states, each pointing to a child AnimGraphNode
 // Transitions are declared as (fromState, toState, condition, blendTime) tuples
