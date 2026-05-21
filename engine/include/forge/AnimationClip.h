@@ -59,6 +59,7 @@ struct AnimEvent {
   FORGE_REFLECT()
   float endTime = 0.0f;
 
+  FORGE_REFLECT()
   AnimEventType type = AnimEventType::SpawnHitbox;
 
   FORGE_REFLECT()
