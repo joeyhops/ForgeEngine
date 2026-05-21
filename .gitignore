@@ -1,4 +1,6 @@
 third_party/fmod/
+build_reflector/
+out/
 lw_test.glb
 saves/
 save.json
