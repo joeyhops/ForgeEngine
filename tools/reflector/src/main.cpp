@@ -359,6 +359,35 @@ static ContainerInfo detectContainer(const std::string& spelling) {
 //  §7  AST collection
 // ================================================================
 
+// Qualify a template argument type string only when needed.
+//
+// Raw type spellings preserve typedef names (int32_t, glm::vec3, TypeID)
+// which is what we want for hash consistency with TypeName<T> specialisations.
+// The one case that needs fixing: a user struct in the SAME namespace appears
+// unqualified, e.g. CapsuleSegment instead of forge::CapsuleSegment.
+//
+// Detection: the arg has a StructDecl/ClassDecl declaration (not a builtin or
+// typedef) AND its spelling has no '::' (unqualified). Only then do we fall
+// back to the canonical type to get the fully-qualified name.
+static std::string qualifyArgType(CXType argType) {
+    std::string spell = normalizeTypeName(CXStr(clang_getTypeSpelling(argType)).str());
+
+    // Already qualified or a primitive/typedef — leave as-is.
+    if (spell.find("::") != std::string::npos) return spell;
+
+    CXCursor decl = clang_getTypeDeclaration(argType);
+    if (clang_Cursor_isNull(decl)) return spell;  // builtin
+
+    CXCursorKind dk = clang_getCursorKind(decl);
+    if (dk == CXCursor_StructDecl || dk == CXCursor_ClassDecl || dk == CXCursor_EnumDecl) {
+        // User-defined type without namespace prefix: qualify via canonical spelling.
+        std::string canon = normalizeTypeName(
+            CXStr(clang_getTypeSpelling(clang_getCanonicalType(argType))).str());
+        if (!canon.empty()) return canon;
+    }
+    return spell;
+}
+
 static std::optional<ReflectedField> collectField(CXCursor c, bool /*strict*/) {
     if (!hasAnnotation(c, "forge.reflect.field")) return std::nullopt;
 
@@ -369,14 +398,51 @@ static std::optional<ReflectedField> collectField(CXCursor c, bool /*strict*/) {
         return std::nullopt;
     }
 
-    CXType      type     = clang_getCursorType(c);
-    std::string spelling = normalizeTypeName(CXStr(clang_getTypeSpelling(type)).str());
+    // Use the raw (non-canonical) type to preserve typedef names:
+    // int32_t stays int32_t, glm::vec3 stays glm::vec3, etc.
+    CXType      rawType  = clang_getCursorType(c);
+    std::string spelling = normalizeTypeName(CXStr(clang_getTypeSpelling(rawType)).str());
 
     auto ci = detectContainer(spelling);
     field.containerKind = ci.kind;
-    field.elementType   = ci.elementType;
-    field.keyType       = ci.keyType;
-    field.typeName      = spelling;
+    // For scalar (non-container) fields, qualify user-defined types so that
+    // the emitted sizeof()/offsetof() calls compile outside the type's namespace.
+    field.typeName = (ci.kind == CKind::None) ? qualifyArgType(rawType) : spelling;
+
+    if (ci.kind != CKind::None) {
+        // Use clang_Type_getTemplateArgumentAsType to get element/key types directly
+        // from Clang rather than string-parsing.  qualifyArgType then fixes any
+        // unqualified user types (e.g. CapsuleSegment → forge::CapsuleSegment).
+        int nargs = clang_Type_getNumTemplateArguments(rawType);
+        if (nargs >= 1) {
+            if (ci.kind == CKind::Map && nargs >= 2) {
+                field.keyType     = qualifyArgType(clang_Type_getTemplateArgumentAsType(rawType, 0));
+                field.elementType = qualifyArgType(clang_Type_getTemplateArgumentAsType(rawType, 1));
+            } else {
+                field.elementType = qualifyArgType(clang_Type_getTemplateArgumentAsType(rawType, 0));
+            }
+        } else {
+            // Fallback: parse from the spelling string.
+            field.elementType = ci.elementType;
+            field.keyType     = ci.keyType;
+        }
+
+        // Reconstruct typeName with the qualified element/key types so the
+        // container's own typeID hash is consistent across translation units.
+        switch (ci.kind) {
+            case CKind::Vector:
+                field.typeName = "std::vector<" + field.elementType + ">"; break;
+            case CKind::Optional:
+                field.typeName = "std::optional<" + field.elementType + ">"; break;
+            case CKind::Set:
+                field.typeName = (spelling.find("std::set<") == 0 ? "std::set<" : "std::unordered_set<")
+                                 + field.elementType + ">"; break;
+            case CKind::Map:
+                field.typeName = (spelling.find("std::map<") == 0 ? "std::map<" : "std::unordered_map<")
+                                 + field.keyType + ", " + field.elementType + ">"; break;
+            default: break;
+        }
+    }
 
     return field;
 }
@@ -487,7 +553,19 @@ static bool isReflectedEnum(CXCursor enumCursor) {
 struct VisitorState {
     ParseResult& result;
     bool         strict;
+    CXFile       primaryFile;  // only collect types declared in this file
 };
+
+// Returns true if the cursor's expansion location is in the primary header.
+// We always recurse into namespaces regardless — namespaces span files.
+// Type declarations (struct/class/enum) are filtered to the primary file so
+// that transitive #includes don't produce duplicate registrations.
+static bool isInPrimaryFile(CXCursor cursor, CXFile primary) {
+    CXSourceLocation loc = clang_getCursorLocation(cursor);
+    CXFile file = nullptr;
+    clang_getExpansionLocation(loc, &file, nullptr, nullptr, nullptr);
+    return clang_File_isEqual(file, primary);
+}
 
 static CXChildVisitResult topLevelVisitor(CXCursor cursor, CXCursor /*parent*/, CXClientData data) {
     auto* state = static_cast<VisitorState*>(data);
@@ -497,6 +575,9 @@ static CXChildVisitResult topLevelVisitor(CXCursor cursor, CXCursor /*parent*/, 
         return CXChildVisit_Recurse;
 
     if (kind == CXCursor_StructDecl || kind == CXCursor_ClassDecl) {
+        if (!isInPrimaryFile(cursor, state->primaryFile))
+            return CXChildVisit_Recurse;  // still recurse for nested reflected types
+
         if (isReflectedType(cursor)) {
             if (auto type = collectType(cursor, state->strict))
                 state->result.types.push_back(std::move(*type));
@@ -508,7 +589,10 @@ static CXChildVisitResult topLevelVisitor(CXCursor cursor, CXCursor /*parent*/, 
     }
 
     if (kind == CXCursor_EnumDecl) {
-        // Skip the anonymous sentinel enums we emit for detection
+        if (!isInPrimaryFile(cursor, state->primaryFile))
+            return CXChildVisit_Continue;
+
+        // Skip sentinel aliases produced by FORGE_REFLECT_ENUM
         std::string name = CXStr(clang_getCursorSpelling(cursor)).str();
         if (name.find("_forge_reflect_enum_") == 0) return CXChildVisit_Continue;
 
@@ -741,8 +825,12 @@ int main(int argc, char** argv) {
             break;
         }
 
+        // Resolve the primary file handle so topLevelVisitor can filter
+        // out types from transitively #included headers.
+        CXFile primaryFile = clang_getFile(tu, header.string().c_str());
+
         ParseResult result;
-        VisitorState state{ result, cfg.strictMode };
+        VisitorState state{ result, cfg.strictMode, primaryFile };
         clang_visitChildren(clang_getTranslationUnitCursor(tu), topLevelVisitor, &state);
 
         if (result.hadErrors && cfg.strictMode) {

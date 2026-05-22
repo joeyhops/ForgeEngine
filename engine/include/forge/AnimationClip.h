@@ -65,6 +65,7 @@ struct AnimEvent {
   FORGE_REFLECT()
   std::string payload;
 
+  FORGE_REFLECT()
   std::vector<CapsuleSegment> capsules;
 };
 

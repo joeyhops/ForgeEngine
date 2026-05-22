@@ -56,7 +56,13 @@ namespace detail {
         return sig.substr(prefix, suffix - prefix);
 #else
         constexpr auto prefix = sig.find("T = ") + 4;
-        constexpr auto suffix = sig.rfind(']');
+        // GCC appends secondary substitutions after a ';' inside the [with ...]
+        // clause, e.g. "[with T = glm::vec<3, float, ...>; std::string_view = ...]".
+        // Stop at the first ';' if it precedes the closing ']'.
+        constexpr auto semi    = sig.find(';', prefix);
+        constexpr auto bracket = sig.rfind(']');
+        constexpr auto suffix  = (semi != std::string_view::npos && semi < bracket)
+                                 ? semi : bracket;
         return sig.substr(prefix, suffix - prefix);
 #endif
     }
@@ -86,6 +92,23 @@ template<> struct TypeName<double>   { static constexpr std::string_view value =
 // ── stdlib specializations ───────────────────────────────────────
 template<> struct TypeName<std::string>
     { static constexpr std::string_view value = "std::string"; };
+
+// ── glm specializations ──────────────────────────────────────────
+// glm::vec3 is a type alias for glm::vec<3,float,qualifier>, so
+// extract_name() would produce the unaliased template form.
+// Clang spells it "glm::vec3" in type-spelling queries, so we pin
+// the canonical name here to keep TypeID_of<glm::vec3>() consistent
+// with the fnv1a("glm::vec3") emitted by forge-reflect.
+#ifdef GLM_VERSION
+template<> struct TypeName<glm::vec2> { static constexpr std::string_view value = "glm::vec2"; };
+template<> struct TypeName<glm::vec3> { static constexpr std::string_view value = "glm::vec3"; };
+template<> struct TypeName<glm::vec4> { static constexpr std::string_view value = "glm::vec4"; };
+template<> struct TypeName<glm::mat3> { static constexpr std::string_view value = "glm::mat3"; };
+template<> struct TypeName<glm::mat4> { static constexpr std::string_view value = "glm::mat4"; };
+#endif
+#ifdef GLM_GTC_QUATERNION_HPP
+template<> struct TypeName<glm::quat> { static constexpr std::string_view value = "glm::quat"; };
+#endif
 
 template<typename T>
 constexpr TypeID TypeID_of() noexcept {
