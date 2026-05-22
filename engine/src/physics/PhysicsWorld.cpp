@@ -44,7 +44,7 @@ PhysicsWorld::~PhysicsWorld() {
 
 // simulation
 void PhysicsWorld::step(float dt, int maxSubSteps) {
-  m_world->stepSimulation(dt, maxSubSteps, 1.0f / 60.0f);
+  m_world->stepSimulation(dt, maxSubSteps, k_fixedStep);
 }
 
 void PhysicsWorld::addRigidBody(btRigidBody* body) {

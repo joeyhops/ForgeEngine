@@ -20,6 +20,8 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <sol/forward.hpp>
@@ -490,7 +492,7 @@ void ForgeGame::setupLevel(const std::string& levelName) {
     if (inst.classname == "info_player_start") {
       glm::vec3 origin = inst.origin;
       origin.y += k_playerCapsuleHalfHeight;
-      m_player.controller->warp(origin);
+      m_player.controller->warpAndSettle(origin);
       if (ent.angle != 0.0f) {
         float rad = glm::radians(ent.angle);
         m_player.forward = glm::normalize(glm::vec3(sinf(rad), 0.0f, cosf(rad)));
@@ -1317,7 +1319,7 @@ void ForgeGame::handleInput(float dt) {
     glm::vec3 inputDir = m_input.getWorldMoveDir();
 
     DodgeDir dir = DodgeDir::Backward;
-    if (glm::length(inputDir) > 0.01f) {
+    if (glm::length(inputDir) > 0.001f) {
       if (m_lockedOn) {
         glm::vec3 lockedDir = glm::vec3(0.0f);
         if (m_input.isHeld(InputAction::MoveForward)) lockedDir += toTarget;
@@ -1325,10 +1327,10 @@ void ForgeGame::handleInput(float dt) {
         if (m_input.isHeld(InputAction::MoveRight))   lockedDir += strafeRight;
         if (m_input.isHeld(InputAction::MoveLeft))    lockedDir -= strafeRight;
 
-        if (glm::length(lockedDir) > 0.01f) {
+        if (glm::length(lockedDir) > 0.001f) {
           lockedDir = glm::normalize(lockedDir);
-          float dot = glm::dot(m_player.forward, lockedDir);
-          float cross_y = glm::cross(lockedDir, m_player.forward).y;
+          float dot = glm::dot(toTarget, lockedDir);
+          float cross_y = glm::cross(lockedDir, toTarget).y;
           float angle = glm::degrees(std::atan2(cross_y, dot));
 
           if (angle > -22.5f && angle <= 22.5f) dir = DodgeDir::Forward;
@@ -1339,23 +1341,31 @@ void ForgeGame::handleInput(float dt) {
           else if (angle > -157.5f && angle <= -112.5f) dir = DodgeDir::BackwardLeft;
           else if (angle > -112.5f && angle <= -67.5f) dir = DodgeDir::Left;
           else dir = DodgeDir::ForwardLeft;
+          LOG_TRACE("[handleInput] Set roll direction LOCKED ON, lockedDir len >0.01. (angle={},dir={})",
+                    angle, (int)dir);
         }
+        LOG_TRACE("[handleInput] Locked on but lockedDir <0.01: ({},{},{})", lockedDir.x, lockedDir.y, lockedDir.z);
       } else {
         dir = DodgeDir::Forward;
-      }
+      } 
     }
 
     m_player.animator->getParams().setInt("dodgeDir", static_cast<int>(dir));
 
-    if (glm::length(inputDir) > 0.01f) {
+    bool isStandstill = (glm::length(inputDir) <= 0.001f);
+    bool hasBackstep = m_player.clips.count("backstep")
+                      && m_player.clips.at("backstep") != nullptr;
+    if (!isStandstill) {
       m_player.dodgeFacingQuat = glm::quatLookAt(
-        -inputDir, glm::vec3(0.0f, 1.0f, 0.0f));
+       -inputDir, glm::vec3(0.0f, 1.0f, 0.0f));
     } else {
       m_player.dodgeFacingQuat = m_player.transform->getRotation();
     }
 
-    m_player.animator->getParams().setTrigger("dodge");
-    LOG_INFO("[Game] Dodge initiated dir={}", static_cast<int>(dir));
+    if (isStandstill && hasBackstep)
+      m_player.animator->getParams().setTrigger("backstep");
+    else
+      m_player.animator->getParams().setTrigger("dodge");
   }
 
   if (glm::length(move) > 0.001f) {
@@ -1366,16 +1376,14 @@ void ForgeGame::handleInput(float dt) {
       ? (m_lockOnEnemyPos - m_player.transform->getPosition())
       : glm::vec3(move);
     faceDir.y = 0.0f;
-    if (glm::length(faceDir) > 0.001f) {
-      float angle = atan2f(faceDir.x, faceDir.z);
-      m_player.transform->setEulerAngles({ 0.0f, glm::degrees(angle), 0.0f });
-      m_player.forward = glm::normalize(faceDir);
-    }
+    if (glm::length(faceDir) > 0.001f) 
+      m_facingTarget = glm::normalize(faceDir);
     if (m_lockedOn) {
-      glm::vec2 local = m_input.getLocalMoveVector();
+      float moveX = glm::dot(move, strafeRight);
+      float moveZ = glm::dot(move, toTarget);
       float spd = m_input.getMoveSpeed();
-      m_player.animator->getParams().setFloat("moveX", local.x * spd);
-      m_player.animator->getParams().setFloat("moveZ", local.y * spd);
+      m_player.animator->getParams().setFloat("moveX", moveX * spd);
+      m_player.animator->getParams().setFloat("moveZ", moveZ * spd);
       m_player.animator->getParams().setBool("isLockedOn", true);
     } else {
       float moveSpeedParam = sprinting ? 2.0f : 1.0f;
@@ -1396,11 +1404,8 @@ void ForgeGame::handleInput(float dt) {
     if (m_lockedOn) {
       glm::vec3 faceDir = m_lockOnEnemyPos - m_player.transform->getPosition();
       faceDir.y = 0.0f;
-      if (glm::length(faceDir) > 0.001f) {
-        float angle = atan2f(faceDir.x, faceDir.z);
-        m_player.transform->setEulerAngles({ 0.0f, glm::degrees(angle), 0.0f });
+      if (glm::length(faceDir) > 0.001f)
         m_player.forward = glm::normalize(faceDir);
-      }
     }
   }
 }
@@ -1414,9 +1419,11 @@ void ForgeGame::applyMovement(float dt) {
   glm::vec3 displacement(0.0f);
 
   bool isDodging = (m_player.animator->getCurrentStateName() == "Dodging");
+  bool isBackstepping = (m_player.animator->getCurrentStateName() == "Backstep");
   bool isLocomotion = (m_player.animator->getCurrentStateName() == "Locomotion");
   //bool useRM = (isLocomotion && m_player.animator->isRootMotionActive()) || m_rmOverride;
-  bool useRM = (isLocomotion && m_player.animator->isRootMotionActive()) || m_rmOverride || isDodging;
+  bool useRM = (isLocomotion && m_player.animator->isRootMotionActive())
+              || m_rmOverride || isDodging || isBackstepping;
 
   if (useRM) {
     glm::vec3 localDelta = m_player.animator->getRootMotionDelta();
@@ -1429,16 +1436,29 @@ void ForgeGame::applyMovement(float dt) {
       localDelta *= m_rmScale;
     }
 
-    glm::quat facing;
-    if (isDodging)
-      facing = m_player.dodgeFacingQuat;
-    else {
-      float facingAngle = atan2f(m_player.forward.x, m_player.forward.z);
-      facing = glm::angleAxis(facingAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-    }
-    displacement = facing * localDelta;
+    //if (isDodging)
+    //  localDelta.x = -localDelta.x;
+    glm::quat facing = m_player.transform->getRotation();
+    displacement = facing * localDelta * (forge::PhysicsWorld::k_fixedStep / dt);
   } else {
-    displacement = m_moveDir * m_moveSpeed * dt;
+    displacement = m_moveDir * m_moveSpeed * forge::PhysicsWorld::k_fixedStep;
+  }
+  
+  if (!isDodging && !isBackstepping) {
+    float rate = m_lockedOn ? k_lockOnTurnRate : k_turnRateDeg;
+    glm::vec3 tgt = m_facingTarget;
+    // build target rotation: models rest forward is -z so negate fwd to get the look dir
+    glm::quat targetRot = glm::quatLookAt(-tgt, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::quat currentRot = m_player.transform->getRotation();
+
+    float angle = glm::angle(glm::inverse(currentRot) * targetRot);
+    float maxAngle = glm::radians(rate * dt);
+    float t = (angle > 0.001f) ? glm::min(1.0f, maxAngle / angle) : 1.0f;
+
+    glm::quat newRot = glm::slerp(currentRot, targetRot, t);
+    m_player.transform->setRotation(newRot);
+    // Keep m+playe.forward in sync with the actual slerped rotation
+    m_player.forward = newRot * glm::vec3(0.0f, 0.0f, -1.0f);
   }
 
   m_player.controller->setWalkDirection(displacement);

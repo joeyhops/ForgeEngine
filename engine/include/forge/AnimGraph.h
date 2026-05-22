@@ -280,6 +280,7 @@ public:
   // silent no-ops
   void addClip(int index, std::shared_ptr<AnimationClip> clip);
 
+  void setOwnerName(const std::string& name);
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const override;
   bool isFinished() const override;
@@ -294,6 +295,7 @@ public:
   std::string getDebugStateInfo() const override;
 
 private:
+  std::string m_ownerName;
   std::string m_paramName;
   std::unordered_map<int, std::shared_ptr<ClipNode>> m_clips;
   int m_selected = 0;

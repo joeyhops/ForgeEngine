@@ -117,13 +117,26 @@ std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
       if (clips.dodgeClips[i])
         dodgeSelector->addClip(i, clips.dodgeClips[i]);
       else if (clips.dodgeClips[0])
-          dodgeSelector->addClip(i, clips.dodgeClips[0]);
+        dodgeSelector->addClip(i, clips.dodgeClips[0]);
     }
+    dodgeSelector->setOwnerName(ownerName);
     root->addState("Dodging", dodgeSelector);
     root->addTransition({ "Locomotion", "Dodging", 
         [](AnimParamTable& p) { return p.consumeTrigger("dodge"); }, 0.0f });
     root->addTransition({ "Dodging", "Locomotion",
                             [dodgeSelector](AnimParamTable& p) { return dodgeSelector->isFinished(); }, 0.3f });
+  }
+
+  // Optional backstep: (standstill only, separate animation, separate state)
+  if (clips.backstep) {
+    auto backStepNode = std::make_shared<ClipNode>(clips.backstep, false);
+    backStepNode->setOwnerName(ownerName);
+    backStepNode->setActionKey("backstep");
+    root->addState("Backstep", backStepNode);
+    root->addTransition({ "Locomotion", "Backstep",
+          [](AnimParamTable& p) { return p.consumeTrigger("backstep"); }, 0.0f });
+    root->addTransition({ "Backstep", "Locomotion",
+          [backStepNode](AnimParamTable& p) { return backStepNode->isFinished(); }, 0.2f });
   }
 
   // Optional HitReaction

@@ -1,5 +1,6 @@
 #pragma once
 #include <forge/StateMachine.h>
+#include <forge/PhysicsWorld.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include <string>

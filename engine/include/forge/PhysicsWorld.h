@@ -63,6 +63,7 @@ public:
   btBroadphaseInterface* getBroadphase() const;
   btDispatcher* getDispatcher() const;
 
+  static constexpr float k_fixedStep = 1.0f / 60.0f;
 private:
   // Order matters, must be destroyed in reverse order of creation
   // Unique_ptr handles that automatically (destroyed bottom-up in class)

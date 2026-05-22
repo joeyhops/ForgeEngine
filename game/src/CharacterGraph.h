@@ -33,6 +33,10 @@ struct CharacterClipSet {
   // Hit reaction (stagger on poise break)
   std::shared_ptr<forge::AnimationClip> hitReaction;
 
+  // Standstill only dodge Null = standstill dodge plays the forward roll instead
+  // when present, triggered by the "backstep" anim param trigger
+  std::shared_ptr<forge::AnimationClip> backstep;
+
   // Directional rolls, indexed by DodgeDir
   // all null = no dodge state
   // individual nulls fallback to the next closest non-null entry

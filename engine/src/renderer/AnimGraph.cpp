@@ -695,8 +695,18 @@ void ClipSelectorNode::addClip(int index, std::shared_ptr<AnimationClip> clip) {
   m_clips[index] = node;
 }
 
+void ClipSelectorNode::setOwnerName(const std::string& name) {
+  m_ownerName = name;
+  for (auto& [idx, node] : m_clips)
+    if (node) node->setOwnerName(name);
+}
+
 void ClipSelectorNode::update(float dt, AnimParamTable& params) {
   m_selected = params.getInt(m_paramName, 0);
+  LOG_TRACE("[ClipSelector] paramName='{}' dodgeDir_raw={} selected={}",
+            m_paramName,
+            params.getInt("dodgeDir", -99),
+            m_selected);
 
   if (m_selected != m_prevSelected) {
     auto it = m_clips.find(m_selected);
@@ -756,7 +766,7 @@ void ClipSelectorNode::swapClipByKey(const std::string& key,
 }
 
 void ClipSelectorNode::setActiveTime(float t) {
-  m_prevSelected = -1;
+  //m_prevSelected = -1;
   auto it = m_clips.find(m_selected);
   if (it != m_clips.end() && it->second)
     it->second->setActiveTime(t);

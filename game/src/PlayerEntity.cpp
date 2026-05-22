@@ -37,8 +37,18 @@ void PlayerEntity::setup(forge::PhysicsWorld& physics,
 
   //clips["walk"] = forge::AssetManager::loadAnimationClip("anim/manny/am_Logo_Run_Fwd.glb", "walk");
   // Load anim clips
-  // Idle is embadded in the base model - load the first animation from it
-
+  // attack_r1 is required by the character graph - should be a punch animation for default weapon vals
+  // attack_r1 is replaced when a new weapon is equipped (default weapon for player is currently longsword)
+  // TAEs are loaded either directly by animation stem name. OR loaded from a taeKey passed in at load time
+  // (optional third param on loadAnimationClip()). Loads {animation_name}.tae.json from said directory.
+  // If loaded directly from animation name, search for a "tae" directory sibling to the animation file,
+  // lookup {animation_name}.tae.json file.
+  //
+  // If taeKey passed, replace {animation_name} with taeKey (i.e. "r1.tae.json"). Useful specifically for
+  // movesets, where animation clips are keyed by action names in a moveset definition. When equipment
+  // component swaps the animation clips when equipping a new weapon, the defined moveset loads all anims
+  // in moveset list with taeKey by default. Therefore, for attacks specifically, r1.tae.json et. al. are
+  // valid and expected TAE file names.
   clips["idle"] = forge::AssetManager::loadAnimationClip("anim/manny/idle/am_Stand_Idle_01.glb", "idle");
   clips["sprint"] = forge::AssetManager::loadAnimationClip("anim/manny/run/am_Loco_Run_Fwd_NoRM.glb", "sprint");
   clips["attack_r1"] = forge::AssetManager::loadAnimationClip("anim/manny/attacks/Anim_SwordV2_Slash1.glb", "attack_r1");
@@ -71,23 +81,16 @@ void PlayerEntity::setup(forge::PhysicsWorld& physics,
   clips["roll_l"]  = AssetManager::loadAnimationClip("anim/manny/roll/A_DiveRoll_L_Retargeted.glb",    "roll_l");
   clips["roll_fl"] = AssetManager::loadAnimationClip("anim/manny/roll/A_DiveRoll_315_Retargeted.glb",  "roll_fl");
 
+  clips["backstep"] = AssetManager::loadAnimationClip("anim/manny/dodge/DodgeBackward_RootRetargeted.glb",
+                                                      "backstep");
+  if (clips["backstep"]) clips["backstep"]->looping = false;
+
   for (const auto& key : { "attack_r1", "death", "hit",
                             "roll_f", "roll_fr", "roll_r", "roll_br",
                             "roll_b", "roll_bl", "roll_l", "roll_fl" }) {
     if (clips[key]) clips[key]->looping = false;
   }
   
-  if (clips["attack_r1"]) {
-    auto& clip = clips["attack_r1"];
-    clip->looping = false;
-    clip->events.push_back({ 14.0f/60.0f, 22.0f/60.0f,
-                            forge::AnimEventType::SpawnHitbox, "weapon_r" });
-    clip->events.push_back({ 10.0f/60.0f, 10.0f/60.0f,
-                            forge::AnimEventType::SoundOneShot, "sfx/swing_heavy.wav" });
-    std::sort(clip->events.begin(), clip->events.end(),
-              [](const forge::AnimEvent& a, const forge::AnimEvent& b) { return a.startTime < b.startTime; });
-  }
- 
   CharacterClipSet clipSet;
   clipSet.idle       = clips["idle"];
   clipSet.walkFwd    = clips["walk"];
@@ -104,6 +107,8 @@ void PlayerEntity::setup(forge::PhysicsWorld& physics,
   clipSet.dodgeClips[(int)DodgeDir::BackwardLeft]  = clips["roll_bl"];
   clipSet.dodgeClips[(int)DodgeDir::Left]          = clips["roll_l"];
   clipSet.dodgeClips[(int)DodgeDir::ForwardLeft]   = clips["roll_fl"];
+
+  clipSet.backstep = clips.count("backstep") ? clips["backstep"] : nullptr;
 
   clipSet.walkLocked[(int)DodgeDir::Forward]       = clips["walk_f"];
   clipSet.walkLocked[(int)DodgeDir::ForwardRight]  = clips["walk_fr"];

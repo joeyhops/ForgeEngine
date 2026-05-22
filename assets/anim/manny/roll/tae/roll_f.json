@@ -3,7 +3,7 @@
   "events": [
     {
       "endTime": 0.10000000149011612,
-      "payload": "2.0;xz;",
+      "payload": "1.0;xz;",
       "startTime": 0.10000000149011612,
       "type": "RootMotionBegin"
     },

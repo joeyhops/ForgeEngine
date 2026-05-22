@@ -124,8 +124,8 @@ private:
 
   bool m_uiMouseMode = false;
 
-  float m_playerWalkSpeed = 3.0f;
-  float m_playerSprintSpeed = 6.0f;
+  float m_playerWalkSpeed = 5.0f;
+  float m_playerSprintSpeed = 10.0f;
 
   // Lock on: stable buffer holding the enemys chest pos each frame
   glm::vec3 m_lockOnEnemyPos = { 0.0f, 0.0f, 0.0f };
@@ -134,6 +134,10 @@ private:
   // Per-frame movement output - written by handleInput() consumed by applyMovement()
   glm::vec3 m_moveDir = { 0.0f, 0.0f, 0.0f }; // desired direction, unit or zero
   float m_moveSpeed = 0.0f;
+
+  glm::vec3 m_facingTarget = { 0.0f, 0.0f, -1.0f }; // desired forward (updated in handleInput)
+  static constexpr float k_turnRateDeg = 540.0f; // deg/s in free mvmt
+  static constexpr float k_lockOnTurnRate = 1080.0f; // deg/s when locked on
 
   // Death and Respawn
   GameState m_gameState = GameState::Playing;

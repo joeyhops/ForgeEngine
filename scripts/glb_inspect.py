@@ -231,9 +231,10 @@ def inspect_animations(gltf: GLTF2, blob: bytes, anim_idx: int) -> dict:
             duration = max(duration, float(times.max()))
 
     def find_channel(target_name: str, path: str):
+        # Exact match first, then substring fallback
         for ch in anim.channels:
             node = gltf.nodes[ch.target.node]
-            if node.name and target_name.lower() in node.name.lower() \
+            if node.name and node.name.lower() == target_name.lower() \
                     and ch.target.path == path:
                 return ch
         return None

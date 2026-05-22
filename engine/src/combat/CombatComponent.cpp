@@ -206,10 +206,15 @@ void CombatComponent::setupFSM() {
 
   // Staggered - hit and poise broken
   m_fsm.addState(CombatState::Staggered, {
-    .onEnter = [this]{ m_staggerTimer = 0.6f; },
+    .onEnter = [this]{
+      m_staggerTimer = 2.0f;
+      if (m_paramTable) m_paramTable->setTrigger("hitReaction");
+      LOG_TRACE("[Combat] {} -> Staggered (poise break)", m_ownerName);
+    },
     .onUpdate = [this](float dt){
       m_staggerTimer -= dt;
-      if (m_staggerTimer <= 0.0f)
+      bool animDone = m_animator && m_animator->getCurrentStateName() != "HitReaction";
+      if (m_staggerTimer <= 0.0f || animDone)
         m_fsm.transition(CombatState::Idle);
     },
     .onExit = [this]{
