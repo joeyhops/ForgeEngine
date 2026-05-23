@@ -18,6 +18,7 @@ endif()
 add_subdirectory (engine)
 add_subdirectory (game)
 add_subdirectory (tools/tae_editor)
+add_subdirectory (tools/reflector)
 
 execute_process(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
