@@ -15,6 +15,7 @@ if(DEFINED ENV{VCPKG_ROOT})
   set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
 endif()
 # Include sub-projects.
+add_subdirectory (tools/reflector)
 add_subdirectory (engine)
 add_subdirectory (game)
 add_subdirectory (tools/tae_editor)
