@@ -8,7 +8,11 @@ add_executable(game
   src/InputManager.cpp
 )
 
-target_link_libraries(game PRIVATE forge_engine)
+target_link_libraries(game PRIVATE
+$<$<PLATFORM_ID:Linux>:-Wl,--whole-archive>
+forge_engine
+$<$<PLATFORM_ID:Linux>:-Wl,--no-whole-archive>
+)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             PROPERTY VS_STARTUP_PROJECT game)

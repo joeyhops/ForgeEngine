@@ -1,7 +1,10 @@
 #pragma once
 #include <forge/AnimationClip.h>
 #include <forge/Bone.h>
+#include <forge/TypeSystem.h>
+
 #include <glm/glm.hpp>
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -53,6 +56,14 @@ private:
   std::unordered_set<std::string> m_triggers;
 };
 
+struct IAnimNodeDefinition : public IReflectedType {
+  FORGE_REFLECT_TYPE(IAnimNodeDefinition)
+
+  TypeInfo const* GetTypeInfo() const override;
+
+  virtual ~IAnimNodeDefinition() = default;
+};
+
 // AnimGraphNode
 // All nodes implement this interface
 //
@@ -102,6 +113,15 @@ public:
 
 class ClipNode : public AnimGraphNode {
 public:
+  struct Definition : public IAnimNodeDefinition {
+    FORGE_REFLECT_TYPE(ClipNode::Definition)
+
+    TypeInfo const* GetTypeInfo() const override;
+
+    FORGE_REFLECT() std::string clipPath;
+    FORGE_REFLECT() bool loop = true;
+  };
+
   explicit ClipNode(std::shared_ptr<AnimationClip> clip, bool loop = true);
 
   void setOwnerName(const std::string& name) { m_ownerName = name; }
@@ -156,6 +176,17 @@ private:
 
 class Blend1DNode : public AnimGraphNode {
 public:
+
+  struct Definition : public IAnimNodeDefinition {
+    FORGE_REFLECT_TYPE(Blend1DNode::Definition)
+
+    TypeInfo const* GetTypeInfo() const override;
+
+    FORGE_REFLECT() std::string paramName;
+    FORGE_REFLECT() std::vector<float> thresholds;
+    FORGE_REFLECT() std::vector<std::string> clipPaths;
+  };
+
   explicit Blend1DNode(std::string paramName);
 
   void addEntry(float threshold, std::shared_ptr<AnimGraphNode> node);
@@ -321,6 +352,15 @@ struct AnimTransition {
 
 class StateMachineNode : public AnimGraphNode {
 public:
+  struct Definition : public IAnimNodeDefinition {
+    FORGE_REFLECT_TYPE(StateMachineNode::Definition)
+
+    TypeInfo const* GetTypeInfo() const override;
+
+    FORGE_REFLECT() std::string initialState;
+    FORGE_REFLECT() std::vector<std::string> stateNames;
+  };
+
   void addState(const std::string& name, std::shared_ptr<AnimGraphNode> node);
   void addTransition(AnimTransition transition);
   void setInitialState(const std::string& name);

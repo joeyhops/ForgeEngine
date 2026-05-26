@@ -1,9 +1,40 @@
-﻿set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+﻿cmake_policy(SET CMP0118 NEW)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+set(GENERATED_DIR ${CMAKE_BINARY_DIR}/generated)
+
+set (REFLECT_HEADERS
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/forge/HitboxTypes.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/forge/AnimationClip.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/forge/MaterialDefinition.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/forge/AnimGraph.h
+)
+
+set(GENERATED_SOURCES)
+foreach(HDR ${REFLECT_HEADERS})
+  get_filename_component(STEM ${HDR} NAME_WE)
+  list(APPEND GENERATED_SOURCES ${GENERATED_DIR}/${STEM}.gen.cpp)
+endforeach()
+
+add_custom_command(
+  OUTPUT ${GENERATED_SOURCES}
+  COMMAND $<TARGET_FILE:forge-reflect>
+          --compile-db ${CMAKE_BINARY_DIR}/compile_commands.json
+          --headers ${REFLECT_HEADERS}
+          --output-dir ${GENERATED_DIR}
+  DEPENDS ${REFLECT_HEADERS}
+  COMMENT "ForgeReflect: generating type registration code"
+  VERBATIM
+)
+
+#set_source_files_properties(${GENERATED_SOURCES} PROPERTIES GENERATED TIME)
+
 add_library(forge_engine STATIC
   src/core/Application.cpp
   src/core/Logger.cpp
   src/core/LevelLoader.cpp
   src/core/TAESerialization.cpp
+  src/core/TypeSystem.cpp
   src/map/GeometryGenerator.cpp
   src/map/MapScene.cpp
   src/map/EntityAssembler.cpp
@@ -33,7 +64,10 @@ add_library(forge_engine STATIC
   src/events/FlagManager.cpp
   src/ai/AIComponent.cpp
   src/assets/AssetManager.cpp
+  ${GENERATED_SOURCES}
 )
+
+add_dependencies(forge_engine forge-reflect)
 
 target_include_directories(forge_engine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
