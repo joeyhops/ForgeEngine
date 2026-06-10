@@ -1,0 +1,103 @@
+{
+    "version": 1,
+    "rootNodeIndex": 0,
+    "nodes": [
+        {
+            "index": 0,
+            "type": "StateMachineNode::Definition",
+            "initialState": "Locomotion",
+            "states": [
+                { "name": "Locomotion", "nodeIndex": 1 },
+                { "name": "Attacking",  "nodeIndex": 3 },
+                { "name": "Dead",       "nodeIndex": 4 }
+            ],
+            "transitions": [
+                {
+                    "fromState": "Locomotion", "toState": "Attacking",
+                    "blendTime": 0.1, "requireAll": false,
+                    "conditions": [
+                        { "type": "TriggerConsumed", "param": "attackR1" },
+                        { "type": "TriggerConsumed", "param": "attackR2" }
+                    ]
+                },
+                {
+                    "fromState": "Attacking", "toState": "Locomotion",
+                    "blendTime": 0.2, "requireAll": true,
+                    "conditions": [ { "type": "SourceNodeFinished", "param": "" } ]
+                },
+                {
+                    "fromState": "", "toState": "Dead",
+                    "blendTime": 0.3, "requireAll": true,
+                    "conditions": [ { "type": "BoolTrue", "param": "isDead" } ]
+                },
+                {
+                    "fromState": "Dead", "toState": "Locomotion",
+                    "blendTime": 0.5, "requireAll": true,
+                    "conditions": [ { "type": "BoolFalse", "param": "isDead" } ]
+                }
+            ]
+        },
+
+        {
+            "index": 1,
+            "type": "StateMachineNode::Definition",
+            "initialState": "FreeLoco",
+            "states": [
+                { "name": "FreeLoco", "nodeIndex": 2 }
+            ],
+            "transitions": []
+        },
+
+        {
+            "index": 2,
+            "type": "Blend1DNode::Definition",
+            "paramName": "moveSpeed",
+            "thresholds":       [0.0, 1.0],
+            "childNodeIndices": [5,   6]
+        },
+
+        {
+            "index": 3,
+            "type": "ClipNode::Definition",
+            "clipFile":  "models/characters/anim/ybot_slash.glb",
+            "clipName":  "slash",
+            "taeKey":    "",
+            "actionKey": "r1",
+            "ownerName": "enemy",
+            "loop": false
+        },
+
+        {
+            "index": 4,
+            "type": "ClipNode::Definition",
+            "clipFile":  "models/characters/anim/ybot_death.glb",
+            "clipName":  "death",
+            "taeKey":    "",
+            "actionKey": "death",
+            "ownerName": "enemy",
+            "loop": false
+        },
+
+        {
+            "index": 5,
+            "type": "ClipNode::Definition",
+            "clipFile":  "models/characters/anim/ybot_idle.glb",
+            "clipName":  "idle",
+            "taeKey":    "",
+            "actionKey": "idle",
+            "ownerName": "enemy",
+            "loop": true
+        },
+
+        {
+            "index": 6,
+            "type": "ClipNode::Definition",
+            "clipFile":  "models/characters/anim/ybot_walk.glb",
+            "clipName":  "walk",
+            "taeKey":    "",
+            "actionKey": "walk",
+            "ownerName": "enemy",
+            "loop": true
+        }
+    ]
+}

@@ -198,9 +198,7 @@ void TaeEditorApp::loadClipFromPath(const std::string& clipPath,
   m_clipPath     = clipPath;
   m_sidecarPath  = toSidecarPath(clipPath);
  
-  auto clipNode = std::make_shared<forge::ClipNode>(m_clip, false);
-  clipNode->setOwnerName("tae_editor");
-  m_animator.setGraph(clipNode);
+  m_animator.setPreviewClip(m_clip, false);
  
   m_editedEvents  = m_clip->events;
   m_selectedEvent = -1;
@@ -260,10 +258,8 @@ void TaeEditorApp::loadMovesetAction(const std::string& charPath,
   m_activeMovesetId = movesetId;
   m_activeActionKey = actionKey;
  
-  auto clipNode = std::make_shared<forge::ClipNode>(m_clip, false);
-  clipNode->setOwnerName("tae_editor");
-  m_animator.setGraph(clipNode);
- 
+  m_animator.setPreviewClip(clip, false);
+
   m_editedEvents  = m_clip->events;
   m_selectedEvent = -1;
   m_scrubTime     = 0.0f;

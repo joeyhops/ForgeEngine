@@ -1,3 +1,5 @@
+// This will be deleted once we confirm the new json graph system
+#if 0
 #pragma once
 #include <forge/AnimationClip.h>
 #include <forge/AnimGraph.h>
@@ -52,3 +54,4 @@ std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
   const CharacterClipSet& clips,
   const std::string& ownerName
 );
+#endif

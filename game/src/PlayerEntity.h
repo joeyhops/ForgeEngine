@@ -1,5 +1,4 @@
 #pragma once
-#include <forge/AnimationClip.h>
 #include <forge/Animator.h>
 #include <forge/AssetManager.h>
 #include <forge/CharacterController.h>
@@ -21,6 +20,16 @@ namespace forge {
   class DebugUI;
 }
 
+enum class DodgeDir {
+  Forward = 0,
+  ForwardRight = 1,
+  Right = 2,
+  BackwardRight = 3,
+  Backward = 4,
+  BackwardLeft = 5,
+  Left = 6,
+  ForwardLeft = 7
+};
 // Player entity
 // Owns every component and state that belongs to the player
 // character. Lifetime: constructed when ForgeGame is constructed
@@ -53,8 +62,6 @@ public:
   std::unique_ptr<forge::EquipmentComponent> equipment;
   std::unique_ptr<forge::Animator> animator;
   forge::ModelData weaponModel;
-  std::unordered_map<std::string,
-                    typename std::shared_ptr<forge::AnimationClip>> clips;
 
   glm::vec3 forward = { 0.0f, 0.0f, -1.0f };
 

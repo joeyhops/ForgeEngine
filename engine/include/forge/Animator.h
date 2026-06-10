@@ -23,7 +23,7 @@ public:
 
   // Animation Graph (replaces play())
   // Attach a graph to drive all animation via the param table
-  void setGraph(std::shared_ptr<AnimGraphNode> graph);
+  void setGraph(GraphInstance instance);
 
   // Load each clip in clipPaths and swap it into any ClipNode in the graph
   // where key == map key Called by EquipmentComponent on equip
@@ -61,6 +61,12 @@ public:
   // use to decide whether to drive the character from the delta
   // or from the physics engine
   bool isRootMotionActive() const { return m_rootMotionActive; }
+
+  // For tool/preview use: wraps a single already loaded clip in a minimal graph
+  void setPreviewClip(std::shared_ptr<AnimationClip> clip, bool loop = false);
+
+  GraphInstance* getGraphInstance() { return &m_graphInstance; }
+  const GraphInstance* getGraphInstance() const { return &m_graphInstance; }
 private:
   void computeBoneMatrices();
   
@@ -72,7 +78,7 @@ private:
   std::vector<glm::mat4> m_globalTransforms;
 
   // Graph
-  std::shared_ptr<AnimGraphNode> m_graph;
+  GraphInstance m_graphInstance;
   AnimParamTable m_params;
 
   glm::vec3 m_rootMotionDelta = glm::vec3(0.0f);

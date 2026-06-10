@@ -1,0 +1,403 @@
+{
+    "version": 1,
+    "rootNodeIndex": 0,
+    "nodes": [
+        {
+            "index": 0,
+            "type": "StateMachineNode::Definition",
+            "initialState": "Locomotion",
+            "states": [
+                { "name": "Locomotion",  "nodeIndex": 1 },
+                { "name": "Attacking",   "nodeIndex": 4 },
+                { "name": "Dead",        "nodeIndex": 5 },
+                { "name": "Dodging",     "nodeIndex": 6 },
+                { "name": "Backstep",    "nodeIndex": 7 },
+                { "name": "HitReaction", "nodeIndex": 8 }
+            ],
+            "transitions": [
+                {
+                    "fromState": "Locomotion", "toState": "Attacking",
+                    "blendTime": 0.1, "requireAll": false,
+                    "conditions": [
+                        { "type": "TriggerConsumed", "param": "attackR1" },
+                        { "type": "TriggerConsumed", "param": "attackR2" }
+                    ]
+                },
+                {
+                    "fromState": "Attacking", "toState": "Locomotion",
+                    "blendTime": 0.2, "requireAll": true,
+                    "conditions": [ { "type": "SourceNodeFinished", "param": "" } ]
+                },
+                {
+                    "fromState": "Locomotion", "toState": "Dodging",
+                    "blendTime": 0.0, "requireAll": true,
+                    "conditions": [ { "type": "TriggerConsumed", "param": "dodge" } ]
+                },
+                {
+                    "fromState": "Dodging", "toState": "Locomotion",
+                    "blendTime": 0.2, "requireAll": true,
+                    "conditions": [ { "type": "SourceNodeFinished", "param": "" } ]
+                },
+                {
+                    "fromState": "Locomotion", "toState": "Backstep",
+                    "blendTime": 0.0, "requireAll": true,
+                    "conditions": [ { "type": "TriggerConsumed", "param": "backstep" } ]
+                },
+                {
+                    "fromState": "Backstep", "toState": "Locomotion",
+                    "blendTime": 0.2, "requireAll": true,
+                    "conditions": [ { "type": "SourceNodeFinished", "param": "" } ]
+                },
+                {
+                    "fromState": "", "toState": "HitReaction",
+                    "blendTime": 0.5, "requireAll": true,
+                    "conditions": [ { "type": "TriggerConsumed", "param": "hitReaction" } ]
+                },
+                {
+                    "fromState": "HitReaction", "toState": "Locomotion",
+                    "blendTime": 0.25, "requireAll": true,
+                    "conditions": [ { "type": "SourceNodeFinished", "param": "" } ]
+                },
+                {
+                    "fromState": "", "toState": "Dead",
+                    "blendTime": 0.3, "requireAll": true,
+                    "conditions": [ { "type": "BoolTrue", "param": "isDead" } ]
+                },
+                {
+                    "fromState": "Dead", "toState": "Locomotion",
+                    "blendTime": 0.5, "requireAll": true,
+                    "conditions": [ { "type": "BoolFalse", "param": "isDead" } ]
+                }
+            ]
+        },
+
+        {
+            "index": 1,
+            "type": "StateMachineNode::Definition",
+            "initialState": "FreeLoco",
+            "states": [
+                { "name": "FreeLoco",   "nodeIndex": 2 },
+                { "name": "LockedLoco", "nodeIndex": 3 }
+            ],
+            "transitions": [
+                {
+                    "fromState": "FreeLoco", "toState": "LockedLoco",
+                    "blendTime": 0.0, "requireAll": true,
+                    "conditions": [ { "type": "BoolTrue", "param": "isLockedOn" } ]
+                },
+                {
+                    "fromState": "LockedLoco", "toState": "FreeLoco",
+                    "blendTime": 0.0, "requireAll": true,
+                    "conditions": [ { "type": "BoolFalse", "param": "isLockedOn" } ]
+                }
+            ]
+        },
+
+        {
+            "index": 2,
+            "type": "Blend1DNode::Definition",
+            "paramName": "moveSpeed",
+            "thresholds": [0.0, 1.0, 2.0],
+            "childNodeIndices": [9, 10, 11]
+        },
+
+        {
+            "index": 3,
+            "type": "Blend2DNode::Definition",
+            "xParamName": "moveX",
+            "zParamName": "moveZ",
+            "clips": [
+                { "x":  0.00, "z":  0.00, "nodeIndex": 12 },
+                { "x":  0.00, "z":  1.00, "nodeIndex": 13 },
+                { "x":  0.71, "z":  0.71, "nodeIndex": 14 },
+                { "x":  1.00, "z":  0.00, "nodeIndex": 15 },
+                { "x":  0.71, "z": -0.71, "nodeIndex": 16 },
+                { "x":  0.00, "z": -1.00, "nodeIndex": 17 },
+                { "x": -0.71, "z": -0.71, "nodeIndex": 18 },
+                { "x": -1.00, "z":  0.00, "nodeIndex": 19 },
+                { "x": -0.71, "z":  0.71, "nodeIndex": 20 }
+            ]
+        },
+
+        {
+            "index": 4,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/attacks/Anim_SwordV2_Slash1.glb",
+            "clipName": "attack_r1",
+            "taeKey": "",
+            "actionKey": "r1",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 5,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/die/Anim_DSS3_Die_RM.glb",
+            "clipName": "death",
+            "taeKey": "",
+            "actionKey": "death",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 6,
+            "type": "ClipSelectorNode::Definition",
+            "paramName": "dodgeDir",
+            "ownerName": "player",
+            "entries": [
+                { "selectorIndex": 0, "nodeIndex": 21 },
+                { "selectorIndex": 1, "nodeIndex": 22 },
+                { "selectorIndex": 2, "nodeIndex": 23 },
+                { "selectorIndex": 3, "nodeIndex": 24 },
+                { "selectorIndex": 4, "nodeIndex": 25 },
+                { "selectorIndex": 5, "nodeIndex": 26 },
+                { "selectorIndex": 6, "nodeIndex": 27 },
+                { "selectorIndex": 7, "nodeIndex": 28 }
+            ]
+        },
+
+        {
+            "index": 7,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/dodge/DodgeBackward_RootRetargeted.glb",
+            "clipName": "backstep",
+            "taeKey": "",
+            "actionKey": "backstep",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 8,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/hit/Anim_HSAS_Hit_Front_Small.glb",
+            "clipName": "hit",
+            "taeKey": "",
+            "actionKey": "hitReaction",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 9,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/idle/am_Stand_Idle_01.glb",
+            "clipName": "idle",
+            "taeKey": "",
+            "actionKey": "idle",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 10,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_Fwd_NoRM.glb",
+            "clipName": "walk",
+            "taeKey": "",
+            "actionKey": "walk",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 11,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/run/am_Loco_Run_Fwd_NoRM.glb",
+            "clipName": "sprint",
+            "taeKey": "",
+            "actionKey": "sprint",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 12,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/idle/am_Stand_Idle_01.glb",
+            "clipName": "idle",
+            "taeKey": "",
+            "actionKey": "",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 13,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_Fwd_NoRM.glb",
+            "clipName": "walk_f",
+            "taeKey": "",
+            "actionKey": "walk_f",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 14,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_FwdRight_NoRM.glb",
+            "clipName": "walk_fr",
+            "taeKey": "",
+            "actionKey": "walk_fr",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 15,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_Right_NoRM.glb",
+            "clipName": "walk_r",
+            "taeKey": "",
+            "actionKey": "walk_r",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 16,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_BwdRight_NoRM.glb",
+            "clipName": "walk_br",
+            "taeKey": "",
+            "actionKey": "walk_br",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 17,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_Bwd_NoRM.glb",
+            "clipName": "walk_b",
+            "taeKey": "",
+            "actionKey": "walk_b",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 18,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_BwdLeft_NoRM.glb",
+            "clipName": "walk_bl",
+            "taeKey": "",
+            "actionKey": "walk_bl",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 19,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_Left_NoRM.glb",
+            "clipName": "walk_l",
+            "taeKey": "",
+            "actionKey": "walk_l",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 20,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/walk/am_Loco_Walk_FwdLeft_NoRM.glb",
+            "clipName": "walk_fl",
+            "taeKey": "",
+            "actionKey": "walk_fl",
+            "ownerName": "player",
+            "loop": true
+        },
+
+        {
+            "index": 21,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/roll/A_DiveRoll_F_L_Retargeted.glb",
+            "clipName": "roll_f",
+            "taeKey": "",
+            "actionKey": "roll_f",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 22,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/roll/A_DiveRoll_45_Retargeted.glb",
+            "clipName": "roll_fr",
+            "taeKey": "",
+            "actionKey": "roll_fr",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 23,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/roll/A_DiveRoll_R_Retargeted.glb",
+            "clipName": "roll_r",
+            "taeKey": "",
+            "actionKey": "roll_r",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 24,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/roll/A_DiveRoll_135_Retargeted.glb",
+            "clipName": "roll_br",
+            "taeKey": "",
+            "actionKey": "roll_br",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 25,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/roll/A_DiveRoll_B_L_Retargeted.glb",
+            "clipName": "roll_b",
+            "taeKey": "",
+            "actionKey": "roll_b",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 26,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/roll/A_DiveRoll_225_Retargeted.glb",
+            "clipName": "roll_bl",
+            "taeKey": "",
+            "actionKey": "roll_bl",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 27,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/roll/A_DiveRoll_L_Retargeted.glb",
+            "clipName": "roll_l",
+            "taeKey": "",
+            "actionKey": "roll_l",
+            "ownerName": "player",
+            "loop": false
+        },
+
+        {
+            "index": 28,
+            "type": "ClipNode::Definition",
+            "clipFile": "anim/manny/roll/A_DiveRoll_315_Retargeted.glb",
+            "clipName": "roll_fl",
+            "taeKey": "",
+            "actionKey": "roll_fl",
+            "ownerName": "player",
+            "loop": false
+        }
+    ]
+}

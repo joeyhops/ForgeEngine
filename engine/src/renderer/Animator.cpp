@@ -19,81 +19,86 @@ void Animator::setSkeleton(const std::vector<Bone>& skeleton) {
   m_globalTransforms.assign(skeleton.size(), glm::mat4(1.0f));
 }
 
-void Animator::setGraph(std::shared_ptr<AnimGraphNode> graph) {
-  m_graph = std::move(graph);
-  if (m_graph && !m_skeleton.empty())
-    m_graph->setSkeleton(&m_skeleton);
-  LOG_INFO("[Animator] '{}' graph attached", m_ownerName);
+void Animator::setGraph(GraphInstance instance) {
+  m_graphInstance = std::move(instance);
+  AnimGraphNode* root = m_graphInstance.GetRootNode();
+  if (root && !m_skeleton.empty())
+    root->setSkeleton(&m_skeleton);
 }
 
 void Animator::swapMovesetClips(const std::unordered_map<std::string, std::string>& clipPaths) {
-  if (!m_graph) return;
-
   for (const auto& [actionKey, path] : clipPaths) {
+    ClipNode* node = m_graphInstance.FindClipByActionKey(actionKey);
+    if (!node) {
+      LOG_WARN("[Animator] '{}' swapMovesetClips: no node with actionKey '{}' in graph",
+               m_ownerName, actionKey);
+      continue;
+    }
     auto clip = AssetManager::loadAnimationClip(path, "", actionKey);
     if (!clip) {
       LOG_WARN("[Animator] swapMovesetClips: failed to load clip '{}' for key '{}'",
                path, actionKey);
       continue;
     }
-    clip->looping = false;
-    m_graph->swapClipByKey(actionKey, clip);
+    node->setClip(std::move(clip));
     LOG_INFO("[Animator] '{}' swapped clip for action key: '{}'", m_ownerName, actionKey);
   }
 }
 
 void Animator::update(float dt) {
-  if (!m_graph) {
-    LOG_ERROR("[Animator] '{}' update() called without graph attached.", m_ownerName);
+  AnimGraphNode* root = m_graphInstance.GetRootNode();
+  if (!root) {
+    LOG_ERROR("[Animator] '{}' update() called without graph attached", m_ownerName);
     return;
   }
-
   m_rootMotionDelta = glm::vec3(0.0f);
   m_rootMotionActive = false;
 
-  m_graph->update(dt, m_params);
-  m_graph->evaluate(m_localTransforms);
+  root->update(dt, m_params);
+  root->evaluate(m_localTransforms);
   computeBoneMatrices();
 
-  m_rootMotionDelta = m_graph->getRootMotionDelta();
+  m_rootMotionDelta = root->getRootMotionDelta();
   m_rootMotionActive = glm::length(m_rootMotionDelta) > 0.001f;
 }
 
 bool Animator::isFinished() const {
-  if (!m_graph) return false; 
-  return m_graph->isFinished();
+  AnimGraphNode* root = m_graphInstance.GetRootNode();
+  return root ? root->isFinished() : false;
 }
 
 float Animator::getActiveClipTime() const {
-  if (!m_graph) return 0.0f; 
-  return m_graph->getActiveClipTime();
+  AnimGraphNode* root = m_graphInstance.GetRootNode();
+  return root ? root->getActiveClipTime() : 0.0f;
 }
 
 float Animator::getActiveClipDuration() const {
-  if (!m_graph) return 0.0f; 
-  return m_graph->getActiveClipDuration();
+  AnimGraphNode* root = m_graphInstance.GetRootNode();
+  return root ? root->getActiveClipDuration() : 0.0f;
 }
 
 void Animator::scrubTo(float t) {
-  if (!m_graph) {
+  AnimGraphNode* root = m_graphInstance.GetRootNode();
+  if (!root) {
     LOG_ERROR("[Animator] '{}' scrubTo() called without graph", m_ownerName);
     return;
   }
-  m_graph->setActiveTime(t);
-  m_graph->evaluate(m_localTransforms);
+  root->setActiveTime(t);
+  root->evaluate(m_localTransforms);
   computeBoneMatrices();
 }
 
 std::string Animator::getCurrentStateName() const {
-  if (!m_graph) return "";
-  auto* sm = dynamic_cast<StateMachineNode*>(m_graph.get());
-  if (!sm) return "";
+  AnimGraphNode* root = m_graphInstance.GetRootNode();
+  if (!root) return "";
+  auto* sm = dynamic_cast<StateMachineNode*>(root);
   return sm->getCurrentState();
 }
 
 std::string Animator::getStateInfo() const {
-  if (!m_graph) return "none"; 
-  return m_graph->getDebugStateInfo();
+  AnimGraphNode* root = m_graphInstance.GetRootNode();
+  if (!root) return "none"; 
+  return root->getDebugStateInfo();
 }
 
 void Animator::computeBoneMatrices() {
@@ -206,6 +211,22 @@ glm::vec3 AnimationClip::sampleRootDelta(float tPrev, float tNow) const {
     LOG_INFO("[RM] delta: ({:.3f},{:.3f},{:.3f})", delta.x, delta.y, delta.z);
 
   return delta;
+}
+
+void Animator::setPreviewClip(std::shared_ptr<AnimationClip> clip, bool loop) {
+  auto def = std::make_shared<GraphDefinition>();
+  auto clipDef = std::make_unique<ClipNode::Definition>();
+  clipDef->loop = loop;
+  clipDef->actionKey = "preview";
+  clipDef->ownerName = m_ownerName;
+
+  // clipFile intentionally empty, we wire it directly below
+  def->m_nodeDefs.push_back(std::move(clipDef));
+  def->m_rootNodeIndex = 0;
+
+  auto inst = GraphInstance::Create(def);
+  static_cast<ClipNode*>(inst.m_nodes[0])->m_clip = std::move(clip);
+  setGraph(std::move(inst));
 }
 
 }

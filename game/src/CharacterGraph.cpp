@@ -1,3 +1,4 @@
+#if 0
 #include "CharacterGraph.h"
 #include "forge/Logger.h"
 
@@ -159,3 +160,4 @@ std::shared_ptr<forge::StateMachineNode> buildCharacterGraph(
 
   return root;
 }
+#endif

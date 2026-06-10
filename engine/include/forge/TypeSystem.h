@@ -215,7 +215,8 @@ private:
 // Reflection Macros
 
 #ifndef FORGE_REFLECT_TYPE
-#define FORGE_REFLECT_TYPE(TypeName) /* forge-reflect marker */
+#define FORGE_REFLECT_TYPE(TypeName) \
+  static constexpr const char* kTypeName = #TypeName;
 #endif
 
 #ifndef FORGE_REFLECT

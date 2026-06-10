@@ -2,6 +2,7 @@
 #include <forge/AnimationClip.h>
 #include <forge/Bone.h>
 #include <forge/TypeSystem.h>
+#include <forge/AssetManager.h>
 
 #include <glm/glm.hpp>
 
@@ -54,6 +55,7 @@ private:
   std::unordered_map<std::string, bool> m_bools;
   std::unordered_map<std::string, int> m_ints;
   std::unordered_set<std::string> m_triggers;
+
 };
 
 struct IAnimNodeDefinition : public IReflectedType {
@@ -118,55 +120,47 @@ public:
 
     TypeInfo const* GetTypeInfo() const override;
 
-    FORGE_REFLECT() std::string clipPath;
+    FORGE_REFLECT() std::string clipFile; // file-relative path
+    FORGE_REFLECT() std::string clipName; // track name within file: "Armature|Idle"
+    FORGE_REFLECT() std::string taeKey; // sidecar key, empty == no TAE events
+    FORGE_REFLECT() std::string actionKey; // moveset swap key: "r1" "idle" "walk"
+    FORGE_REFLECT() std::string ownerName; // debug/TAE context: "player", "hollowSoldier"
     FORGE_REFLECT() bool loop = true;
   };
 
-  explicit ClipNode(std::shared_ptr<AnimationClip> clip, bool loop = true);
-
-  void setOwnerName(const std::string& name) { m_ownerName = name; }
+  // Created by GraphInstance::Create() never by direct construction in game code
+  ClipNode() = default;
 
   // Restart from time 0
   void reset();
-
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const override;
   bool isFinished() const override;
   void setActiveTime(float t) override;
-  float getTime() const { return m_time; }
-
   void setSkeleton(const std::vector<Bone>* skeleton) override { m_skeleton = skeleton; }
-
-  void setActionKey(const std::string& key) { m_actionKey = key; }
   // Direct clip replacement -- resets playback state
-  void setClip(std::shared_ptr<AnimationClip> clip);
   void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
-
+  void setClip(std::shared_ptr<AnimationClip> clip);
   std::string getDebugStateInfo() const override;
-
   float getActiveClipTime() const override { return m_time; }
   float getActiveClipDuration() const override { return m_clip ? m_clip->duration : 0.0f; }
-
-  float getCurrentTime() const { return m_time; }
-  float getDuration() const { return m_clip ? m_clip->duration : 0.0f; }
-  const std::shared_ptr<AnimationClip>& getClip() const { return m_clip; }
   glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
+
+  const Definition* m_pDef = nullptr; // Points to GraphDefinition::m_nodeDefs[i]
+  std::shared_ptr<AnimationClip> m_clip; // Resolved at GraphInstance::Create() time
+  
+  // Per-character state
+  float m_time = 0.0f;
+  float m_prevTime = 0.0f;
+  uint64_t m_activeEventMask = 0; // replaces unordered_set<int>; bit i = event i active
+  glm::vec3 m_rootDelta = glm::vec3(0.0f);
+  
+  // Injected not owned
+  const std::vector<Bone>* m_skeleton = nullptr;
+  mutable std::vector<glm::mat4> m_pose;
 private:
   void tickTAEEvents(float prevTime, float curTime);
   void deactivateAllEvents();
-
-  std::shared_ptr<AnimationClip> m_clip;
-  bool m_loop = true;
-  float m_time = 0.0f;
-  float m_prevTime = 0.0f;
-  std::string m_ownerName;
-  std::string m_actionKey;
-  const std::vector<Bone>* m_skeleton = nullptr;
-
-  mutable std::vector<glm::mat4> m_pose;
-
-  std::unordered_set<int> m_activeEventIndices;
-  glm::vec3 m_rootDelta = glm::vec3(0.0f);
 };
 
 // Blend1DNode
@@ -184,49 +178,30 @@ public:
 
     FORGE_REFLECT() std::string paramName;
     FORGE_REFLECT() std::vector<float> thresholds;
-    FORGE_REFLECT() std::vector<std::string> clipPaths;
+    FORGE_REFLECT() std::vector<int16_t> childNodeIndices; // parallel to thresholds
   };
 
-  explicit Blend1DNode(std::string paramName);
-
-  void addEntry(float threshold, std::shared_ptr<AnimGraphNode> node);
+  Blend1DNode() = default;
 
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const  override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
-
-  void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
   void setActiveTime(float t) override;
-
-  std::string getDebugStateInfo() const override;
-  float getActiveClipTime() const override {
-    if (m_lowerIdx < (int)m_entries.size() && m_entries[m_lowerIdx].node)
-      return m_entries[m_lowerIdx].node->getActiveClipTime();
-    return 0.0f;
-  }
-
-  float getActiveClipDuration() const override {
-    if (m_lowerIdx < (int)m_entries.size() && m_entries[m_lowerIdx].node)
-      return m_entries[m_lowerIdx].node->getActiveClipDuration();
-    return 0.0f;
-  }
-  
   glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
-private:
-  struct Entry {
-    float threshold = 0.0f;
-    std::shared_ptr<AnimGraphNode> node;
-  };
+  std::string getDebugStateInfo() const override;
+  float getActiveClipTime() const override;
+  float getActiveClipDuration() const override;
 
-  std::string m_paramName;
-  std::vector<Entry> m_entries; // sorted ascending by threshold
+  const Definition* m_pDef = nullptr;
+  std::vector<AnimGraphNode*> m_children; // raw ptrs into GraphInstance Buffer
 
-
+  // per-character state
   float m_param = 0.0f;
   int m_lowerIdx = 0; // Index of lower bracketing entry
   float m_localAlpha = 0.0f; 
-
   glm::vec3 m_rootDelta = glm::vec3(0.0f);
+private:
+  void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
 };
 
 // Blend2DNode
@@ -247,53 +222,53 @@ private:
 
 class Blend2DNode : public AnimGraphNode {
 public:
-  Blend2DNode(std::string xParam, std::string zParam);
+  struct ClipEntry {
+    FORGE_REFLECT() float x;
+    FORGE_REFLECT() float z;
+    FORGE_REFLECT() int16_t nodeIndex; // index into GraphDefinition::m_nodeDefs
+  };
 
-  // Register clip at 2D parameter space pos. Call before build()
-  void addClip(glm::vec2 position, std::shared_ptr<AnimationClip> clip);
+  struct Definition : public IAnimNodeDefinition {
+    FORGE_REFLECT_TYPE(Blend2DNode::Definition)
+
+    TypeInfo const* GetTypeInfo() const override;
+
+    FORGE_REFLECT() std::string xParamName;
+    FORGE_REFLECT() std::string zParamName;
+    FORGE_REFLECT() std::vector<ClipEntry> clips;
+  };
+
+  Blend2DNode() = default;
 
   // computer delaunay triangulation and hull edges from registered positions
   // Must be called once after all addClip() calls, before first update()
   void build();
-
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const override;
-  glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
-
-  bool isFinished() const override { return false; }
-
   void setSkeleton(const std::vector<Bone>* skeleton) override;
-  void swapClipByKey(const std::string& key,
-                     std::shared_ptr<AnimationClip> clip) override;
   void setActiveTime(float t) override;
-
+  glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
   std::string getDebugStateInfo() const override;
 
-private:
-  std::string m_xParam, m_zParam;
+  const Definition* m_pDef = nullptr;
+  std::vector<ClipNode*> m_children;
 
-  struct BlendClip {
-    glm::vec2 position;
-    std::shared_ptr<ClipNode> node;
-  };
-  std::vector<BlendClip> m_clips;
-
+  // Triangulation
   struct Triangle { int a, b, c; }; // indices into m_clips
-  std::vector<Triangle> m_triangles; // computed once in build()
-
-  // Hill edge with the idx of its single adjacent triangle
-  // computed once in build and reused by the nearest edge clamp
   struct HullEdge { int u, v, tri; };
+  std::vector<Triangle> m_triangles; // computed once in build()
   std::vector<HullEdge> m_hullEdges;
 
-  // curr frame blend state
+  // Per character state
   int m_idxA = 0, m_idxB = 0, m_idxC = 0;
   glm::vec3 m_weights { 1.0f, 0.0f, 0.0f };
   glm::vec2 m_currentParam { 0.0f, 0.0f };
-
   glm::vec3 m_rootDelta = glm::vec3(0.0f);
+private:
+  void swapClipByKey(const std::string& key,
+                     std::shared_ptr<AnimationClip> clip) override;
 };
 
 // ClipSelectorNode
@@ -304,33 +279,43 @@ private:
 // transition but simpler and cheaper to store (no crossfade)
 class ClipSelectorNode : public AnimGraphNode {
 public:
-  explicit ClipSelectorNode(std::string paramName);
+  struct Entry {
+    FORGE_REFLECT() int selectorIndex; // int param that activates entry
+    FORGE_REFLECT() int16_t nodeIndex;
+  };
 
-  // Register clip at given int idx
-  // Indices need not be contiguous. Unregistered indices are
-  // silent no-ops
-  void addClip(int index, std::shared_ptr<AnimationClip> clip);
+  struct Definition : public IAnimNodeDefinition {
+    FORGE_REFLECT_TYPE(ClipSelectorNode::Definition)
 
-  void setOwnerName(const std::string& name);
+    TypeInfo const* GetTypeInfo() const override;
+
+    FORGE_REFLECT() std::string paramName;
+    FORGE_REFLECT() std::string ownerName;
+    FORGE_REFLECT() std::vector<Entry> entries;
+  };
+
+  ClipSelectorNode() = default;
+
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const override;
   bool isFinished() const override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
-  void swapClipByKey(const std::string& key,
-                     std::shared_ptr<AnimationClip> clip) override;
   void setActiveTime(float t) override;
-
   glm::vec3 getRootMotionDelta()const override;
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
   std::string getDebugStateInfo() const override;
 
-private:
-  std::string m_ownerName;
-  std::string m_paramName;
-  std::unordered_map<int, std::shared_ptr<ClipNode>> m_clips;
+  const Definition* m_pDef = nullptr;
+  std::vector<ClipNode*> m_children;
+  std::unordered_map<int, ClipNode*> m_byIndex; // Built at create time for O(1) lookup
+
+  // Per character state
   int m_selected = 0;
   int m_prevSelected = -1;
+private:
+  void swapClipByKey(const std::string& key,
+                     std::shared_ptr<AnimationClip> clip) override;
 };
 
 // StateMachineNode
@@ -343,72 +328,100 @@ private:
 //  - A crossfade blend starts over m_blendTime seconds
 //  - evaluate() lerps between the outgoing and incoming node poses
 
-struct AnimTransition {
-  std::string fromState;
-  std::string toState;
-  std::function<bool(AnimParamTable&)> condition;
-  float blendTime = 0.2f;
+FORGE_REFLECT_ENUM(ConditionType)
+enum class ConditionType : uint8_t {
+  TriggerConsumed,
+  BoolTrue,
+  BoolFalse,
+  SourceNodeFinished
+};
+
+struct TransitionConditionDef {
+  FORGE_REFLECT() ConditionType type = ConditionType::BoolTrue;
+  FORGE_REFLECT() std::string param;
 };
 
 class StateMachineNode : public AnimGraphNode {
 public:
+  struct StateDef {
+    FORGE_REFLECT() std::string name;
+    FORGE_REFLECT() int16_t nodeIndex;
+  };
+
+  struct TransitionDef {
+    FORGE_REFLECT() std::string fromState; // "" == any state
+    FORGE_REFLECT() std::string toState;
+    FORGE_REFLECT() float blendTime = 0.2f;
+    FORGE_REFLECT() std::vector<TransitionConditionDef> conditions;
+    FORGE_REFLECT() bool requireAll = true; // true=AND false=OR
+  };
+
   struct Definition : public IAnimNodeDefinition {
     FORGE_REFLECT_TYPE(StateMachineNode::Definition)
 
     TypeInfo const* GetTypeInfo() const override;
 
     FORGE_REFLECT() std::string initialState;
-    FORGE_REFLECT() std::vector<std::string> stateNames;
+    FORGE_REFLECT() std::vector<StateDef> states;
+    FORGE_REFLECT() std::vector<TransitionDef> transitions;
   };
 
-  void addState(const std::string& name, std::shared_ptr<AnimGraphNode> node);
-  void addTransition(AnimTransition transition);
-  void setInitialState(const std::string& name);
+  StateMachineNode() = default;
 
   void update(float dt, AnimParamTable& params) override;
   void evaluate(std::vector<glm::mat4>& outPose) const override;
   bool isFinished() const override;
   void setActiveTime(float t) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
-
-  void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
-
+  glm::vec3 getRootMotionDelta() const override;
+  float getActiveClipTime() const override;
+  float getActiveClipDuration() const override;
   std::string getDebugStateInfo() const override;
-
-  float getActiveClipTime() const override {
-    auto it = m_states.find(m_currentState);
-    if (it != m_states.end() && it->second)
-      return it->second->getActiveClipTime();
-    return 0.0f;
-  }
-
-  float getActiveClipDuration() const override {
-    auto it = m_states.find(m_currentState);
-    if (it != m_states.end() && it->second)
-      return it->second->getActiveClipDuration();
-    return 0.0f;
-  }
-
   const std::string& getCurrentState() const { return m_currentState; }
 
-  glm::vec3 getRootMotionDelta() const override;
-private:
-  void transitionTo(const std::string& toState, float blendTime, AnimParamTable& params);
+  const Definition* m_pDef = nullptr;
+  std::vector<AnimGraphNode*> m_stateNodes;
 
-  std::unordered_map<std::string, std::shared_ptr<AnimGraphNode>> m_states;
-  std::vector<AnimTransition> m_transitions;
-
+  // per character state
   std::string m_currentState;
   std::string m_previousState;
-
-  // Crossfade
   float m_blendAlpha = 1.0f; // 1.0 = fully in current state
   float m_blendTime = 0.0f;
   float m_blendTimer = 0.0f;
-
-  // Cachjed poses for blend
   mutable std::vector<glm::mat4> m_prevPose;
   mutable std::vector<glm::mat4> m_currPose;
+
+private:
+  int findStateIndex(const std::string& name) const;
+  void transitionTo(const std::string& toState, float blendTime, AnimParamTable& params);
+  bool evaluateConditions(const StateMachineNode::TransitionDef& td, AnimParamTable& params) const;
+};
+
+struct GraphDefinition {
+  std::vector<std::unique_ptr<IAnimNodeDefinition>> m_nodeDefs;
+  std::vector<TypeID> m_nodeTypeIDs;
+  int16_t m_rootNodeIndex = 0;
+
+  static std::shared_ptr<GraphDefinition> LoadFromJson(const std::string& path);
+};
+
+struct GraphInstance {
+  std::shared_ptr<const GraphDefinition> m_pDefinition;
+  std::unique_ptr<std::byte[]> m_nodeBuffer;
+  std::vector<AnimGraphNode*> m_nodes; // Ptrs into m_nodeBuffer
+  std::unordered_map<std::string, ClipNode*> m_clipsByActionKey; // for swapMovesetClips
+
+  static GraphInstance Create(std::shared_ptr<const GraphDefinition> def);
+  GraphInstance Clone() const;
+  AnimGraphNode* GetRootNode() const;
+  ClipNode* FindClipByActionKey(const std::string& key) const;
+
+  GraphInstance() = default;
+  GraphInstance(GraphInstance&&) = default;
+  GraphInstance& operator=(GraphInstance&&) = default;
+  GraphInstance(const GraphInstance&) = delete;
+  GraphInstance& operator=(const GraphInstance&) = delete;
+  ~GraphInstance();
 };
 
 }

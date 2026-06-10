@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
-#include "CharacterGraph.h"
 #include "GameFlags.h"
 
 ForgeGame::ForgeGame()
@@ -1353,8 +1352,7 @@ void ForgeGame::handleInput(float dt) {
     m_player.animator->getParams().setInt("dodgeDir", static_cast<int>(dir));
 
     bool isStandstill = (glm::length(inputDir) <= 0.001f);
-    bool hasBackstep = m_player.clips.count("backstep")
-                      && m_player.clips.at("backstep") != nullptr;
+    
     if (!isStandstill) {
       m_player.dodgeFacingQuat = glm::quatLookAt(
        -inputDir, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -1362,7 +1360,7 @@ void ForgeGame::handleInput(float dt) {
       m_player.dodgeFacingQuat = m_player.transform->getRotation();
     }
 
-    if (isStandstill && hasBackstep)
+    if (isStandstill)
       m_player.animator->getParams().setTrigger("backstep");
     else
       m_player.animator->getParams().setTrigger("dodge");
@@ -1436,8 +1434,10 @@ void ForgeGame::applyMovement(float dt) {
       localDelta *= m_rmScale;
     }
 
-    //if (isDodging)
-    //  localDelta.x = -localDelta.x;
+    if (isDodging || isBackstepping) {
+      m_player.transform->setRotation(m_player.dodgeFacingQuat);
+      m_player.forward = m_player.dodgeFacingQuat * glm::vec3(0.0f, 0.0f, -1.0f);
+    }
     glm::quat facing = m_player.transform->getRotation();
     displacement = facing * localDelta * (forge::PhysicsWorld::k_fixedStep / dt);
   } else {

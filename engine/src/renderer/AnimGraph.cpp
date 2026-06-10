@@ -1,11 +1,18 @@
 #include <forge/AnimGraph.h>
+#include <forge/AssetManager.h>
 #include <forge/Events.h>
 #include <forge/EventBus.h>
+#include <forge/TypeSystem.h>
 #include <forge/Logger.h>
+
+#include <nlohmann/json.hpp>
+
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
+
 #include <algorithm>
+#include <fstream>
 
 namespace forge {
 
@@ -31,15 +38,11 @@ bool AnimParamTable::consumeTrigger(const std::string& k) {
   return true;
 }
 
-ClipNode::ClipNode(std::shared_ptr<AnimationClip> clip, bool loop) 
-  : m_clip(std::move(clip)), m_loop(loop)
-{}
-
 void ClipNode::reset() {
   deactivateAllEvents();
   m_time = 0.0f;
   m_prevTime = 0.0f;
-  m_activeEventIndices.clear();
+  m_activeEventMask = 0;
 }
 
 void ClipNode::update(float dt, AnimParamTable& params) {
@@ -48,11 +51,11 @@ void ClipNode::update(float dt, AnimParamTable& params) {
   m_prevTime = m_time;
   m_time += dt;
 
-  if (m_loop && m_time >= m_clip->duration) {
+  if (m_pDef->loop && m_time >= m_clip->duration) {
     deactivateAllEvents();
     m_time = fmodf(m_time, m_clip->duration);
     m_prevTime = 0.0f;
-  } else if (!m_loop && m_time >= m_clip->duration) {
+  } else if (!m_pDef->loop && m_time >= m_clip->duration) {
     m_time = m_clip->duration;
   }
 
@@ -77,7 +80,7 @@ void ClipNode::evaluate(std::vector<glm::mat4>& outPose) const {
 }
 
 bool ClipNode::isFinished() const {
-  if (!m_clip || m_loop) return false;
+  if (!m_clip || m_pDef->loop) return false;
   return m_time >= m_clip->duration;
 }
 
@@ -85,7 +88,7 @@ void ClipNode::setActiveTime(float t) {
   if (!m_clip) return;
   m_time = std::clamp(t, 0.0f, m_clip->duration);
   m_prevTime = m_time;
-  m_activeEventIndices.clear();
+  m_activeEventMask = 0;
   m_pose.clear();
 }
 
@@ -100,38 +103,40 @@ void ClipNode::tickTAEEvents(float prevTime, float curTime) {
 
   for (int i = 0; i < (int)events.size(); i++) {
     const AnimEvent& ev = events[i];
-    bool wasActive = m_activeEventIndices.count(i) > 0;
-
+    bool wasActive = (m_activeEventMask >> i) & 1u;
     if (ev.startTime == ev.endTime) {
       // One-shot: fire both activated + deactived on first crossing
       if (!wasActive && prevTime <= ev.startTime && curTime > ev.startTime) {
-        EventBus::publish(AnimEventActivated{ m_ownerName, ev.type, ev.payload, ev.capsules });
-        EventBus::publish(AnimEventDeactivated{ m_ownerName, ev.type, ev.payload });
-        m_activeEventIndices.insert(i);
+        EventBus::publish(AnimEventActivated{ m_pDef->ownerName, ev.type, ev.payload, ev.capsules });
+        EventBus::publish(AnimEventDeactivated{ m_pDef->ownerName, ev.type, ev.payload });
+        m_activeEventMask |= (1ull << i);
       }
     } else {
       bool shouldBeActive = (curTime >= ev.startTime && curTime < ev.endTime);
       if (!wasActive && shouldBeActive) {
-        m_activeEventIndices.insert(i);
-        EventBus::publish(AnimEventActivated{ m_ownerName, ev.type, ev.payload, ev.capsules });
+        m_activeEventMask |= (1ull << i);
+        EventBus::publish(AnimEventActivated{ m_pDef->ownerName, ev.type, ev.payload, ev.capsules });
       } else if (wasActive && !shouldBeActive) {
-        m_activeEventIndices.erase(i);
-        EventBus::publish(AnimEventDeactivated{ m_ownerName, ev.type, ev.payload });
+        m_activeEventMask &= ~(1ull << i);
+        EventBus::publish(AnimEventDeactivated{ m_pDef->ownerName, ev.type, ev.payload });
       }
     }
   }
 }
 
 void ClipNode::deactivateAllEvents() {
-  if (!m_clip) return;
+  if (!m_clip || m_activeEventMask == 0) return;
   const auto& events = m_clip->events;
-  for (int i : m_activeEventIndices) {
+  uint64_t mask = m_activeEventMask;
+  while (mask) {
+    int i = __builtin_ctzll(mask);
+    mask &= mask - 1;
     if (i >= (int)events.size()) continue;
     const auto& ev = events[i];
     if (ev.startTime == ev.endTime) continue;
-    EventBus::publish(AnimEventDeactivated{ m_ownerName, ev.type, ev.payload });
+    EventBus::publish(AnimEventDeactivated{ m_pDef->ownerName, ev.type, ev.payload });
   }
-  m_activeEventIndices.clear();
+  m_activeEventMask = 0;
 }
 
 void ClipNode::setClip(std::shared_ptr<AnimationClip> clip) {
@@ -142,116 +147,107 @@ void ClipNode::setClip(std::shared_ptr<AnimationClip> clip) {
 }
 
 void ClipNode::swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
-  if (m_actionKey == key)
+  if (m_pDef->actionKey == key)
     setClip(std::move(clip));
 }
 
-Blend1DNode::Blend1DNode(std::string paramName)
-  : m_paramName(std::move(paramName))
-{}
-
-void Blend1DNode::addEntry(float threshold, std::shared_ptr<AnimGraphNode> node) {
-  m_entries.push_back({ threshold, std::move(node) });
-  std::sort(m_entries.begin(), m_entries.end(),
-            [](const Entry& a, const Entry& b){ return a.threshold < b.threshold; });
-}
-
 void Blend1DNode::setSkeleton(const std::vector<Bone>* skeleton) {
-  for (auto& e : m_entries)
-    if (e.node) e.node->setSkeleton(skeleton);
+  for (auto& e : m_children)
+    if (e) e->setSkeleton(skeleton);
 }
 
 void Blend1DNode::setActiveTime(float t) {
-  for (auto& entry : m_entries)
-    if (entry.node) entry.node->setActiveTime(t);
+  for (auto& entry : m_children)
+    if (entry) entry->setActiveTime(t);
 }
 
 void Blend1DNode::update(float dt, AnimParamTable& params) {
-  if (m_entries.empty()) return;
+  if (!m_pDef || m_children.empty()) return;
+  const auto& thresholds = m_pDef->thresholds;
 
-  m_param = params.getFloat(m_paramName, 0.0f);
+  m_param = params.getFloat(m_pDef->paramName, 0.0f);
 
-  if (m_entries.size() == 1) {
+  if (m_children.size() == 1) {
     m_lowerIdx = 0;
     m_localAlpha = 0.0f;
-    if (m_entries[0].node) m_entries[0].node->update(dt, params);
+    if (m_children[0]) m_children[0]->update(dt, params);
     return;
   }
 
   // Clamp param to declared range and find bracketing entries
-  if (m_param <= m_entries.front().threshold) {
+  if (m_param <= thresholds.front()) {
     m_lowerIdx = 0;
     m_localAlpha = 0.0f;
-  } else if (m_param >= m_entries.back().threshold) {
-    m_lowerIdx = static_cast<int>(m_entries.size()) - 2;
+  } else if (m_param >= thresholds.back()) {
+    m_lowerIdx = (int)thresholds.size() - 2;
     m_localAlpha = 1.0f;
   } else {
     m_lowerIdx = 0;
-    for (int i = 0; i < static_cast<int>(m_entries.size()) - 1; ++i) {
-      if (m_param >= m_entries[i].threshold && m_param < m_entries[i + 1].threshold) {
+    for (int i = 0; i < (int)thresholds.size() - 1; ++i) {
+      if (m_param >= thresholds[i] && m_param < thresholds[i + 1]) {
         m_lowerIdx = i;
         break;
       }
     }
-    float range = m_entries[m_lowerIdx + 1].threshold - m_entries[m_lowerIdx].threshold;
+    float range = thresholds[m_lowerIdx + 1] - thresholds[m_lowerIdx];
     m_localAlpha = (range > 0.0f)
-      ? (m_param - m_entries[m_lowerIdx].threshold) / range
+      ? (m_param - thresholds[m_lowerIdx]) / range
       : 0.0f;
   }
 
-  if (m_entries[m_lowerIdx].node)
-    m_entries[m_lowerIdx].node->update(dt, params);
+  if (m_children[m_lowerIdx])
+    m_children[m_lowerIdx]->update(dt, params);
 
   int upperIdx = m_lowerIdx + 1;
-  if (upperIdx < static_cast<int>(m_entries.size()) && m_entries[upperIdx].node)
-    m_entries[upperIdx].node->update(dt, params);
+  if (upperIdx < (int)m_children.size() && m_children[upperIdx])
+    m_children[upperIdx]->update(dt, params);
 
-  glm::vec3 lowerDelta = m_entries[m_lowerIdx].node
-    ? m_entries[m_lowerIdx].node->getRootMotionDelta()
+  glm::vec3 lowerDelta = m_children[m_lowerIdx]
+    ? m_children[m_lowerIdx]->getRootMotionDelta()
     : glm::vec3(0.0f);
 
-  glm::vec3 upperDelta = (upperIdx < static_cast<int>(m_entries.size()) && m_entries[upperIdx].node)
-    ? m_entries[upperIdx].node->getRootMotionDelta()
+  glm::vec3 upperDelta = (upperIdx < (int)m_children.size() && m_children[upperIdx])
+    ? m_children[upperIdx]->getRootMotionDelta()
     : glm::vec3(0.0f);
 
   m_rootDelta = glm::mix(lowerDelta, upperDelta, m_localAlpha);
 }
 
 void Blend1DNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  if (m_entries.empty()) return;
+  if (m_children.empty()) return;
 
-  if (m_entries.size() == 1) {
-    if (m_entries[0].node) m_entries[0].node->evaluate(outPose);
+  if (m_children.size() == 1) {
+    if (m_children[0]) m_children[0]->evaluate(outPose);
     return;
   }
 
-  const auto& lower = m_entries[m_lowerIdx];
-  const auto& upper = m_entries[m_lowerIdx + 1];
+  const auto& lower = m_children[m_lowerIdx];
+  const auto& upper = m_children[m_lowerIdx + 1];
 
-  if (!lower.node && !upper.node) return;
-  if (!lower.node) {
-    upper.node->evaluate(outPose);
+  if (!lower && !upper) return;
+  if (!lower) {
+    upper->evaluate(outPose);
     return;
   }
-  if (!upper.node) {
-    lower.node->evaluate(outPose);
+  if (!upper) {
+    lower->evaluate(outPose);
     return;
   }
 
   // Fully at lower bound
   if (m_localAlpha <= 0.0f) {
-    lower.node->evaluate(outPose);
+    lower->evaluate(outPose);
     return;
   }
   // Fully at upper bound
   if (m_localAlpha >= 1.0f) {
-    upper.node->evaluate(outPose);
+    upper->evaluate(outPose);
     return;
   }
 
   std::vector<glm::mat4> fromPose, toPose;
-  lower.node->evaluate(fromPose);
-  upper.node->evaluate(toPose);
+  lower->evaluate(fromPose);
+  upper->evaluate(toPose);
 
   size_t count = std::min(fromPose.size(), toPose.size());
   outPose.resize(count);
@@ -260,45 +256,81 @@ void Blend1DNode::evaluate(std::vector<glm::mat4>& outPose) const {
 }
 
 std::string Blend1DNode::getDebugStateInfo() const {
-  std::string lower = (m_lowerIdx < (int)m_entries.size())
-    ? (m_entries[m_lowerIdx].node ? m_entries[m_lowerIdx].node->getDebugStateInfo() : "?")
+  std::string lower = (m_lowerIdx < (int)m_children.size())
+    ? (m_children[m_lowerIdx] ? m_children[m_lowerIdx]->getDebugStateInfo() : "?")
     : "?";
-  std::string upper = (m_lowerIdx + 1 < (int)m_entries.size())
-    ? (m_entries[m_lowerIdx + 1].node ? m_entries[m_lowerIdx + 1].node->getDebugStateInfo() : "?")
+  std::string upper = (m_lowerIdx + 1 < (int)m_children.size())
+    ? (m_children[m_lowerIdx + 1] ? m_children[m_lowerIdx + 1]->getDebugStateInfo() : "?")
     : "?";
   int pct = static_cast<int>(m_localAlpha * 100.0f);
-  return "Blend1D(" + m_paramName + "=" + std::to_string(m_param).substr(0, 4) + " "
+  return "Blend1D(" + m_pDef->paramName + "=" + std::to_string(m_param).substr(0, 4) + " "
           + lower + "->" + upper + " " + std::to_string(pct) + "%)";
 }
 
 void Blend1DNode::swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
-  for (auto& entry : m_entries) {
-    if (entry.node)
-      entry.node->swapClipByKey(key, clip);
+  for (auto* n : m_children)
+    if (n) n->swapClipByKey(key, clip);
+}
+
+float Blend1DNode::getActiveClipTime() const {
+  if (m_lowerIdx < (int)m_children.size() && m_children[m_lowerIdx])
+    return m_children[m_lowerIdx]->getActiveClipTime();
+  return 0.0f;
+}
+
+float Blend1DNode::getActiveClipDuration() const {
+  if (m_lowerIdx < (int)m_children.size() && m_children[m_lowerIdx])
+    return m_children[m_lowerIdx]->getActiveClipDuration();
+  return 0.0f;
+}
+
+bool StateMachineNode::evaluateConditions(const TransitionDef& td,
+                                          AnimParamTable& params) const {
+  bool result = td.requireAll;
+
+  for (const auto& cond : td.conditions) {
+    bool condResult = false;
+    switch (cond.type) {
+      case ConditionType::TriggerConsumed:
+        condResult = params.consumeTrigger(cond.param);
+        break;
+      case ConditionType::BoolTrue:
+        condResult = params.getBool(cond.param);
+        break;
+      case ConditionType::BoolFalse:
+        condResult = !params.getBool(cond.param);
+        break;
+      case ConditionType::SourceNodeFinished: {
+        int srcIdx = findStateIndex(td.fromState);
+        if (srcIdx >= 0 && srcIdx < (int)m_stateNodes.size() && m_stateNodes[srcIdx])
+          condResult = m_stateNodes[srcIdx]->isFinished();
+        break;
+      }
+    }
+    if (td.requireAll) result = result && condResult;
+    else result = result || condResult;
+
+    if (td.requireAll && !result) return false;
+    if (!td.requireAll && result) return true;
   }
+  return result;
 }
 
-void StateMachineNode::addState(const std::string& name, std::shared_ptr<AnimGraphNode> node) {
-  m_states[name] = std::move(node);
-}
-
-void StateMachineNode::addTransition(AnimTransition transition) {
-  m_transitions.push_back(std::move(transition));
-}
-
-void StateMachineNode::setInitialState(const std::string& name) {
-  m_currentState = name;
-  m_blendAlpha = 1.0f;
-  LOG_INFO("[AnimGraph] Initial state: '{}'", name);
+int StateMachineNode::findStateIndex(const std::string& name) const {
+  if (!m_pDef) return -1;
+  for (int i = 0; i < (int)m_pDef->states.size(); ++i)
+    if (m_pDef->states[i].name == name) return i;
+  return -1;
 }
 
 void StateMachineNode::setSkeleton(const std::vector<Bone>* skeleton) {
-  for (auto& [name, node] : m_states)
-    if (node) node->setSkeleton(skeleton);
+  for (auto* n : m_stateNodes)
+    if (n) n->setSkeleton(skeleton);
 }
 
 void StateMachineNode::transitionTo(const std::string& toState, float blendTime, AnimParamTable& params) {
-  if (m_states.find(toState) == m_states.end()) {
+  int toIdx = findStateIndex(toState);
+  if (toIdx < 0) {
     LOG_WARN("[AnimGraph] Transition to unknown state '{}'", toState);
     return;
   }
@@ -311,42 +343,40 @@ void StateMachineNode::transitionTo(const std::string& toState, float blendTime,
   m_blendTimer = 0.0f;
   m_blendAlpha = (blendTime > 0.0f) ? 0.0f : 1.0f;
 
-  // Reset incoming node so it plays from beginning
-  auto& incomingNode = m_states[m_currentState];
-  if (incomingNode) {
-    if (auto* clip = dynamic_cast<ClipNode*>(incomingNode.get()))
+  AnimGraphNode* incoming = m_stateNodes[toIdx];
+  if (incoming) {
+    if (auto* clip = dynamic_cast<ClipNode*>(incoming))
       clip->reset();
     else
-      incomingNode->setActiveTime(0.0f);
+      incoming->setActiveTime(0.0f);
   }
 }
 
 void StateMachineNode::update(float dt, AnimParamTable& params) {
-  if (m_currentState.empty()) return;
+  if (m_currentState.empty() || !m_pDef) return;
 
-  // Advance cross fade
   if (m_blendAlpha < 1.0f && m_blendTime > 0.0f) {
     m_blendTimer += dt;
     m_blendAlpha = std::min(m_blendTimer / m_blendTime, 1.0f);
   }
 
   if (m_blendAlpha < 1.0f && !m_previousState.empty()) {
-    auto it = m_states.find(m_previousState);
-    if (it != m_states.end() && it->second)
-      it->second->update(dt, params);
+    int prevIdx = findStateIndex(m_previousState);
+    if (prevIdx >= 0 && m_stateNodes[prevIdx])
+      m_stateNodes[prevIdx]->update(dt, params);
   }
 
-  auto it = m_states.find(m_currentState);
-  if (it != m_states.end() && it->second)
-    it->second->update(dt, params);
+  int currIdx = findStateIndex(m_currentState);
+  if (currIdx >= 0 && m_stateNodes[currIdx])
+    m_stateNodes[currIdx]->update(dt, params);
 
-  auto tryTransitions = [&](bool anyOnly){
-    for (auto& t : m_transitions) {
+  auto tryTransitions = [&](bool anyOnly) {
+    for (const auto& t : m_pDef->transitions) {
       bool isAny = t.fromState.empty();
       if (isAny != anyOnly) continue;
       if (!isAny && t.fromState != m_currentState) continue;
       if (t.toState == m_currentState) continue;
-      if (t.condition && t.condition(params)) {
+      if (evaluateConditions(t, params)) {
         transitionTo(t.toState, t.blendTime, params);
         return true;
       }
@@ -361,22 +391,22 @@ void StateMachineNode::update(float dt, AnimParamTable& params) {
 void StateMachineNode::evaluate(std::vector<glm::mat4>& outPose) const {
   if (m_currentState.empty()) return;
 
-  auto it = m_states.find(m_currentState);
-  if (it == m_states.end() || !it->second) return;
+  int currIdx = findStateIndex(m_currentState);
+  if (currIdx < 0 || !m_stateNodes[currIdx]) return;
 
   if (m_blendAlpha >= 1.0f || m_previousState.empty()) {
-    it->second->evaluate(outPose);
+    m_stateNodes[currIdx]->evaluate(outPose);
     return;
   }
 
-  auto prevIt = m_states.find(m_previousState);
-  if (prevIt == m_states.end() || !prevIt->second) {
-    it->second->evaluate(outPose);
+  int prevIdx = findStateIndex(m_previousState);
+  if (prevIdx < 0 || !m_stateNodes[prevIdx]) {
+    m_stateNodes[currIdx]->evaluate(outPose);
     return;
   }
 
-  prevIt->second->evaluate(m_prevPose);
-  it->second->evaluate(m_currPose);
+  m_stateNodes[prevIdx]->evaluate(m_prevPose);
+  m_stateNodes[currIdx]->evaluate(m_currPose);
 
   size_t count = std::min(m_prevPose.size(), m_currPose.size());
   outPose.resize(count);
@@ -385,78 +415,76 @@ void StateMachineNode::evaluate(std::vector<glm::mat4>& outPose) const {
 }
 
 bool StateMachineNode::isFinished() const {
-  auto it = m_states.find(m_currentState);
-  if (it == m_states.end() || !it->second) return false;
-  return it->second->isFinished();
+  int idx = findStateIndex(m_currentState);
+  if (idx < 0 || !m_stateNodes[idx]) return false;
+  return m_stateNodes[idx]->isFinished();
 }
 
 void StateMachineNode::setActiveTime(float t) {
-  auto it = m_states.find(m_currentState);
-  if (it != m_states.end() && it->second)
-    it->second->setActiveTime(t);
+  int idx = findStateIndex(m_currentState);
+  if (idx >= 0 && m_stateNodes[idx])
+    m_stateNodes[idx]->setActiveTime(t);
 }
 
 glm::vec3 StateMachineNode::getRootMotionDelta() const {
-  auto it = m_states.find(m_currentState);
-  if (it == m_states.end() || !it->second) return glm::vec3(0.0f);
+  int currIdx = findStateIndex(m_currentState);
+  if (currIdx < 0 || !m_stateNodes[currIdx]) return glm::vec3(0.0f);
 
-  glm::vec3 currDelta = it->second->getRootMotionDelta();
+  glm::vec3 currDelta = m_stateNodes[currIdx]->getRootMotionDelta();
 
   if (m_blendAlpha >= 1.0f || m_previousState.empty())
     return currDelta;
 
-  auto prevIt = m_states.find(m_previousState);
-  glm::vec3 prevDelta = (prevIt != m_states.end() && prevIt->second)
-    ? prevIt->second->getRootMotionDelta()
-    : glm::vec3(0.0f);
+  int prevIdx = findStateIndex(m_previousState);
+  glm::vec3 prevDelta = (prevIdx >= 0 && m_stateNodes[prevIdx])
+      ? m_stateNodes[prevIdx]->getRootMotionDelta()
+      : glm::vec3(0.0f);
 
   return glm::mix(prevDelta, currDelta, m_blendAlpha);
+}
+
+float StateMachineNode::getActiveClipTime() const {
+  int idx = findStateIndex(m_currentState);
+  if (idx >= 0 && m_stateNodes[idx])
+    return m_stateNodes[idx]->getActiveClipTime();
+  return 0.0f;
+}
+
+float StateMachineNode::getActiveClipDuration() const {
+  int idx = findStateIndex(m_currentState);
+  if (idx >= 0 && m_stateNodes[idx])
+    return m_stateNodes[idx]->getActiveClipDuration();
+  return 0.0f;
 }
 
 std::string StateMachineNode::getDebugStateInfo() const {
   if (m_blendAlpha < 1.0f && !m_previousState.empty())
     return m_previousState + " -> " + m_currentState + " ("
       + std::to_string((int)(m_blendAlpha * 100)) + "%)";
-  auto it = m_states.find(m_currentState);
-  if (it != m_states.end() && it->second)
-    return m_currentState + " | " + it->second->getDebugStateInfo();
+  int idx = findStateIndex(m_currentState);
+  if (idx >= 0 && m_stateNodes[idx])
+    return m_currentState + "  |  "  + m_stateNodes[idx]->getDebugStateInfo();
   return m_currentState;
-}
-
-void StateMachineNode::swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
-  for (auto& [name, node] : m_states) {
-    if (node)
-      node->swapClipByKey(key, clip);
-  }
-} 
-
-Blend2DNode::Blend2DNode(std::string xParam, std::string zParam)
-  : m_xParam(std::move(xParam)), m_zParam(std::move(zParam)) {}
-
-void Blend2DNode::addClip(glm::vec2 position,
-                          std::shared_ptr<AnimationClip> clip) {
-  auto node = std::make_shared<ClipNode>(std::move(clip), true);
-  m_clips.push_back({ position, std::move(node) });
 }
 
 void Blend2DNode::build() {
   m_triangles.clear();
   m_hullEdges.clear();
-  if (m_clips.size() < 3) return;
+  if (!m_pDef || m_pDef->clips.size() < 3) return;
 
   // --- Bowyer-Watson incremental Delaunay triangulation ---
-  int n = (int)m_clips.size();
+  int n = (int)m_pDef->clips.size();
 
   float maxC = 0.0f;
-  for (auto& bc : m_clips)
+  for (auto& ce : m_pDef->clips)
     maxC = std::max(maxC,
-                    std::max(std::abs(bc.position.x), std::abs(bc.position.y)));
+                    std::max(std::abs(ce.x), std::abs(ce.z)));
   float M = maxC * 4.0f + 2.0f;
 
   // Real points 0..n-1; super-triangle vertices n, n+1, n+2
   std::vector<glm::vec2> pts;
   pts.reserve(n + 3);
-  for (auto& bc : m_clips) pts.push_back(bc.position);
+  for (auto& ce : m_pDef->clips) pts.push_back({ ce.x, ce.z });
   pts.push_back({0.0f, 3.0f * M});
   pts.push_back({-3.0f * M, -M});
   pts.push_back({3.0f * M, -M});
@@ -553,33 +581,34 @@ static glm::vec3 barycentric(glm::vec2 p, glm::vec2 a, glm::vec2 b, glm::vec2 c)
 }
 
 void Blend2DNode::update(float dt, AnimParamTable& params) {
-  if (m_clips.empty()) return;
+  if (!m_pDef || m_children.empty()) return;
 
-  m_currentParam.x = params.getFloat(m_xParam, 0.0f);
-  m_currentParam.y = params.getFloat(m_zParam, 0.0f);
+  m_currentParam.x = params.getFloat(m_pDef->xParamName, 0.0f);
+  m_currentParam.y = params.getFloat(m_pDef->zParamName, 0.0f);
 
   // Advance ALL child clips every frame for loop sync
-  for (auto& bc : m_clips)
-    if (bc.node) bc.node->update(dt, params);
+  for (auto* n : m_children)
+    if (n) n->update(dt, params);
 
-  if (m_clips.size() == 1 || m_triangles.empty()) {
+  if (m_children.size() == 1 || m_triangles.empty()) {
     m_idxA = m_idxB = m_idxC = 0;
     m_weights = glm::vec3(1.0f, 0.0f, 0.0f);
-    m_rootDelta = m_clips[0].node->getRootMotionDelta();
+    m_rootDelta = m_children[0] ? m_children[0]->getRootMotionDelta() : glm::vec3(0.0f);
     return;
   }
 
-  // locate param in triangulation
-  // current linear search is ideally fast for small triangle counts
-  // potential to replace with BSP/kd-tree over triangle AABBs
+  auto pos = [&](int i) -> glm::vec2 {
+    return { m_pDef->clips[i].x, m_pDef->clips[i].z };
+  };
+
   int found = -1;
   glm::vec3 bary(0.0f);
   for (size_t t = 0; t < m_triangles.size(); ++t) {
     const auto& tri = m_triangles[t];
     bary = barycentric(m_currentParam,
-                       m_clips[tri.a].position,
-                       m_clips[tri.b].position,
-                       m_clips[tri.c].position);
+                       pos(tri.a),
+                       pos(tri.b),
+                       pos(tri.c));
     if (bary.x >= -1e-4f && bary.y >= -1e-4f && bary.z >= -1e-4f) {
       found = static_cast<int>(t);
       break;
@@ -596,12 +625,12 @@ void Blend2DNode::update(float dt, AnimParamTable& params) {
     // be ~0 - the vertex of the triangle that does not belong
     // to the hulls edge - and the other two will sum to ~1)
 
-    glm::vec2 bestPoint(m_clips[0].position);
+    glm::vec2 bestPoint = pos(0);
     float bestDist2 = std::numeric_limits<float>::max();
     int bestTri = 0;
     for (const auto& he : m_hullEdges) {
-      glm::vec2 a = m_clips[he.u].position;
-      glm::vec2 b = m_clips[he.v].position;
+      glm::vec2 a = pos(he.u);
+      glm::vec2 b = pos(he.v);
       glm::vec2 ab = b - a;
       float ab2 = glm::dot(ab, ab);
       float t = (ab2 > 1e-9f)
@@ -618,9 +647,9 @@ void Blend2DNode::update(float dt, AnimParamTable& params) {
 
     const auto& tri = m_triangles[bestTri];
     bary = barycentric(bestPoint,
-                       m_clips[tri.a].position,
-                       m_clips[tri.b].position,
-                       m_clips[tri.c].position);
+                       pos(tri.a),
+                       pos(tri.b),
+                       pos(tri.c));
     found = bestTri;
   }
 
@@ -628,27 +657,32 @@ void Blend2DNode::update(float dt, AnimParamTable& params) {
   m_idxA = tri.a; m_idxB = tri.b; m_idxC = tri.c;
   m_weights = bary;
 
+  auto delta = [&](int i){
+    return m_children[i] ? m_children[i]->getRootMotionDelta() : glm::vec3(0.0f);
+  };
+
   m_rootDelta =
-      bary.x * m_clips[m_idxA].node->getRootMotionDelta()
-    + bary.y * m_clips[m_idxB].node->getRootMotionDelta()
-    + bary.z * m_clips[m_idxC].node->getRootMotionDelta();
+      bary.x * delta(m_idxA) 
+    + bary.y * delta(m_idxB) 
+    + bary.z * delta(m_idxC);
 }
 
 void Blend2DNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  if (m_clips.empty()) return;
+  if (m_children.empty()) return;
 
-  if (m_triangles.empty() || m_clips.size() == 1) {
-    m_clips[0].node->evaluate(outPose);
+  if (m_triangles.empty() || m_children.size() == 1) {
+    if (m_children[0]) m_children[0]->evaluate(outPose);
+    return;
   }
 
   std::vector<glm::mat4> poseA, poseB, poseC;
-  m_clips[m_idxA].node->evaluate(poseA);
-  m_clips[m_idxB].node->evaluate(poseB);
-  m_clips[m_idxC].node->evaluate(poseC);
+  if (m_children[m_idxA]) m_children[m_idxA]->evaluate(poseA);
+  if (m_children[m_idxB]) m_children[m_idxB]->evaluate(poseB);
+  if (m_children[m_idxC]) m_children[m_idxC]->evaluate(poseC);
 
-  size_t n = std::min({ poseA.size(), poseB.size(), poseC.size() });
-  outPose.resize(n);
-  for (size_t i = 0; i < n; ++i) {
+  size_t count = std::min({ poseA.size(), poseB.size(), poseC.size() });
+  outPose.resize(count);
+  for (size_t i = 0; i < count; ++i) {
     outPose[i] = poseA[i] * m_weights.x
                + poseB[i] * m_weights.y
                + poseC[i] * m_weights.z;
@@ -656,128 +690,370 @@ void Blend2DNode::evaluate(std::vector<glm::mat4>& outPose) const {
 }
 
 void Blend2DNode::setSkeleton(const std::vector<Bone>* skeleton) {
-  for (auto& bc : m_clips)
-    if (bc.node) bc.node->setSkeleton(skeleton);
+  for (auto& n : m_children)
+    if (n) n->setSkeleton(skeleton);
 }
 
 void Blend2DNode::swapClipByKey(const std::string& key,
                                 std::shared_ptr<AnimationClip> clip) {
-  for (auto& bc : m_clips)
-    if (bc.node) bc.node->swapClipByKey(key, clip);
+  for (auto& n : m_children)
+    if (n) n->swapClipByKey(key, clip);
 }
 
 void Blend2DNode::setActiveTime(float t) {
-  for (auto& bc : m_clips)
-    if (bc.node) bc.node->setActiveTime(t);
+  for (auto& n : m_children)
+    if (n) n->setActiveTime(t);
 }
 
 float Blend2DNode::getActiveClipTime() const {
-  return m_clips.empty() ? 0.0f : m_clips[m_idxA].node->getActiveClipTime();
+  return (m_children.empty() || !m_children[m_idxA]) ? 0.0f : m_children[m_idxA]->getActiveClipTime();
 }
 
 float Blend2DNode::getActiveClipDuration() const {
-  return m_clips.empty() ? 0.0f : m_clips[m_idxA].node->getActiveClipDuration();
+  return (m_children.empty() || !m_children[m_idxA]) ? 0.0f : m_children[m_idxA]->getActiveClipDuration();
 }
 
 std::string Blend2DNode::getDebugStateInfo() const {
-  if (m_clips.empty()) return "Blend2D(empty)";
-  return "Blend2D(" + m_xParam + "," + m_zParam + " @ "
+  if (!m_pDef || m_children.empty()) return "Blend2D(empty)";
+    return "Blend2D(" + m_pDef->xParamName + "," + m_pDef->zParamName + " @ "
         + std::to_string(m_currentParam.x).substr(0, 4) + ","
         + std::to_string(m_currentParam.y).substr(0, 4) + ")";
 }
 
-ClipSelectorNode::ClipSelectorNode(std::string paramName)
-    : m_paramName(std::move(paramName)) {}
-
-void ClipSelectorNode::addClip(int index, std::shared_ptr<AnimationClip> clip) {
-  if (!clip) return;
-  auto node = std::make_shared<ClipNode>(clip, false);
-  m_clips[index] = node;
-}
-
-void ClipSelectorNode::setOwnerName(const std::string& name) {
-  m_ownerName = name;
-  for (auto& [idx, node] : m_clips)
-    if (node) node->setOwnerName(name);
-}
-
 void ClipSelectorNode::update(float dt, AnimParamTable& params) {
-  m_selected = params.getInt(m_paramName, 0);
-  LOG_TRACE("[ClipSelector] paramName='{}' dodgeDir_raw={} selected={}",
-            m_paramName,
-            params.getInt("dodgeDir", -99),
-            m_selected);
+  if (!m_pDef) return;
+
+  m_selected = params.getInt(m_pDef->paramName, 0);
 
   if (m_selected != m_prevSelected) {
-    auto it = m_clips.find(m_selected);
-    if (it != m_clips.end() && it->second)
+    auto it = m_byIndex.find(m_selected);
+    if (it != m_byIndex.end() && it->second)
       it->second->reset();
     m_prevSelected = m_selected;
   }
 
-  auto it = m_clips.find(m_selected);
-  if (it != m_clips.end() && it->second)
+  auto it = m_byIndex.find(m_selected);
+  if (it != m_byIndex.end() && it->second)
     it->second->update(dt, params);
 }
 
 void ClipSelectorNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  auto it = m_clips.find(m_selected);
-  if (it != m_clips.end() && it->second)
+  auto it = m_byIndex.find(m_selected);
+  if (it != m_byIndex.end() && it->second)
     it->second->evaluate(outPose);
 }
 
 bool ClipSelectorNode::isFinished() const {
-  auto it = m_clips.find(m_selected);
-  if (it != m_clips.end() && it->second)
+  auto it = m_byIndex.find(m_selected);
+  if (it != m_byIndex.end() && it->second)
     return it->second->isFinished();
   return true;
 }
 
 glm::vec3 ClipSelectorNode::getRootMotionDelta() const {
-  auto it = m_clips.find(m_selected);
-  if (it != m_clips.end() && it->second)
+  auto it = m_byIndex.find(m_selected);
+  if (it != m_byIndex.end() && it->second)
     return it->second->getRootMotionDelta();
   return glm::vec3(0.0f);
 }
 
 float ClipSelectorNode::getActiveClipTime() const {
-  auto it = m_clips.find(m_selected);
-  if (it != m_clips.end() && it->second)
-    return it->second->getActiveClipTime();
+  auto it = m_byIndex.find(m_selected);
+  if (it != m_byIndex.end() && it->second)
+    return it->second->getActiveClipDuration();
   return 0.0f;
 }
 
 float ClipSelectorNode::getActiveClipDuration() const {
-  auto it = m_clips.find(m_selected);
-  if (it != m_clips.end() && it->second)
+  auto it = m_byIndex.find(m_selected);
+  if (it != m_byIndex.end() && it->second)
     return it->second->getActiveClipDuration();
   return 0.0f;
 }
 
 void ClipSelectorNode::setSkeleton(const std::vector<Bone>* skeleton) {
-  for (auto& [idx, node] : m_clips)
-    if (node) node->setSkeleton(skeleton);
+  for (auto* n : m_children)
+    if (n) n->setSkeleton(skeleton);
 }
 
 void ClipSelectorNode::swapClipByKey(const std::string& key,
                                      std::shared_ptr<AnimationClip> clip) {
-  for (auto& [idx, node] : m_clips)
-    if (node) node->swapClipByKey(key, clip);
+  for (auto* n : m_children)
+    if (n) n->swapClipByKey(key, clip);
 }
 
 void ClipSelectorNode::setActiveTime(float t) {
   //m_prevSelected = -1;
-  auto it = m_clips.find(m_selected);
-  if (it != m_clips.end() && it->second)
+  auto it = m_byIndex.find(m_selected);
+  if (it != m_byIndex.end() && it->second)
     it->second->setActiveTime(t);
 }
 
 std::string ClipSelectorNode::getDebugStateInfo() const {
-  auto it = m_clips.find(m_selected);
-  if (it != m_clips.end() && it->second)
+  auto it = m_byIndex.find(m_selected);
+  if (it != m_byIndex.end() && it->second)
     return "ClipSelectorNode[" + std::to_string(m_selected) + "]:"
             + it->second->getDebugStateInfo();
   return "ClipSelectorNode[" + std::to_string(m_selected) + ":empty]";
+}
+
+std::shared_ptr<GraphDefinition> GraphDefinition::LoadFromJson(const std::string& path) {
+  std::string absPath = forge::AssetManager::resolvePath(path);
+  std::ifstream f(absPath);
+  if (!f.is_open()) {
+    LOG_ERROR("[AnimGraph] GraphDefinition::LoadFromJson - cannot open '{}'", path);
+    return nullptr;
+  }
+
+  nlohmann::json root;
+  try {
+    root = nlohmann::json::parse(f);
+  } catch (const nlohmann::json::parse_error& e) {
+    LOG_ERROR("[AnimGraph] JSON parse error in '{}': {}", path, e.what());
+    return nullptr;
+  }
+
+  int version = root.value("version", 0);
+  if(version != 1) {
+    LOG_ERROR("[AnimGraph] '{}' has unsupported version {}", path, version);
+    return nullptr;
+  }
+  
+  auto def = std::make_shared<GraphDefinition>();
+  def->m_rootNodeIndex = static_cast<int16_t>(root.value("rootNodeIndex", 0));
+
+  const auto& nodesJson = root["nodes"];
+  def->m_nodeDefs.resize(nodesJson.size());
+
+  // Pass 1: allocate each definition by type name via type registry
+  for (int i = 0; i < (int)nodesJson.size(); ++i) {
+    const auto& n = nodesJson[i];
+    const std::string typeStr = n["type"].get<std::string>().c_str();
+    TypeID tid = forge::fnv1a(typeStr);
+
+    if (tid == forge::fnv1a("ClipNode::Definition")) {
+      auto d = std::make_unique<ClipNode::Definition>();
+      d->clipFile = n.value("clipFile", "");
+      d->clipName = n.value("clipName", "");
+      d->taeKey = n.value("taeKey", "");
+      d->actionKey = n.value("actionKey", "");
+      d->ownerName = n.value("ownerName", "");
+      d->loop = n.value("loop", true);
+      def->m_nodeDefs[i] = std::move(d);
+      def->m_nodeTypeIDs.push_back(tid);
+    } else if (tid == forge::fnv1a("Blend1DNode::Definition")) {
+      auto d = std::make_unique<Blend1DNode::Definition>();
+      d->paramName = n.value("paramName", "");
+      d->thresholds = n["thresholds"].get<std::vector<float>>();
+      d->childNodeIndices = n ["childNodeIndices"].get<std::vector<int16_t>>();
+      def->m_nodeDefs[i] = std::move(d);
+      def->m_nodeTypeIDs.push_back(tid);
+    } else if (tid == forge::fnv1a("Blend2DNode::Definition")) {
+      auto d = std::make_unique<Blend2DNode::Definition>();
+      d->xParamName = n.value("xParamName", "");
+      d->zParamName = n.value("zParamName", "");
+      for (const auto& c : n["clips"])
+        d->clips.push_back({ c["x"].get<float>(), c["z"].get<float>(), 
+                             c["nodeIndex"].get<int16_t>() });
+      def->m_nodeDefs[i] = std::move(d);
+      def->m_nodeTypeIDs.push_back(tid);
+    } else if (tid == forge::fnv1a("ClipSelectorNode::Definition")) {
+      auto d = std::make_unique<ClipSelectorNode::Definition>();
+      d->paramName = n.value("paramName", "");
+      d->ownerName = n.value("ownerName", "");
+      for (const auto& e : n["entries"])
+        d->entries.push_back({ e["selectorIndex"].get<int>(),
+                               e["nodeIndex"].get<int16_t>() });
+      def->m_nodeDefs[i] = std::move(d);
+      def->m_nodeTypeIDs.push_back(tid);
+    } else if (tid == forge::fnv1a("StateMachineNode::Definition")) {
+      auto d = std::make_unique<StateMachineNode::Definition>();
+      d->initialState = n.value("initialState", "");
+      for (const auto& s : n["states"])
+        d->states.push_back({ s["name"].get<std::string>(),
+                              s["nodeIndex"].get<int16_t>() });
+      for (const auto& t : n["transitions"]) {
+        StateMachineNode::TransitionDef td;
+        td.fromState = t.value("fromState", "");
+        td.toState = t.value("toState", "");
+        td.blendTime = t.value("blendTime", 0.2f);
+        td.requireAll = t.value("requireAll", true);
+        for (const auto& c : t["conditions"]) {
+          TransitionConditionDef cond;
+          std::string typeStr = c["type"].get<std::string>();
+          if (typeStr == "TriggerConsumed") cond.type = ConditionType::TriggerConsumed;
+          else if (typeStr == "BoolTrue") cond.type = ConditionType::BoolTrue;
+          else if (typeStr == "BoolFalse") cond.type = ConditionType::BoolFalse;
+          else if (typeStr == "SourceNodeFinished") cond.type = ConditionType::SourceNodeFinished;
+          cond.param = c.value("param", "");
+          td.conditions.push_back(cond);
+        }
+        d->transitions.push_back(std::move(td));
+      }
+      def->m_nodeDefs[i] = std::move(d);
+      def->m_nodeTypeIDs.push_back(tid);
+    } else {
+      LOG_WARN("[AnimGraph] LoadFromJson: unhandled node type at index {}", i);
+    }
+  }
+
+  return def;
+}
+
+struct NodeRuntimeInfo {
+  size_t size;
+  size_t alignment;
+  void (*pfnConstruct)(void* mem, const IAnimNodeDefinition* def);
+  void (*pfnDestruct)(void* mem);
+};
+
+static std::unordered_map<TypeID, NodeRuntimeInfo>& GetNodeRegistry() {
+  static std::unordered_map<TypeID, NodeRuntimeInfo> s_registry;
+  return s_registry;
+}
+
+template<typename TDef, typename TRuntime>
+struct NodeRuntimeRegistrar {
+  NodeRuntimeRegistrar() {
+    TypeID tid = forge::fnv1a(TDef::kTypeName);
+    GetNodeRegistry()[tid] = {
+      sizeof(TRuntime),
+      alignof(TRuntime),
+      [](void* mem, const IAnimNodeDefinition* def) {
+        auto* node = new (mem) TRuntime();
+        node->m_pDef = static_cast<const TDef*>(def);
+      },
+      [](void* mem) {
+        static_cast<TRuntime*>(mem)->~TRuntime();
+      }
+    };
+  }
+};
+
+static NodeRuntimeRegistrar<ClipNode::Definition, ClipNode> s_clipNodeReg;
+static NodeRuntimeRegistrar<Blend1DNode::Definition, Blend1DNode> s_blend1DReg;
+static NodeRuntimeRegistrar<Blend2DNode::Definition, Blend2DNode> s_blend2DReg;
+static NodeRuntimeRegistrar<ClipSelectorNode::Definition, ClipSelectorNode> s_clipSelReg;
+static NodeRuntimeRegistrar<StateMachineNode::Definition, StateMachineNode> s_smReg;
+
+GraphInstance::~GraphInstance() {
+  auto& reg = GetNodeRegistry();
+  for (int i = 0; i < (int)m_nodes.size(); ++i) {
+    if (!m_nodes[i]) continue;
+    TypeID tid = forge::fnv1a(m_pDefinition->m_nodeDefs[i]->kTypeName);
+    auto it = reg.find(tid);
+    if (it != reg.end()) it->second.pfnDestruct(m_nodes[i]);
+  }
+}
+
+GraphInstance GraphInstance::Create(std::shared_ptr<const GraphDefinition> def) {
+  auto& reg = GetNodeRegistry();
+  int N = (int)def->m_nodeDefs.size();
+
+  // Step 1: compute buffer layout
+  std::vector<size_t> offsets(N);
+  size_t totalSize = 0;
+  for (int i = 0; i < N; ++i) {
+    TypeID tid = def->m_nodeTypeIDs[i]; 
+    auto it = reg.find(tid);
+    if (it == reg.end()) {
+      LOG_ERROR("[AnimGraph] GraphInstance::Create - no runtime type for '{}'",
+                tid);
+      return {};
+    }
+    size_t align = it->second.alignment;
+    totalSize = (totalSize + align - 1) & ~(align - 1); // align up
+    offsets[i] = totalSize;
+    totalSize += it->second.size;
+  }
+
+  // Step 2: allocate buffer and placement-new all nodes
+  GraphInstance inst;
+  inst.m_pDefinition = def;
+  inst.m_nodeBuffer = std::make_unique<std::byte[]>(totalSize);
+  inst.m_nodes.resize(N, nullptr);
+
+  for (int i = 0; i < N; ++i) {
+    TypeID tid = def->m_nodeTypeIDs[i]; 
+    auto& info = reg.at(tid);
+    void* mem = inst.m_nodeBuffer.get() + offsets[i];
+    info.pfnConstruct(mem, def->m_nodeDefs[i].get());
+    inst.m_nodes[i] = static_cast<AnimGraphNode*>(mem);
+  }
+
+  // Step 3: Wire child pointers
+  // Each node type needs its m_children/m_stateNodes populated from indices in its Definition.
+  for (int i = 0; i < N; i++) {
+    IAnimNodeDefinition* nodeDef = def->m_nodeDefs[i].get();
+    AnimGraphNode* node = inst.m_nodes[i];
+    TypeID tid = def->m_nodeTypeIDs[i]; 
+
+    if (tid == forge::fnv1a("ClipNode::Definition")) {
+      auto* cn = static_cast<ClipNode*>(node);
+      auto* cnd = static_cast<const ClipNode::Definition*>(nodeDef);
+      if (!cnd->clipFile.empty())
+        cn->m_clip = forge::AssetManager::loadAnimationClip(cnd->clipFile, cnd->clipName, cnd->taeKey);
+    } else if (tid == forge::fnv1a("Blend1DNode::Definition")) {
+      auto* bn = static_cast<Blend1DNode*>(node);
+      auto* bnd = static_cast<Blend1DNode::Definition*>(nodeDef);
+      bn->m_children.reserve(bnd->childNodeIndices.size());
+      for (int16_t ci : bnd->childNodeIndices)
+        bn->m_children.push_back(inst.m_nodes[ci]);
+    } else if (tid == forge::fnv1a("Blend2DNode::Definition")) {
+      auto* bn = static_cast<Blend2DNode*>(node);
+      auto* bnd = static_cast<Blend2DNode::Definition*>(nodeDef);
+      bn->m_children.reserve(bnd->clips.size());
+      for (const auto& ce : bnd->clips)
+        bn->m_children.push_back(static_cast<ClipNode*>(inst.m_nodes[ce.nodeIndex]));
+      bn->build(); // Compute Delaunay triangulation from m_pDef->clips pos
+    } else if (tid == forge::fnv1a("ClipSelectorNode::Definition")) {
+      auto* sn = static_cast<ClipSelectorNode*>(node);
+      auto* snd = static_cast<ClipSelectorNode::Definition*>(nodeDef);
+      sn->m_children.reserve(snd->entries.size());
+      for (const auto& e : snd->entries) {
+        ClipNode* cn = static_cast<ClipNode*>(inst.m_nodes[e.nodeIndex]);
+        sn->m_children.push_back(cn);
+        sn->m_byIndex[e.selectorIndex] = cn;
+      }
+    } else if (tid == forge::fnv1a("StateMachineNode::Definition")) {
+      auto* sm = static_cast<StateMachineNode*>(node);
+      auto* smd = static_cast<StateMachineNode::Definition*>(nodeDef);
+      sm->m_stateNodes.reserve(smd->states.size());
+      for (const auto& s : smd->states)
+        sm->m_stateNodes.push_back(inst.m_nodes[s.nodeIndex]);
+      sm->m_currentState = smd->initialState;
+    }
+  }
+
+  // Step 4: Inject skeleton (deferred to Animator::setGraph when skeleton is known).
+  // Not set here; Propagated to Animator::setGraph() -> GetRootNode() -> setSkeleton()
+
+  // Step 5: build m_clipsByActionKey index for swapMovesetClips
+  for (int i = 0; i < N; ++i) {
+    TypeID tid = def->m_nodeTypeIDs[i]; 
+    if (tid == forge::fnv1a("ClipNode::Definition")) {
+      auto* cn = static_cast<ClipNode*>(inst.m_nodes[i]);
+      auto* cnd = static_cast<const ClipNode::Definition*>(def->m_nodeDefs[i].get());
+      if (!cnd->actionKey.empty())
+        inst.m_clipsByActionKey[cnd->actionKey] = cn;
+    }
+  }
+
+  return inst;
+}
+
+GraphInstance GraphInstance::Clone() const {
+  return GraphInstance::Create(m_pDefinition);
+}
+
+AnimGraphNode* GraphInstance::GetRootNode() const {
+  if (m_nodes.empty()) return nullptr;
+  return m_nodes[m_pDefinition->m_rootNodeIndex];
+}
+
+ClipNode* GraphInstance::FindClipByActionKey(const std::string& key) const {
+  auto it = m_clipsByActionKey.find(key);
+  return (it != m_clipsByActionKey.end()) ? it->second : nullptr;
 }
 
 }

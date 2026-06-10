@@ -1,6 +1,5 @@
 #pragma once
 #include <forge/AIComponent.h>
-#include <forge/AnimationClip.h>
 #include <forge/Animator.h>
 #include <forge/AssetManager.h>
 #include <forge/CharacterController.h>
@@ -41,7 +40,6 @@ public:
   std::unique_ptr<forge::AIComponent> ai;
   std::unique_ptr<forge::Animator> animator;
   forge::ModelData weaponModel;
-  std::unordered_map<std::string, std::shared_ptr<forge::AnimationClip>> clips;
 
   bool active;
   bool respawns;

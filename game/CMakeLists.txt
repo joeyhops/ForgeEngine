@@ -4,7 +4,6 @@ add_executable(game
   src/ForgeGame.cpp
   src/PlayerEntity.cpp
   src/EnemyEntity.cpp
-  src/CharacterGraph.cpp
   src/InputManager.cpp
 )
 
