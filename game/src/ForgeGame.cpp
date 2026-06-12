@@ -1380,8 +1380,13 @@ void ForgeGame::handleInput(float dt) {
       float moveX = glm::dot(move, strafeRight);
       float moveZ = glm::dot(move, toTarget);
       float spd = m_input.getMoveSpeed();
-      m_player.animator->getParams().setFloat("moveX", moveX * spd);
-      m_player.animator->getParams().setFloat("moveZ", moveZ * spd);
+      //m_player.animator->getParams().setFloat("moveX", moveX * spd);
+      //m_player.animator->getParams().setFloat("moveZ", moveZ * spd);
+      m_smoothMoveX = glm::mix(m_smoothMoveX, moveX * spd, k_locoParamSmoothing * dt);
+      m_smoothMoveZ = glm::mix(m_smoothMoveZ, moveX * spd, k_locoParamSmoothing * dt);
+      m_player.animator->getParams().setFloat("moveX", m_smoothMoveX);
+      m_player.animator->getParams().setFloat("moveZ", m_smoothMoveZ);
+
       m_player.animator->getParams().setBool("isLockedOn", true);
     } else {
       float moveSpeedParam = sprinting ? 2.0f : 1.0f;
@@ -1392,8 +1397,13 @@ void ForgeGame::handleInput(float dt) {
     m_moveDir = glm::vec3(0.0f);
     m_moveSpeed = 0.0f;
     if (m_lockedOn) {
-      m_player.animator->getParams().setFloat("moveX", 0.0f);
-      m_player.animator->getParams().setFloat("moveZ", 0.0f);
+//      m_player.animator->getParams().setFloat("moveX", 0.0f);
+//      m_player.animator->getParams().setFloat("moveZ", 0.0f);
+      m_smoothMoveX = glm::mix(m_smoothMoveX, 0.0f, k_locoParamSmoothing * dt);
+      m_smoothMoveZ = glm::mix(m_smoothMoveZ, 0.0f, k_locoParamSmoothing * dt);
+      m_player.animator->getParams().setFloat("moveX", m_smoothMoveX);
+      m_player.animator->getParams().setFloat("moveZ", m_smoothMoveZ);
+
       m_player.animator->getParams().setBool("isLockedOn", true);
     } else {
       m_player.animator->getParams().setFloat("moveSpeed", 0.0f);
@@ -1459,6 +1469,9 @@ void ForgeGame::applyMovement(float dt) {
     m_player.transform->setRotation(newRot);
     // Keep m+playe.forward in sync with the actual slerped rotation
     m_player.forward = newRot * glm::vec3(0.0f, 0.0f, -1.0f);
+  } else {
+    m_player.transform->setRotation(m_player.dodgeFacingQuat);
+    m_player.forward = m_player.dodgeFacingQuat * glm::vec3(0.0f, 0.0f, -1.0f);
   }
 
   m_player.controller->setWalkDirection(displacement);
