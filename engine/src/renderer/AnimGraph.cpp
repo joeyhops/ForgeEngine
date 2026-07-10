@@ -1,9 +1,14 @@
+#include "forge/TaskSystem.h"
 #include <forge/AnimGraph.h>
 #include <forge/AssetManager.h>
 #include <forge/Events.h>
 #include <forge/EventBus.h>
 #include <forge/TypeSystem.h>
 #include <forge/Logger.h>
+
+#ifdef FORGE_DEBUG
+#include <forge/RootMotionDebugger.h>
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -45,38 +50,35 @@ void ClipNode::reset() {
   m_activeEventMask = 0;
 }
 
-void ClipNode::update(float dt, AnimParamTable& params) {
-  if (!m_clip) return;
-
+UpdateResult ClipNode::update(const UpdateContext& ctx) {
   m_prevTime = m_time;
-  m_time += dt;
+  m_time += ctx.dt;
 
-  if (m_pDef->loop && m_time >= m_clip->duration) {
+  if (m_pDef->loop && m_clip && m_time >= m_clip->duration) {
     deactivateAllEvents();
     m_time = fmodf(m_time, m_clip->duration);
     m_prevTime = 0.0f;
-  } else if (!m_pDef->loop && m_time >= m_clip->duration) {
-    m_time = m_clip->duration;
   }
 
   tickTAEEvents(m_prevTime, m_time);
 
-  // cache pose so evaluate can return it without resampling
-  if (m_skeleton && !m_skeleton->empty()) {
-    m_clip->sample(m_time, *m_skeleton, m_pose);
+  // Root motion: math stays same but returned instead of cached
+  glm::vec3 rootDelta(0.0f);
+  if (m_clip) {
+    rootDelta = m_clip->sampleRootDelta(m_prevTime, m_time);
+    if (!m_clip->extractRootY) rootDelta.y = 0.0f;
   }
 
-  // Extract root delta and apply per-clip y mask
-  m_rootDelta = m_clip->sampleRootDelta(m_prevTime, m_time);
-  if (!m_clip->extractRootY)
-    m_rootDelta.y = 0.0f;
-}
-
-void ClipNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  if (m_pose.empty() && m_skeleton && m_clip) {
-    m_clip->sample(m_time, *m_skeleton, m_pose);
+  TaskIndex idx = k_invalidTask;
+  if (m_clip) {
+    idx = ctx.taskSystem.RegisterTask<SampleTask>(TaskPhase::PrePhysics, m_clip.get(), m_time, ctx.skeleton);
   }
-  outPose = m_pose;
+
+#ifdef FORGE_DEBUG
+  if (ctx.debugger) ctx.debugger->Record(this, "ClipNode", rootDelta, 1.0f);
+#endif
+
+  return UpdateResult{ idx, rootDelta, /*eventRange*/ {} };
 }
 
 bool ClipNode::isFinished() const {
@@ -89,7 +91,6 @@ void ClipNode::setActiveTime(float t) {
   m_time = std::clamp(t, 0.0f, m_clip->duration);
   m_prevTime = m_time;
   m_activeEventMask = 0;
-  m_pose.clear();
 }
 
 std::string ClipNode::getDebugStateInfo() const {
@@ -161,19 +162,8 @@ void Blend1DNode::setActiveTime(float t) {
     if (entry) entry->setActiveTime(t);
 }
 
-void Blend1DNode::update(float dt, AnimParamTable& params) {
-  if (!m_pDef || m_children.empty()) return;
+void Blend1DNode::resolveBracket() {
   const auto& thresholds = m_pDef->thresholds;
-
-  m_param = params.getFloat(m_pDef->paramName, 0.0f);
-
-  if (m_children.size() == 1) {
-    m_lowerIdx = 0;
-    m_localAlpha = 0.0f;
-    if (m_children[0]) m_children[0]->update(dt, params);
-    return;
-  }
-
   // Clamp param to declared range and find bracketing entries
   if (m_param <= thresholds.front()) {
     m_lowerIdx = 0;
@@ -194,65 +184,42 @@ void Blend1DNode::update(float dt, AnimParamTable& params) {
       ? (m_param - thresholds[m_lowerIdx]) / range
       : 0.0f;
   }
-
-  if (m_children[m_lowerIdx])
-    m_children[m_lowerIdx]->update(dt, params);
-
-  int upperIdx = m_lowerIdx + 1;
-  if (upperIdx < (int)m_children.size() && m_children[upperIdx])
-    m_children[upperIdx]->update(dt, params);
-
-  glm::vec3 lowerDelta = m_children[m_lowerIdx]
-    ? m_children[m_lowerIdx]->getRootMotionDelta()
-    : glm::vec3(0.0f);
-
-  glm::vec3 upperDelta = (upperIdx < (int)m_children.size() && m_children[upperIdx])
-    ? m_children[upperIdx]->getRootMotionDelta()
-    : glm::vec3(0.0f);
-
-  m_rootDelta = glm::mix(lowerDelta, upperDelta, m_localAlpha);
 }
 
-void Blend1DNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  if (m_children.empty()) return;
+UpdateResult Blend1DNode::update(const UpdateContext& ctx) {
+  if (!m_pDef || m_children.empty()) return {};
+  m_param = ctx.params.getFloat(m_pDef->paramName, 0.0f);
 
   if (m_children.size() == 1) {
-    if (m_children[0]) m_children[0]->evaluate(outPose);
-    return;
+    m_lowerIdx = 0;
+    m_localAlpha = 0.0f;
+    return m_children[0] ? m_children[0]->update(ctx) : UpdateResult{};
   }
 
-  const auto& lower = m_children[m_lowerIdx];
-  const auto& upper = m_children[m_lowerIdx + 1];
+  resolveBracket(); // sets m_lowerIdx + m_localAlpha
 
-  if (!lower && !upper) return;
-  if (!lower) {
-    upper->evaluate(outPose);
-    return;
-  }
-  if (!upper) {
-    lower->evaluate(outPose);
-    return;
-  }
+  AnimGraphNode* lower = m_children[m_lowerIdx];
+  const int upperIdx = m_lowerIdx + 1;
+  AnimGraphNode* upper = (upperIdx < (int)m_children.size()) ? m_children[upperIdx] : nullptr;
 
-  // Fully at lower bound
-  if (m_localAlpha <= 0.0f) {
-    lower->evaluate(outPose);
-    return;
-  }
-  // Fully at upper bound
-  if (m_localAlpha >= 1.0f) {
-    upper->evaluate(outPose);
-    return;
-  }
+  // advance BOTH bracketing children each frame - preserves loop-sync exactly
+  // as previous update() did. A non-contributing child still registers a
+  // SampleTask, but the root never references it so pass 2 skips it
+  UpdateResult a = lower ? lower->update(ctx) : UpdateResult{};
+  UpdateResult b = upper ? upper->update(ctx) : UpdateResult{};
 
-  std::vector<glm::mat4> fromPose, toPose;
-  lower->evaluate(fromPose);
-  upper->evaluate(toPose);
+  // Endpoint passthrough (was the alpha<=0/alpha>=1 early outs in evaluate())
+  // no blendtask just return the contributing childs result
+  if (!upper || m_localAlpha <= 0.0f) return a;
+  if (!lower || m_localAlpha >= 1.0f) return b;
 
-  size_t count = std::min(fromPose.size(), toPose.size());
-  outPose.resize(count);
-  for (size_t i = 0; i < count; ++i)
-    outPose[i] = fromPose[i] * (1.0f - m_localAlpha) + toPose[i] * m_localAlpha;
+  TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, a.taskIdx, b.taskIdx, m_localAlpha);
+  glm::vec3 rootDelta = glm::mix(a.rootMotion, b.rootMotion, m_localAlpha);
+
+#ifdef FORGE_DEBUG
+  if (ctx.debugger) ctx.debugger->Record(this, "Blend1D", rootDelta, 1.0f);
+#endif
+  return UpdateResult{ idx, rootDelta, {} };
 }
 
 std::string Blend1DNode::getDebugStateInfo() const {
@@ -352,32 +319,32 @@ void StateMachineNode::transitionTo(const std::string& toState, float blendTime,
   }
 }
 
-void StateMachineNode::update(float dt, AnimParamTable& params) {
-  if (m_currentState.empty() || !m_pDef) return;
+UpdateResult StateMachineNode::update(const UpdateContext& ctx) {
+  if (m_currentState.empty() || !m_pDef) return {};
 
   if (m_blendAlpha < 1.0f && m_blendTime > 0.0f) {
-    m_blendTimer += dt;
+    m_blendTimer += ctx.dt;
     m_blendAlpha = std::min(m_blendTimer / m_blendTime, 1.0f);
   }
 
-  if (m_blendAlpha < 1.0f && !m_previousState.empty()) {
-    int prevIdx = findStateIndex(m_previousState);
-    if (prevIdx >= 0 && m_stateNodes[prevIdx])
-      m_stateNodes[prevIdx]->update(dt, params);
-  }
-
-  int currIdx = findStateIndex(m_currentState);
+  const bool blending = (m_blendAlpha < 1.0f && !m_previousState.empty());
+  UpdateResult prevResult, currResult;
+  const int prevIdx = blending ? findStateIndex(m_previousState) : -1;
+  if (prevIdx >= 0 && m_stateNodes[prevIdx])
+    prevResult = m_stateNodes[prevIdx]->update(ctx);
+  const int currIdx = findStateIndex(m_currentState);
   if (currIdx >= 0 && m_stateNodes[currIdx])
-    m_stateNodes[currIdx]->update(dt, params);
+    currResult = m_stateNodes[currIdx]->update(ctx);
 
+  const std::string stateBefore = m_currentState;
   auto tryTransitions = [&](bool anyOnly) {
     for (const auto& t : m_pDef->transitions) {
       bool isAny = t.fromState.empty();
       if (isAny != anyOnly) continue;
       if (!isAny && t.fromState != m_currentState) continue;
       if (t.toState == m_currentState) continue;
-      if (evaluateConditions(t, params)) {
-        transitionTo(t.toState, t.blendTime, params);
+      if (evaluateConditions(t, ctx.params)) {
+        transitionTo(t.toState, t.blendTime, ctx.params);
         return true;
       }
     }
@@ -386,32 +353,30 @@ void StateMachineNode::update(float dt, AnimParamTable& params) {
 
   if (!tryTransitions(false))
     tryTransitions(true);
-}
 
-void StateMachineNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  if (m_currentState.empty()) return;
-
-  int currIdx = findStateIndex(m_currentState);
-  if (currIdx < 0 || !m_stateNodes[currIdx]) return;
-
-  if (m_blendAlpha >= 1.0f || m_previousState.empty()) {
-    m_stateNodes[currIdx]->evaluate(outPose);
-    return;
+  if (m_currentState != stateBefore) {
+    if (m_blendAlpha >= 1.0f) {
+      UpdateContext ctx0 = ctx; ctx0.dt = 0.0f;
+      const int ni = findStateIndex(m_currentState);
+      currResult = (ni >= 0 && m_stateNodes[ni]) ? m_stateNodes[ni]->update(ctx0) : UpdateResult{};
+#ifdef FORGE_DEBUG
+      if (ctx.debugger) ctx.debugger->Record(this, "StateMachine", currResult.rootMotion, 1.0f);
+#endif
+      return currResult;
+    }
+    return currResult;
   }
 
-  int prevIdx = findStateIndex(m_previousState);
-  if (prevIdx < 0 || !m_stateNodes[prevIdx]) {
-    m_stateNodes[currIdx]->evaluate(outPose);
-    return;
-  }
+  if (!blending)
+    return currResult;
 
-  m_stateNodes[prevIdx]->evaluate(m_prevPose);
-  m_stateNodes[currIdx]->evaluate(m_currPose);
-
-  size_t count = std::min(m_prevPose.size(), m_currPose.size());
-  outPose.resize(count);
-  for (size_t i = 0; i < count; i++)
-    outPose[i] = m_prevPose[i] * (1.0f - m_blendAlpha) + m_currPose[i] * m_blendAlpha;
+  TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(
+    TaskPhase::PrePhysics, prevResult.taskIdx, currResult.taskIdx, m_blendAlpha);
+  glm::vec3 rootDelta = glm::mix(prevResult.rootMotion, currResult.rootMotion, m_blendAlpha);
+#ifdef FORGE_DEBUG
+  if (ctx.debugger) ctx.debugger->Record(this, "StateMachine", rootDelta, 1.0f);
+#endif
+  return UpdateResult{ idx, rootDelta, {} };
 }
 
 bool StateMachineNode::isFinished() const {
@@ -426,22 +391,22 @@ void StateMachineNode::setActiveTime(float t) {
     m_stateNodes[idx]->setActiveTime(t);
 }
 
-glm::vec3 StateMachineNode::getRootMotionDelta() const {
-  int currIdx = findStateIndex(m_currentState);
-  if (currIdx < 0 || !m_stateNodes[currIdx]) return glm::vec3(0.0f);
-
-  glm::vec3 currDelta = m_stateNodes[currIdx]->getRootMotionDelta();
-
-  if (m_blendAlpha >= 1.0f || m_previousState.empty())
-    return currDelta;
-
-  int prevIdx = findStateIndex(m_previousState);
-  glm::vec3 prevDelta = (prevIdx >= 0 && m_stateNodes[prevIdx])
-      ? m_stateNodes[prevIdx]->getRootMotionDelta()
-      : glm::vec3(0.0f);
-
-  return glm::mix(prevDelta, currDelta, m_blendAlpha);
-}
+//glm::vec3 StateMachineNode::getRootMotionDelta() const {
+//  int currIdx = findStateIndex(m_currentState);
+//  if (currIdx < 0 || !m_stateNodes[currIdx]) return glm::vec3(0.0f);
+//
+//  glm::vec3 currDelta = m_stateNodes[currIdx]->getRootMotionDelta();
+//
+//  if (m_blendAlpha >= 1.0f || m_previousState.empty())
+//    return currDelta;
+//
+//  int prevIdx = findStateIndex(m_previousState);
+//  glm::vec3 prevDelta = (prevIdx >= 0 && m_stateNodes[prevIdx])
+//      ? m_stateNodes[prevIdx]->getRootMotionDelta()
+//      : glm::vec3(0.0f);
+//
+//  return glm::mix(prevDelta, currDelta, m_blendAlpha);
+//}
 
 float StateMachineNode::getActiveClipTime() const {
   int idx = findStateIndex(m_currentState);
@@ -580,23 +545,48 @@ static glm::vec3 barycentric(glm::vec2 p, glm::vec2 a, glm::vec2 b, glm::vec2 c)
   return glm::vec3(u, v, w); // u for a, v for b, w for c
 }
 
-void Blend2DNode::update(float dt, AnimParamTable& params) {
-  if (!m_pDef || m_children.empty()) return;
+UpdateResult Blend2DNode::update(const UpdateContext& ctx) {
+  if (!m_pDef || m_children.empty()) return {};
 
-  m_currentParam.x = params.getFloat(m_pDef->xParamName, 0.0f);
-  m_currentParam.y = params.getFloat(m_pDef->zParamName, 0.0f);
+  m_currentParam.x = ctx.params.getFloat(m_pDef->xParamName, 0.0f);
+  m_currentParam.y = ctx.params.getFloat(m_pDef->zParamName, 0.0f);
 
   // Advance ALL child clips every frame for loop sync
-  for (auto* n : m_children)
-    if (n) n->update(dt, params);
+  std::vector<UpdateResult> childResults(m_children.size());
+  for (size_t i = 0; i < m_children.size(); ++i)
+    if (m_children[i]) childResults[i] = m_children[i]->update(ctx);
 
   if (m_children.size() == 1 || m_triangles.empty()) {
     m_idxA = m_idxB = m_idxC = 0;
     m_weights = glm::vec3(1.0f, 0.0f, 0.0f);
-    m_rootDelta = m_children[0] ? m_children[0]->getRootMotionDelta() : glm::vec3(0.0f);
-    return;
+    UpdateResult r = childResults[0];
+#ifdef FORGE_DEBUG
+    if (ctx.debugger) ctx.debugger->Record(this, "Blend2D", r.rootMotion, 1.0f);
+#endif
+    return r;
   }
 
+  locateTriangle(); // sets m_idxA/B/C + m_weights
+
+  const UpdateResult& A = childResults[m_idxA];
+  const UpdateResult& B = childResults[m_idxB];
+  const UpdateResult& C = childResults[m_idxC];
+
+  const float wab = m_weights.x + m_weights.y;
+  TaskIndex blendAB = (wab > 1e-6f)
+    ? ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, A.taskIdx, B.taskIdx, m_weights.y / wab)
+    : A.taskIdx;
+  TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, blendAB, C.taskIdx, m_weights.z);
+
+  glm::vec3 rootDelta = m_weights.x * A.rootMotion + m_weights.y * B.rootMotion + m_weights.z * C.rootMotion;
+
+#ifdef FORGE_DEBUG
+  if (ctx.debugger) ctx.debugger->Record(this, "Blend2D", rootDelta, 1.0f);
+#endif
+  return UpdateResult{ idx, rootDelta, {} };
+}
+
+void Blend2DNode::locateTriangle() {
   auto pos = [&](int i) -> glm::vec2 {
     return { m_pDef->clips[i].x, m_pDef->clips[i].z };
   };
@@ -656,37 +646,6 @@ void Blend2DNode::update(float dt, AnimParamTable& params) {
   const auto& tri = m_triangles[found];
   m_idxA = tri.a; m_idxB = tri.b; m_idxC = tri.c;
   m_weights = bary;
-
-  auto delta = [&](int i){
-    return m_children[i] ? m_children[i]->getRootMotionDelta() : glm::vec3(0.0f);
-  };
-
-  m_rootDelta =
-      bary.x * delta(m_idxA) 
-    + bary.y * delta(m_idxB) 
-    + bary.z * delta(m_idxC);
-}
-
-void Blend2DNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  if (m_children.empty()) return;
-
-  if (m_triangles.empty() || m_children.size() == 1) {
-    if (m_children[0]) m_children[0]->evaluate(outPose);
-    return;
-  }
-
-  std::vector<glm::mat4> poseA, poseB, poseC;
-  if (m_children[m_idxA]) m_children[m_idxA]->evaluate(poseA);
-  if (m_children[m_idxB]) m_children[m_idxB]->evaluate(poseB);
-  if (m_children[m_idxC]) m_children[m_idxC]->evaluate(poseC);
-
-  size_t count = std::min({ poseA.size(), poseB.size(), poseC.size() });
-  outPose.resize(count);
-  for (size_t i = 0; i < count; ++i) {
-    outPose[i] = poseA[i] * m_weights.x
-               + poseB[i] * m_weights.y
-               + poseC[i] * m_weights.z;
-  }
 }
 
 void Blend2DNode::setSkeleton(const std::vector<Bone>* skeleton) {
@@ -720,10 +679,9 @@ std::string Blend2DNode::getDebugStateInfo() const {
         + std::to_string(m_currentParam.y).substr(0, 4) + ")";
 }
 
-void ClipSelectorNode::update(float dt, AnimParamTable& params) {
-  if (!m_pDef) return;
-
-  m_selected = params.getInt(m_pDef->paramName, 0);
+UpdateResult ClipSelectorNode::update(const UpdateContext& ctx) {
+  if (!m_pDef) return {};
+  m_selected = ctx.params.getInt(m_pDef->paramName, 0);
 
   if (m_selected != m_prevSelected) {
     auto it = m_byIndex.find(m_selected);
@@ -733,14 +691,8 @@ void ClipSelectorNode::update(float dt, AnimParamTable& params) {
   }
 
   auto it = m_byIndex.find(m_selected);
-  if (it != m_byIndex.end() && it->second)
-    it->second->update(dt, params);
-}
-
-void ClipSelectorNode::evaluate(std::vector<glm::mat4>& outPose) const {
-  auto it = m_byIndex.find(m_selected);
-  if (it != m_byIndex.end() && it->second)
-    it->second->evaluate(outPose);
+  if (it == m_byIndex.end() || !it->second) return {};
+  return it->second->update(ctx);
 }
 
 bool ClipSelectorNode::isFinished() const {
@@ -750,12 +702,12 @@ bool ClipSelectorNode::isFinished() const {
   return true;
 }
 
-glm::vec3 ClipSelectorNode::getRootMotionDelta() const {
-  auto it = m_byIndex.find(m_selected);
-  if (it != m_byIndex.end() && it->second)
-    return it->second->getRootMotionDelta();
-  return glm::vec3(0.0f);
-}
+//glm::vec3 ClipSelectorNode::getRootMotionDelta() const {
+//  auto it = m_byIndex.find(m_selected);
+//  if (it != m_byIndex.end() && it->second)
+//    return it->second->getRootMotionDelta();
+//  return glm::vec3(0.0f);
+//}
 
 float ClipSelectorNode::getActiveClipTime() const {
   auto it = m_byIndex.find(m_selected);

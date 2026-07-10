@@ -51,6 +51,8 @@ add_library(forge_engine STATIC
   src/renderer/DebugUI.cpp
   src/renderer/AnimGraph.cpp
   src/renderer/ThirdPersonCamera.cpp
+  src/renderer/TaskSystem.cpp
+  src/renderer/RootMotionDebugger.cpp
   src/scene/Transform.cpp
   src/scripting/LuaState.cpp
   src/physics/PhysicsWorld.cpp
@@ -94,6 +96,11 @@ if(FORGE_AUDIO_FMOD)
   list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
   find_package(FMOD REQUIRED)
   target_compile_definitions(forge_engine PUBLIC FORGE_HAS_FMOD)
+endif()
+
+option(FORGE_DEBUG_OVERLAYS "Enable dev debug overlays (RootMotionDebugger, etc.)" ON)
+if(FORGE_DEBUG_OVERLAYS)
+  target_compile_definitions(forge_engine PUBLIC FORGE_DEBUG)
 endif()
 
 target_link_libraries(forge_engine PUBLIC

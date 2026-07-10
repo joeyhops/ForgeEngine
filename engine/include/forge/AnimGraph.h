@@ -3,6 +3,7 @@
 #include <forge/Bone.h>
 #include <forge/TypeSystem.h>
 #include <forge/AssetManager.h>
+#include <forge/TaskSystem.h>
 
 #include <glm/glm.hpp>
 
@@ -58,6 +59,19 @@ private:
 
 };
 
+// Forward Decl for UpdateContext
+class RootMotionDebugger;
+
+struct UpdateContext {
+  float dt;
+  AnimParamTable& params;
+  TaskSystem& taskSystem;
+  const std::vector<Bone>* skeleton;
+#ifdef FORGE_DEBUG
+  RootMotionDebugger* debugger = nullptr;
+#endif
+};
+
 struct IAnimNodeDefinition : public IReflectedType {
   FORGE_REFLECT_TYPE(IAnimNodeDefinition)
 
@@ -79,8 +93,7 @@ class AnimGraphNode {
 public:
   virtual ~AnimGraphNode() = default;
 
-  virtual void update(float dt, AnimParamTable& params) = 0;
-  virtual void evaluate(std::vector<glm::mat4>& outPose) const = 0;
+  virtual UpdateResult update(const UpdateContext& ctx) = 0;
   virtual bool isFinished() const { return false; }
 
   virtual float getActiveClipTime() const { return 0.0f; }
@@ -103,9 +116,6 @@ public:
   // Concrete overrides propagate to their active children
   virtual void setActiveTime(float) {}
 
-  // returns this nodes root motion displacement for the current frame
-  // non-root-motion node return vec3(0) blend nodes return weighted avg
-  virtual glm::vec3 getRootMotionDelta() const { return glm::vec3(0.0f); }
 };
 
 // ClipNode
@@ -133,8 +143,7 @@ public:
 
   // Restart from time 0
   void reset();
-  void update(float dt, AnimParamTable& params) override;
-  void evaluate(std::vector<glm::mat4>& outPose) const override;
+  UpdateResult update(const UpdateContext& ctx) override;
   bool isFinished() const override;
   void setActiveTime(float t) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override { m_skeleton = skeleton; }
@@ -144,7 +153,6 @@ public:
   std::string getDebugStateInfo() const override;
   float getActiveClipTime() const override { return m_time; }
   float getActiveClipDuration() const override { return m_clip ? m_clip->duration : 0.0f; }
-  glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
 
   const Definition* m_pDef = nullptr; // Points to GraphDefinition::m_nodeDefs[i]
   std::shared_ptr<AnimationClip> m_clip; // Resolved at GraphInstance::Create() time
@@ -153,11 +161,9 @@ public:
   float m_time = 0.0f;
   float m_prevTime = 0.0f;
   uint64_t m_activeEventMask = 0; // replaces unordered_set<int>; bit i = event i active
-  glm::vec3 m_rootDelta = glm::vec3(0.0f);
   
   // Injected not owned
   const std::vector<Bone>* m_skeleton = nullptr;
-  mutable std::vector<glm::mat4> m_pose;
 private:
   void tickTAEEvents(float prevTime, float curTime);
   void deactivateAllEvents();
@@ -183,11 +189,9 @@ public:
 
   Blend1DNode() = default;
 
-  void update(float dt, AnimParamTable& params) override;
-  void evaluate(std::vector<glm::mat4>& outPose) const  override;
+  UpdateResult update(const UpdateContext& ctx) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
   void setActiveTime(float t) override;
-  glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
   std::string getDebugStateInfo() const override;
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
@@ -201,6 +205,7 @@ public:
   float m_localAlpha = 0.0f; 
   glm::vec3 m_rootDelta = glm::vec3(0.0f);
 private:
+  void resolveBracket();
   void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
 };
 
@@ -243,11 +248,9 @@ public:
   // computer delaunay triangulation and hull edges from registered positions
   // Must be called once after all addClip() calls, before first update()
   void build();
-  void update(float dt, AnimParamTable& params) override;
-  void evaluate(std::vector<glm::mat4>& outPose) const override;
+  UpdateResult update(const UpdateContext& ctx) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
   void setActiveTime(float t) override;
-  glm::vec3 getRootMotionDelta() const override { return m_rootDelta; }
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
   std::string getDebugStateInfo() const override;
@@ -269,6 +272,7 @@ public:
 private:
   void swapClipByKey(const std::string& key,
                      std::shared_ptr<AnimationClip> clip) override;
+  void locateTriangle();
 };
 
 // ClipSelectorNode
@@ -296,12 +300,10 @@ public:
 
   ClipSelectorNode() = default;
 
-  void update(float dt, AnimParamTable& params) override;
-  void evaluate(std::vector<glm::mat4>& outPose) const override;
+  UpdateResult update(const UpdateContext& ctx) override;
   bool isFinished() const override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
   void setActiveTime(float t) override;
-  glm::vec3 getRootMotionDelta()const override;
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
   std::string getDebugStateInfo() const override;
@@ -368,12 +370,10 @@ public:
 
   StateMachineNode() = default;
 
-  void update(float dt, AnimParamTable& params) override;
-  void evaluate(std::vector<glm::mat4>& outPose) const override;
+  UpdateResult update(const UpdateContext& ctx) override;
   bool isFinished() const override;
   void setActiveTime(float t) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
-  glm::vec3 getRootMotionDelta() const override;
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
   std::string getDebugStateInfo() const override;
@@ -388,8 +388,6 @@ public:
   float m_blendAlpha = 1.0f; // 1.0 = fully in current state
   float m_blendTime = 0.0f;
   float m_blendTimer = 0.0f;
-  mutable std::vector<glm::mat4> m_prevPose;
-  mutable std::vector<glm::mat4> m_currPose;
 
 private:
   int findStateIndex(const std::string& name) const;

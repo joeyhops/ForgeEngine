@@ -17,6 +17,7 @@ void Animator::setSkeleton(const std::vector<Bone>& skeleton) {
   m_boneMatrices.assign(skeleton.size(), glm::mat4(1.0f));
   m_localTransforms.assign(skeleton.size(), glm::mat4(1.0f));
   m_globalTransforms.assign(skeleton.size(), glm::mat4(1.0f));
+  m_taskSystem.Init((int)skeleton.size(), 16);
 }
 
 void Animator::setGraph(GraphInstance instance) {
@@ -45,21 +46,50 @@ void Animator::swapMovesetClips(const std::unordered_map<std::string, std::strin
   }
 }
 
-void Animator::update(float dt) {
+void Animator::updatePrePhysics(float dt) {
   AnimGraphNode* root = m_graphInstance.GetRootNode();
   if (!root) {
-    LOG_ERROR("[Animator] '{}' update() called without graph attached", m_ownerName);
+    LOG_ERROR("[Animator] '{}' updatePrePhysics() called without graph", m_ownerName);
     return;
   }
-  m_rootMotionDelta = glm::vec3(0.0f);
-  m_rootMotionActive = false;
 
-  root->update(dt, m_params);
-  root->evaluate(m_localTransforms);
+  m_taskSystem.Reset();
+#ifdef FORGE_DEBUG
+  m_debugger.BeginFrame();
+#endif
+
+  UpdateContext ctx{
+    dt, m_params, m_taskSystem, &m_skeleton
+#ifdef FORGE_DEBUG
+    , &m_debugger
+#endif
+  };
+
+  UpdateResult result = root->update(ctx);
+  m_rootTask = result.taskIdx;
+  m_rootMotionDelta = result.rootMotion;
+  m_rootMotionActive = glm::length(m_rootMotionDelta) > 0.001f;
+
+  PoseBuffer* pose = m_taskSystem.ExecutePrePhysicsTasks(m_rootTask);
+  if (pose) {
+    m_localTransforms = pose->localTransforms;
+    m_taskSystem.Pool().Release(pose);
+  }
+}
+
+void Animator::updatePostPhysics() {
+  PoseBuffer* pose = m_taskSystem.ExecutePostPhysicsTasks(m_rootTask);
+  if (pose && pose->refCount > 0) {
+    m_localTransforms = pose->localTransforms;
+    m_taskSystem.Pool().Release(pose);
+  }
+
   computeBoneMatrices();
 
-  m_rootMotionDelta = root->getRootMotionDelta();
-  m_rootMotionActive = glm::length(m_rootMotionDelta) > 0.001f;
+#ifdef FORGE_DEBUG
+  if (m_taskSystem.Pool().InUse() != 0) // leak check, DAG must collapse to zero live buffers
+    LOG_ERROR("[Animator] '{}' pose buffer leak: {} in use after frame", m_ownerName, m_taskSystem.Pool().InUse());
+#endif
 }
 
 bool Animator::isFinished() const {
@@ -84,7 +114,18 @@ void Animator::scrubTo(float t) {
     return;
   }
   root->setActiveTime(t);
-  root->evaluate(m_localTransforms);
+  m_taskSystem.Reset();
+  UpdateContext ctx{ 0.0f, m_params, m_taskSystem, &m_skeleton
+#ifdef FORGE_DEBUG
+    , &m_debugger
+#endif
+  };
+  UpdateResult result = root->update(ctx);
+  PoseBuffer* pose = m_taskSystem.ExecutePrePhysicsTasks(result.taskIdx);
+  if (pose) {
+    m_localTransforms = pose->localTransforms;
+    m_taskSystem.Pool().Release(pose);
+  }
   computeBoneMatrices();
 }
 

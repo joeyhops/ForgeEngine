@@ -1,6 +1,10 @@
 #pragma once
 #include <forge/AnimationClip.h>
 #include <forge/AnimGraph.h>
+#include <forge/TaskSystem.h>
+#ifdef FORGE_DEBUG
+#include <forge/RootMotionDebugger.h>
+#endif
 #include <glm/glm.hpp>
 
 #include <vector>
@@ -34,7 +38,14 @@ public:
   const AnimParamTable& getParams() const { return m_params; }
 
   // Advance animation - called every frame
-  void update(float dt);
+  void updatePrePhysics(float dt);
+  void updatePostPhysics();
+  void update(float dt) { updatePrePhysics(dt); updatePostPhysics(); }
+
+#ifdef FORGE_DEBUG
+  RootMotionDebugger& debugger() { return m_debugger; }
+  const RootMotionDebugger& debugger() const { return m_debugger; }
+#endif
 
   bool isFinished() const;
 
@@ -76,6 +87,12 @@ private:
   std::vector<glm::mat4> m_boneMatrices; // Final palette for GPU
   std::vector<glm::mat4> m_localTransforms; // Per-bone local TRS
   std::vector<glm::mat4> m_globalTransforms;
+  TaskSystem m_taskSystem;
+  TaskIndex m_rootTask = k_invalidTask;
+
+#ifdef FORGE_DEBUG
+  RootMotionDebugger m_debugger;
+#endif
 
   // Graph
   GraphInstance m_graphInstance;

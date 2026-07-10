@@ -793,14 +793,18 @@ void ForgeGame::onUpdate(float dt) {
   m_input.update(getWindow(), m_tpCamera->getHorizontalForward(), m_player.forward);
   handleInput(dt);
 
-  m_player.animator->update(dt);
+  m_player.animator->updatePrePhysics(dt);
   if (m_enemy.active)
-    m_enemy.animator->update(dt);
+    m_enemy.animator->updatePrePhysics(dt);
 
   applyMovement(dt);
 
   // Physics
   getPhysics().step(dt);
+
+  m_player.animator->updatePostPhysics();
+  if (m_enemy.active)
+    m_enemy.animator->updatePostPhysics();
 
   for (auto& vol : m_triggerVolumes) {
     vol->update();
@@ -1076,6 +1080,9 @@ void ForgeGame::renderDebugOverlays() {
       #endif
     }
 
+#ifdef FORGE_DEBUG
+    m_player.animator->debugger().Draw();
+#endif
 
     if (m_enemy.active) {
       constexpr float kR = 0.3f;
@@ -1454,6 +1461,19 @@ void ForgeGame::applyMovement(float dt) {
     displacement = m_moveDir * m_moveSpeed * forge::PhysicsWorld::k_fixedStep;
   }
   
+#ifdef FORGE_DEBUG
+  {
+    glm::vec3 worldRootDelta(0.0f);
+    if (useRM) {
+      const glm::quat facing = m_player.transform->getRotation();
+      worldRootDelta = facing * (m_player.animator->getRootMotionDelta()
+                                  * m_player.transform->getScale().x);
+    }
+    m_player.animator->debugger().PushSample(
+      m_player.transform->getPosition(), worldRootDelta, useRM);
+  }
+#endif
+
   if (!isDodging && !isBackstepping) {
     float rate = m_lockedOn ? k_lockOnTurnRate : k_turnRateDeg;
     glm::vec3 tgt = m_facingTarget;
