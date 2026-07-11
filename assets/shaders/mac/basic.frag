@@ -34,7 +34,7 @@ void main() {
   vec3 N = v_TBN[2];
   if (u_hasNormalMap) {
     vec3 sampledNormal = texture(u_normalMap, v_texCoord).rgb * 2.0 - 1.0;
-    N = normalize(v_TBN * sampleNormal);
+    N = normalize(v_TBN * sampledNormal);
   }
 
   vec3 V = normalize(u_cameraPos - v_worldPos);

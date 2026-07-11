@@ -219,7 +219,7 @@
             "clipFile": "anim/manny/idle/am_Stand_Idle_01.glb",
             "clipName": "idle",
             "taeKey": "",
-            "actionKey": "",
+            "actionKey": "idle",
             "ownerName": "player",
             "loop": true
         },

@@ -58,6 +58,15 @@ PoseBuffer* SampleTask::Execute(TaskSystem& /*sys*/, PosePool& pool) {
 PoseBuffer* BlendTask::Execute(TaskSystem& sys, PosePool& pool) {
   PoseBuffer* from = sys.Execute(m_a); // Weight applied to 'to'
   PoseBuffer* to = sys.Execute(m_b);
+  if (!from) {
+    LOG_WARN("[TaskSystem] BlendTask::Execute PoseBuffer 'from' not found, defaulting to 'to' by default.");
+    return to;
+  }
+
+  if (!to) {
+    LOG_WARN("[TaskSystem] BlendTask::Execute PoseBuffer 'to' not found, defaulting to 'from' by default.");
+    return from;
+  }
 
   const size_t count = std::min(from->localTransforms.size(),
                                 to->localTransforms.size());
@@ -76,6 +85,15 @@ PoseBuffer* BlendTask::Execute(TaskSystem& sys, PosePool& pool) {
 PoseBuffer* AdditiveTask::Execute(TaskSystem& sys, PosePool& pool) {
   PoseBuffer* base = sys.Execute(m_base);
   PoseBuffer* add = sys.Execute(m_additive);
+  if (!base) {
+    LOG_WARN("[TaskSystem] AdditiveTask::Execute PoseBuffer 'base' not found, defaulting to 'add' by default.");
+    return add;
+  }
+
+  if (!add) {
+    LOG_WARN("[TaskSystem] AdditiveTask::Execute PoseBuffer 'add' not found, defaulting to 'base' by default.");
+    return base;
+  }
 
   const size_t count = std::min(base->localTransforms.size(),
                                 add->localTransforms.size());

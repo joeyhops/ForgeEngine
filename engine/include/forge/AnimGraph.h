@@ -407,12 +407,15 @@ struct GraphInstance {
   std::shared_ptr<const GraphDefinition> m_pDefinition;
   std::unique_ptr<std::byte[]> m_nodeBuffer;
   std::vector<AnimGraphNode*> m_nodes; // Ptrs into m_nodeBuffer
-  std::unordered_map<std::string, ClipNode*> m_clipsByActionKey; // for swapMovesetClips
+  std::unordered_map<std::string, std::vector<ClipNode*>> m_clipsByActionKey; // for swapMovesetClips
 
   static GraphInstance Create(std::shared_ptr<const GraphDefinition> def);
   GraphInstance Clone() const;
   AnimGraphNode* GetRootNode() const;
-  ClipNode* FindClipByActionKey(const std::string& key) const;
+
+  // Returns all clip nodes tagged with `key` (empty if none). Multiple nodes
+  // may share a key (e.g FreeLoco + LockedLoco idle), and all must receive swaps.
+  const std::vector<ClipNode*>& FindClipsByActionKey(const std::string& key) const;
 
   GraphInstance() = default;
   GraphInstance(GraphInstance&&) = default;

@@ -732,7 +732,16 @@ int main(int argc, char** argv) {
   std::vector<std::string> clangArgStrs = {
     "-x", "c++-header",
     "-std=c++20",
-    "-resource-dir", "/usr/lib/clang/22",
+#ifdef FORGE_CLANG_RESOURCE_DIR
+    "-resource-dir", FORGE_CLANG_RESOURCE_DIR,
+#endif
+#ifdef FORGE_MACOS_SYSROOT
+    "-isysroot", FORGE_MACOS_SYSROOT,
+#endif
+#ifdef FORGE_LIBCXX_INCLUDE
+    "-nostdinc++",
+    "-isystem", FORGE_LIBCXX_INCLUDE,
+#endif
     "-include", prefixHeader.string()
   };
   for (const auto& f : compileFlags)

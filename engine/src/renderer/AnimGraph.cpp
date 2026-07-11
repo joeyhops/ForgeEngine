@@ -987,7 +987,7 @@ GraphInstance GraphInstance::Create(std::shared_ptr<const GraphDefinition> def) 
       auto* cn = static_cast<ClipNode*>(inst.m_nodes[i]);
       auto* cnd = static_cast<const ClipNode::Definition*>(def->m_nodeDefs[i].get());
       if (!cnd->actionKey.empty())
-        inst.m_clipsByActionKey[cnd->actionKey] = cn;
+        inst.m_clipsByActionKey[cnd->actionKey].push_back(cn);
     }
   }
 
@@ -1003,9 +1003,10 @@ AnimGraphNode* GraphInstance::GetRootNode() const {
   return m_nodes[m_pDefinition->m_rootNodeIndex];
 }
 
-ClipNode* GraphInstance::FindClipByActionKey(const std::string& key) const {
+const std::vector<ClipNode*>& GraphInstance::FindClipsByActionKey(const std::string& key) const {
+  static const std::vector<ClipNode*> kEmpty;
   auto it = m_clipsByActionKey.find(key);
-  return (it != m_clipsByActionKey.end()) ? it->second : nullptr;
+  return (it != m_clipsByActionKey.end()) ? it->second : kEmpty;
 }
 
 }

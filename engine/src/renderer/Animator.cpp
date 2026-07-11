@@ -29,8 +29,8 @@ void Animator::setGraph(GraphInstance instance) {
 
 void Animator::swapMovesetClips(const std::unordered_map<std::string, std::string>& clipPaths) {
   for (const auto& [actionKey, path] : clipPaths) {
-    ClipNode* node = m_graphInstance.FindClipByActionKey(actionKey);
-    if (!node) {
+    const std::vector<ClipNode*>& nodes = m_graphInstance.FindClipsByActionKey(actionKey);
+    if (nodes.empty()) {
       LOG_WARN("[Animator] '{}' swapMovesetClips: no node with actionKey '{}' in graph",
                m_ownerName, actionKey);
       continue;
@@ -41,8 +41,10 @@ void Animator::swapMovesetClips(const std::unordered_map<std::string, std::strin
                path, actionKey);
       continue;
     }
-    node->setClip(std::move(clip));
-    LOG_INFO("[Animator] '{}' swapped clip for action key: '{}'", m_ownerName, actionKey);
+    for (ClipNode* node : nodes)
+      node->setClip(clip);
+    LOG_INFO("[Animator] '{}' swapped {} node(s) for action key: '{}'",
+             m_ownerName, nodes.size(), actionKey);
   }
 }
 

@@ -1361,8 +1361,13 @@ void ForgeGame::handleInput(float dt) {
     bool isStandstill = (glm::length(inputDir) <= 0.001f);
     
     if (!isStandstill) {
-      m_player.dodgeFacingQuat = glm::quatLookAt(
-       -inputDir, glm::vec3(0.0f, 1.0f, 0.0f));
+      if (m_lockedOn) {
+        m_player.dodgeFacingQuat = glm::quatLookAt(
+         -toTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+      } else {
+        m_player.dodgeFacingQuat = glm::quatLookAt(
+         -inputDir, glm::vec3(0.0f, 1.0f, 0.0f));
+      }
     } else {
       m_player.dodgeFacingQuat = m_player.transform->getRotation();
     }
@@ -1390,7 +1395,7 @@ void ForgeGame::handleInput(float dt) {
       //m_player.animator->getParams().setFloat("moveX", moveX * spd);
       //m_player.animator->getParams().setFloat("moveZ", moveZ * spd);
       m_smoothMoveX = glm::mix(m_smoothMoveX, moveX * spd, k_locoParamSmoothing * dt);
-      m_smoothMoveZ = glm::mix(m_smoothMoveZ, moveX * spd, k_locoParamSmoothing * dt);
+      m_smoothMoveZ = glm::mix(m_smoothMoveZ, moveZ * spd, k_locoParamSmoothing * dt);
       m_player.animator->getParams().setFloat("moveX", m_smoothMoveX);
       m_player.animator->getParams().setFloat("moveZ", m_smoothMoveZ);
 
