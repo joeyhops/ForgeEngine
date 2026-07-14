@@ -1,9 +1,9 @@
-#include "forge/TaskSystem.h"
 #include <forge/AnimGraph.h>
 #include <forge/AssetManager.h>
 #include <forge/Events.h>
 #include <forge/EventBus.h>
 #include <forge/TypeSystem.h>
+#include <forge/TaskSystem.h>
 #include <forge/Logger.h>
 
 #ifdef FORGE_DEBUG
@@ -44,10 +44,8 @@ bool AnimParamTable::consumeTrigger(const std::string& k) {
 }
 
 void ClipNode::reset() {
-  deactivateAllEvents();
   m_time = 0.0f;
   m_prevTime = 0.0f;
-  m_activeEventMask = 0;
 }
 
 UpdateResult ClipNode::update(const UpdateContext& ctx) {
@@ -55,12 +53,11 @@ UpdateResult ClipNode::update(const UpdateContext& ctx) {
   m_time += ctx.dt;
 
   if (m_pDef->loop && m_clip && m_time >= m_clip->duration) {
-    deactivateAllEvents();
     m_time = fmodf(m_time, m_clip->duration);
     m_prevTime = 0.0f;
   }
 
-  tickTAEEvents(m_prevTime, m_time);
+  SampledEventRange evRange = tickTAEEvents(ctx, m_prevTime, m_time);
 
   // Root motion: math stays same but returned instead of cached
   glm::vec3 rootDelta(0.0f);
@@ -78,8 +75,41 @@ UpdateResult ClipNode::update(const UpdateContext& ctx) {
   if (ctx.debugger) ctx.debugger->Record(this, "ClipNode", rootDelta, 1.0f);
 #endif
 
-  return UpdateResult{ idx, rootDelta, /*eventRange*/ {} };
+  return UpdateResult{ idx, rootDelta, evRange };
 }
+
+UpdateResult ClipNode::update(const UpdateContext& ctx, SyncTrackTimeRange range) {
+  // fall back to dt if no usable range or clip is not sync-authored
+  if (!range.valid || !m_clip || m_clip->syncTrack.empty())
+    return update(ctx);
+
+  m_prevTime = m_time;
+
+  const float dur = m_clip->duration;
+  const float endPct = m_clip->syncTrack.SyncPosToPercentage(range.endSyncPos);
+  m_time = endPct * dur;
+
+  // detect loop wrap: parents sync clock wrapped so endSyncPos < startSyncPos
+  const bool wrapped = range.endSyncPos < range.startSyncPos;
+  if (wrapped) m_prevTime = 0.0f;
+
+  SampledEventRange evRange = tickTAEEvents(ctx, m_prevTime, m_time);
+
+  glm::vec3 rootDelta(0.0f);
+  if (m_clip) {
+    rootDelta = m_clip->sampleRootDelta(m_prevTime, m_time);
+    if (!m_clip->extractRootY) rootDelta.y = 0.0f;
+  }
+
+  TaskIndex idx = ctx.taskSystem.RegisterTask<SampleTask>(TaskPhase::PrePhysics, m_clip.get(), m_time, ctx.skeleton);
+
+#ifdef FORGE_DEBUG
+  if (ctx.debugger) ctx.debugger->Record(this, "ClipNode(sync)", rootDelta, 1.0f);
+#endif
+  return UpdateResult{ idx, rootDelta, evRange };
+}
+
+const AnimationClip* ClipNode::getActiveClip() const { return m_clip.get(); }
 
 bool ClipNode::isFinished() const {
   if (!m_clip || m_pDef->loop) return false;
@@ -90,7 +120,6 @@ void ClipNode::setActiveTime(float t) {
   if (!m_clip) return;
   m_time = std::clamp(t, 0.0f, m_clip->duration);
   m_prevTime = m_time;
-  m_activeEventMask = 0;
 }
 
 std::string ClipNode::getDebugStateInfo() const {
@@ -98,53 +127,40 @@ std::string ClipNode::getDebugStateInfo() const {
   return m_clip->name + " [" + std::to_string(m_time).substr(0, 4) + "s]";
 }
 
-void ClipNode::tickTAEEvents(float prevTime, float curTime) {
-  if (!m_clip) return;
+SampledEventRange ClipNode::tickTAEEvents(const UpdateContext& ctx, float prevTime, float curTime) {
+  SampledEventRange range{ ctx.events.CurrentSize(), ctx.events.CurrentSize() };
+  if (!m_clip) return range;
   const auto& events = m_clip->events;
+  const float dur = m_clip->duration > 1e-6f ? m_clip->duration : 1.0f;
 
   for (int i = 0; i < (int)events.size(); i++) {
     const AnimEvent& ev = events[i];
-    bool wasActive = (m_activeEventMask >> i) & 1u;
-    if (ev.startTime == ev.endTime) {
-      // One-shot: fire both activated + deactived on first crossing
-      if (!wasActive && prevTime <= ev.startTime && curTime > ev.startTime) {
-        EventBus::publish(AnimEventActivated{ m_pDef->ownerName, ev.type, ev.payload, ev.capsules });
-        EventBus::publish(AnimEventDeactivated{ m_pDef->ownerName, ev.type, ev.payload });
-        m_activeEventMask |= (1ull << i);
-      }
-    } else {
-      bool shouldBeActive = (curTime >= ev.startTime && curTime < ev.endTime);
-      if (!wasActive && shouldBeActive) {
-        m_activeEventMask |= (1ull << i);
-        EventBus::publish(AnimEventActivated{ m_pDef->ownerName, ev.type, ev.payload, ev.capsules });
-      } else if (wasActive && !shouldBeActive) {
-        m_activeEventMask &= ~(1ull << i);
-        EventBus::publish(AnimEventDeactivated{ m_pDef->ownerName, ev.type, ev.payload });
-      }
-    }
-  }
-}
+    const bool oneShot = (ev.startTime == ev.endTime);
+    const bool active = oneShot
+        ? (prevTime <= ev.startTime && curTime > ev.startTime) // crossed this frame
+        : (curTime >= ev.startTime && curTime < ev.endTime); // window contains now
+    if (!active) continue;
 
-void ClipNode::deactivateAllEvents() {
-  if (!m_clip || m_activeEventMask == 0) return;
-  const auto& events = m_clip->events;
-  uint64_t mask = m_activeEventMask;
-  while (mask) {
-    int i = __builtin_ctzll(mask);
-    mask &= mask - 1;
-    if (i >= (int)events.size()) continue;
-    const auto& ev = events[i];
-    if (ev.startTime == ev.endTime) continue;
-    EventBus::publish(AnimEventDeactivated{ m_pDef->ownerName, ev.type, ev.payload });
+    SampledEvent se;
+    se.type = ev.type;
+    se.startPct = curTime / dur;
+    se.weight = 1.0f; // lead weight; blend nodes scale as recursion unwinds
+    se.payload = ev.payload;
+    se.capsules = ev.capsules;
+    se.source = SampledEvent::Source::Clip;
+    se.flags = SampledEvent::Flags::FromActiveBranch;
+    se.sourceNodeIdx = m_pDef ? m_pDef->debugNodeIdx : -1;
+    ctx.events.Append(std::move(se));
   }
-  m_activeEventMask = 0;
+
+  range.end = ctx.events.CurrentSize();
+  return range;
 }
 
 void ClipNode::setClip(std::shared_ptr<AnimationClip> clip) {
   m_clip = std::move(clip);
   m_time = 0.0f;
   m_prevTime = 0.0f;
-  deactivateAllEvents();
 }
 
 void ClipNode::swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) {
@@ -158,6 +174,8 @@ void Blend1DNode::setSkeleton(const std::vector<Bone>* skeleton) {
 }
 
 void Blend1DNode::setActiveTime(float t) {
+  m_syncPct = 0.0f;
+  m_prevSyncPct = 0.0f;
   for (auto& entry : m_children)
     if (entry) entry->setActiveTime(t);
 }
@@ -186,6 +204,46 @@ void Blend1DNode::resolveBracket() {
   }
 }
 
+SyncTrackTimeRange Blend1DNode::computeSyncRange(const UpdateContext& ctx,
+                                                 AnimGraphNode* lower, AnimGraphNode* upper,
+                                                 float alpha) {
+  SyncTrackTimeRange range;
+
+  const AnimationClip* lc = clipOf(lower);
+  const AnimationClip* uc = clipOf(upper);
+  if (!lc || !uc || lc->syncTrack.empty() || uc->syncTrack.empty()
+          || !lc->syncTrack.CompatibleWith(uc->syncTrack)) {
+    return range; // dt fallback
+  }
+
+  const SyncTrack blended = SyncTrack::Blend(lc->syncTrack, uc->syncTrack, alpha);
+  const float blendedDur = glm::mix(lc->duration, uc->duration, alpha);
+  const float advance = blendedDur > 1e-6f ? ctx.dt / blendedDur : 0.0f;
+
+  m_prevSyncPct = m_syncPct;
+  m_syncPct += advance;
+  const bool wrapped = m_syncPct >= 1.0f;
+  if (wrapped) m_syncPct -= std::floor(m_syncPct);
+
+  range.startSyncPos = blended.PercentageToSyncPos(m_prevSyncPct);
+  range.endSyncPos = blended.PercentageToSyncPos(m_syncPct);
+  if (wrapped) range.endSyncPos += blended.count(); // keep monotone across wrap for child
+  range.valid = true;
+  return range;
+}
+
+const AnimationClip* Blend1DNode::clipOf(AnimGraphNode* n) {
+  return n ? n->getActiveClip() : nullptr;
+}
+
+const AnimationClip* Blend1DNode::getActiveClip() const {
+  if (m_children.empty()) return nullptr;
+  const int idx = (m_localAlpha < 0.5f) ? m_lowerIdx : m_lowerIdx + 1;
+  return (idx >= 0 && idx < (int)m_children.size() && m_children[idx])
+        ? m_children[idx]->getActiveClip()
+        : nullptr;
+}
+
 UpdateResult Blend1DNode::update(const UpdateContext& ctx) {
   if (!m_pDef || m_children.empty()) return {};
   m_param = ctx.params.getFloat(m_pDef->paramName, 0.0f);
@@ -202,16 +260,22 @@ UpdateResult Blend1DNode::update(const UpdateContext& ctx) {
   const int upperIdx = m_lowerIdx + 1;
   AnimGraphNode* upper = (upperIdx < (int)m_children.size()) ? m_children[upperIdx] : nullptr;
 
+  SyncTrackTimeRange range = computeSyncRange(ctx, lower, upper, m_localAlpha);
+
   // advance BOTH bracketing children each frame - preserves loop-sync exactly
   // as previous update() did. A non-contributing child still registers a
   // SampleTask, but the root never references it so pass 2 skips it
-  UpdateResult a = lower ? lower->update(ctx) : UpdateResult{};
-  UpdateResult b = upper ? upper->update(ctx) : UpdateResult{};
+  UpdateResult a = lower ? lower->update(ctx, range) : UpdateResult{};
+  UpdateResult b = upper ? upper->update(ctx, range) : UpdateResult{};
 
   // Endpoint passthrough (was the alpha<=0/alpha>=1 early outs in evaluate())
   // no blendtask just return the contributing childs result
   if (!upper || m_localAlpha <= 0.0f) return a;
   if (!lower || m_localAlpha >= 1.0f) return b;
+
+  // Scale each childs sampled events by its contribution as recursion unwinds
+  ctx.events.ScaleWeights(a.eventRange.begin, a.eventRange.end, 1.0f - m_localAlpha);
+  ctx.events.ScaleWeights(b.eventRange.begin, b.eventRange.end, m_localAlpha);
 
   TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, a.taskIdx, b.taskIdx, m_localAlpha);
   glm::vec3 rootDelta = glm::mix(a.rootMotion, b.rootMotion, m_localAlpha);
@@ -219,7 +283,59 @@ UpdateResult Blend1DNode::update(const UpdateContext& ctx) {
 #ifdef FORGE_DEBUG
   if (ctx.debugger) ctx.debugger->Record(this, "Blend1D", rootDelta, 1.0f);
 #endif
-  return UpdateResult{ idx, rootDelta, {} };
+  // The two childrens ranges are contiguous, so merged range is [a.begin, b.end]
+  return UpdateResult{ idx, rootDelta, SampledEventRange{ a.eventRange.begin, b.eventRange.end } };
+}
+
+UpdateResult Blend1DNode::update(const UpdateContext& ctx, SyncTrackTimeRange parentRange) {
+  // no usable parent range? fall back to using dt as our own clock
+  if (!parentRange.valid) return update(ctx);
+  if (!m_pDef || m_children.empty()) return {};
+
+  m_param = ctx.params.getFloat(m_pDef->paramName, 0.0f);
+
+  if (m_children.size() == 1) {
+    m_lowerIdx = 0;
+    m_localAlpha = 0.0f;
+    return m_children[0] ? m_children[0]->update(ctx, parentRange) : UpdateResult{};
+  }
+
+  resolveBracket();
+  AnimGraphNode* lower = m_children[m_lowerIdx];
+  const int upperIdx = m_lowerIdx + 1;
+  AnimGraphNode* upper = (upperIdx < (int)m_children.size()) ? m_children[upperIdx] : nullptr;
+
+  // Keep our own normalized clock in step with parents for reporting
+  // Sync position is a shared coordinate so we adopt the parents end pos
+  // (folded back into [0, count) via our blended track) rather than
+  // advancing by dt
+  const AnimationClip* lc = clipOf(lower);
+  const AnimationClip* uc = clipOf(upper);
+  if (lc && uc && !lc->syncTrack.empty() && !uc->syncTrack.empty()
+          && lc->syncTrack.CompatibleWith(uc->syncTrack)) {
+    const SyncTrack blended = SyncTrack::Blend(lc->syncTrack, uc->syncTrack, m_localAlpha);
+    m_prevSyncPct = m_syncPct;
+    m_syncPct = blended.SyncPosToPercentage(parentRange.endSyncPos);
+  }
+
+  // Fwd parents range directly; each child resolves against its own track
+  UpdateResult a = lower ? lower->update(ctx, parentRange) : UpdateResult{};
+  UpdateResult b = upper ? upper->update(ctx, parentRange) : UpdateResult{};
+
+  if (!upper || m_localAlpha <= 0.0f) return a;
+  if (!lower || m_localAlpha >= 1.0f) return b;
+
+  ctx.events.ScaleWeights(a.eventRange.begin, a.eventRange.end, 1.0f - m_localAlpha);
+  ctx.events.ScaleWeights(b.eventRange.begin, b.eventRange.end, m_localAlpha);
+
+  TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, a.taskIdx,
+                                                         b.taskIdx, m_localAlpha);
+  glm::vec3 rootDelta = glm::mix(a.rootMotion, b.rootMotion, m_localAlpha);
+
+#ifdef FORGE_DEBUG
+  if (ctx.debugger) ctx.debugger->Record(this, "Blend1D(sync)", rootDelta, 1.0f);
+#endif
+return UpdateResult{ idx, rootDelta, SampledEventRange{ a.eventRange.begin, b.eventRange.end }};
 }
 
 std::string Blend1DNode::getDebugStateInfo() const {
@@ -249,6 +365,11 @@ float Blend1DNode::getActiveClipDuration() const {
   if (m_lowerIdx < (int)m_children.size() && m_children[m_lowerIdx])
     return m_children[m_lowerIdx]->getActiveClipDuration();
   return 0.0f;
+}
+
+const AnimationClip* StateMachineNode::getActiveClip() const {
+  const int idx = findStateIndex(m_currentState);
+  return (idx >= 0 && m_stateNodes[idx]) ? m_stateNodes[idx]->getActiveClip() : nullptr;
 }
 
 bool StateMachineNode::evaluateConditions(const TransitionDef& td,
@@ -320,12 +441,23 @@ void StateMachineNode::transitionTo(const std::string& toState, float blendTime,
 }
 
 UpdateResult StateMachineNode::update(const UpdateContext& ctx) {
+  return updateInternal(ctx, nullptr);
+}
+
+UpdateResult StateMachineNode::update(const UpdateContext& ctx, SyncTrackTimeRange range) {
+  return updateInternal(ctx, range.valid ? &range : nullptr);
+}
+
+UpdateResult StateMachineNode::updateInternal(const UpdateContext& ctx, const SyncTrackTimeRange* range) {
   if (m_currentState.empty() || !m_pDef) return {};
 
   if (m_blendAlpha < 1.0f && m_blendTime > 0.0f) {
     m_blendTimer += ctx.dt;
     m_blendAlpha = std::min(m_blendTimer / m_blendTime, 1.0f);
   }
+
+  // Anchor for orphan cleanup: everything appended from here belongs to this SMs states
+  const uint16_t smBase = ctx.events.CurrentSize();
 
   const bool blending = (m_blendAlpha < 1.0f && !m_previousState.empty());
   UpdateResult prevResult, currResult;
@@ -334,8 +466,10 @@ UpdateResult StateMachineNode::update(const UpdateContext& ctx) {
     prevResult = m_stateNodes[prevIdx]->update(ctx);
   const int currIdx = findStateIndex(m_currentState);
   if (currIdx >= 0 && m_stateNodes[currIdx])
-    currResult = m_stateNodes[currIdx]->update(ctx);
+    currResult = range ? m_stateNodes[currIdx]->update(ctx, *range)
+                       : m_stateNodes[currIdx]->update(ctx);
 
+  // Transition eval
   const std::string stateBefore = m_currentState;
   auto tryTransitions = [&](bool anyOnly) {
     for (const auto& t : m_pDef->transitions) {
@@ -355,20 +489,38 @@ UpdateResult StateMachineNode::update(const UpdateContext& ctx) {
     tryTransitions(true);
 
   if (m_currentState != stateBefore) {
+    // A transition fired THIS frame. Everything appended above (old prev + old curr) is now
+    // partly stale. Two sub cases:
     if (m_blendAlpha >= 1.0f) {
+      // Instant transition: re-sample the freshly entered state at dt=0 just keep that
+      const uint16_t reBase = ctx.events.CurrentSize();
       UpdateContext ctx0 = ctx; ctx0.dt = 0.0f;
       const int ni = findStateIndex(m_currentState);
       currResult = (ni >= 0 && m_stateNodes[ni]) ? m_stateNodes[ni]->update(ctx0) : UpdateResult{};
+
+      // Drop every event appended before the resample
+      ctx.events.ScaleWeights(smBase, reBase, 0.0f);
 #ifdef FORGE_DEBUG
       if (ctx.debugger) ctx.debugger->Record(this, "StateMachine", currResult.rootMotion, 1.0f);
 #endif
       return currResult;
     }
+    // Crossfase start: this frame still shows the outgoing state (old curr) at full weight.
+    // The fade begins next frame. Keep currResult, but zero any older prev-state events
+    // so a chained transition (combo interrupt) cant leak the state we're fading FROM
+    if (prevIdx >= 0)
+      ctx.events.ScaleWeights(prevResult.eventRange.begin, prevResult.eventRange.end, 0.0f);
     return currResult;
   }
 
   if (!blending)
     return currResult;
+
+  // Crossfade in progress: scale each states events by the crossfade weight, and mark
+  // the outgoing states events transition-source so consumers can ignore fading-out hitboxes
+  ctx.events.ScaleWeights(prevResult.eventRange.begin, prevResult.eventRange.end, 1.0f - m_blendAlpha);
+  ctx.events.ScaleWeights(currResult.eventRange.begin, currResult.eventRange.end, m_blendAlpha);
+  ctx.events.MarkTransitionSource(prevResult.eventRange.begin, prevResult.eventRange.end);
 
   TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(
     TaskPhase::PrePhysics, prevResult.taskIdx, currResult.taskIdx, m_blendAlpha);
@@ -376,7 +528,12 @@ UpdateResult StateMachineNode::update(const UpdateContext& ctx) {
 #ifdef FORGE_DEBUG
   if (ctx.debugger) ctx.debugger->Record(this, "StateMachine", rootDelta, 1.0f);
 #endif
-  return UpdateResult{ idx, rootDelta, {} };
+  // prevResult appended before currResult so their ranges are contiguous. Guard the case
+  // where prev is absent (prevIdx < 0) so the merge does not swallow unrelated leading events
+  const SampledEventRange merged = (prevIdx >= 0)
+    ? SampledEventRange{ prevResult.eventRange.begin, currResult.eventRange.end }
+    : currResult.eventRange;
+  return UpdateResult{ idx, rootDelta, merged };
 }
 
 bool StateMachineNode::isFinished() const {
@@ -390,23 +547,6 @@ void StateMachineNode::setActiveTime(float t) {
   if (idx >= 0 && m_stateNodes[idx])
     m_stateNodes[idx]->setActiveTime(t);
 }
-
-//glm::vec3 StateMachineNode::getRootMotionDelta() const {
-//  int currIdx = findStateIndex(m_currentState);
-//  if (currIdx < 0 || !m_stateNodes[currIdx]) return glm::vec3(0.0f);
-//
-//  glm::vec3 currDelta = m_stateNodes[currIdx]->getRootMotionDelta();
-//
-//  if (m_blendAlpha >= 1.0f || m_previousState.empty())
-//    return currDelta;
-//
-//  int prevIdx = findStateIndex(m_previousState);
-//  glm::vec3 prevDelta = (prevIdx >= 0 && m_stateNodes[prevIdx])
-//      ? m_stateNodes[prevIdx]->getRootMotionDelta()
-//      : glm::vec3(0.0f);
-//
-//  return glm::mix(prevDelta, currDelta, m_blendAlpha);
-//}
 
 float StateMachineNode::getActiveClipTime() const {
   int idx = findStateIndex(m_currentState);
@@ -547,19 +687,13 @@ static glm::vec3 barycentric(glm::vec2 p, glm::vec2 a, glm::vec2 b, glm::vec2 c)
 
 UpdateResult Blend2DNode::update(const UpdateContext& ctx) {
   if (!m_pDef || m_children.empty()) return {};
-
   m_currentParam.x = ctx.params.getFloat(m_pDef->xParamName, 0.0f);
   m_currentParam.y = ctx.params.getFloat(m_pDef->zParamName, 0.0f);
-
-  // Advance ALL child clips every frame for loop sync
-  std::vector<UpdateResult> childResults(m_children.size());
-  for (size_t i = 0; i < m_children.size(); ++i)
-    if (m_children[i]) childResults[i] = m_children[i]->update(ctx);
 
   if (m_children.size() == 1 || m_triangles.empty()) {
     m_idxA = m_idxB = m_idxC = 0;
     m_weights = glm::vec3(1.0f, 0.0f, 0.0f);
-    UpdateResult r = childResults[0];
+    UpdateResult r = m_children[0] ? m_children[0]->update(ctx) : UpdateResult{};
 #ifdef FORGE_DEBUG
     if (ctx.debugger) ctx.debugger->Record(this, "Blend2D", r.rootMotion, 1.0f);
 #endif
@@ -568,22 +702,114 @@ UpdateResult Blend2DNode::update(const UpdateContext& ctx) {
 
   locateTriangle(); // sets m_idxA/B/C + m_weights
 
-  const UpdateResult& A = childResults[m_idxA];
-  const UpdateResult& B = childResults[m_idxB];
-  const UpdateResult& C = childResults[m_idxC];
+  SyncTrackTimeRange range = computeSyncRange2D(ctx); // valid if all three corner tracks compatible
 
+  if (!range.valid) {
+    // dt fallback: advance ALL children but keep only the three corners events
+    const uint16_t base = ctx.events.CurrentSize();
+    std::vector<UpdateResult> childResults(m_children.size());
+    for (size_t i = 0; i < m_children.size(); ++i)
+      if (m_children[i]) childResults[i] = m_children[i]->update(ctx);
+
+    for (size_t i = 0; i < m_children.size(); ++i) {
+      const float w = ((int)i == m_idxA) ? m_weights.x
+                    : ((int)i == m_idxB) ? m_weights.y
+                    : ((int)i == m_idxC) ? m_weights.z
+                                        : 0.0f;
+      ctx.events.ScaleWeights(childResults[i].eventRange.begin, childResults[i].eventRange.end, w);
+    }
+
+    return blendTriangle(ctx,
+                         childResults[m_idxA], childResults[m_idxB],
+                         childResults[m_idxC], SampledEventRange{ base, ctx.events.CurrentSize() });
+  }
+
+  UpdateResult ra = m_children[m_idxA] ? m_children[m_idxA]->update(ctx, range) : UpdateResult{};
+  UpdateResult rb = m_children[m_idxB] ? m_children[m_idxB]->update(ctx, range) : UpdateResult{};
+  UpdateResult rc = m_children[m_idxC] ? m_children[m_idxC]->update(ctx, range) : UpdateResult{};
+
+  ctx.events.ScaleWeights(ra.eventRange.begin, ra.eventRange.end, m_weights.x);
+  ctx.events.ScaleWeights(rb.eventRange.begin, rb.eventRange.end, m_weights.y);
+  ctx.events.ScaleWeights(rc.eventRange.begin, rc.eventRange.end, m_weights.z);
+
+  return blendTriangle(ctx, ra, rb, rc, SampledEventRange{ ra.eventRange.begin, rc.eventRange.end });
+}
+
+UpdateResult Blend2DNode::update(const UpdateContext& ctx, SyncTrackTimeRange parentRange) {
+  if (!parentRange.valid) return update(ctx);
+  if (!m_pDef || m_children.empty()) return {};
+  m_currentParam.x = ctx.params.getFloat(m_pDef->xParamName, 0.0f);
+  m_currentParam.y = ctx.params.getFloat(m_pDef->zParamName, 0.0f);
+
+  if (m_children.size() == 1 || m_triangles.empty()) {
+    m_idxA = m_idxB = m_idxC = 0;
+    m_weights = glm::vec3(1.0f, 0.0f, 0.0f);
+    return m_children[0] ? m_children[0]->update(ctx, parentRange) : UpdateResult{};
+  }
+
+  locateTriangle();
+
+  UpdateResult ra = m_children[m_idxA] ? m_children[m_idxA]->update(ctx, parentRange) : UpdateResult{};
+  UpdateResult rb = m_children[m_idxB] ? m_children[m_idxB]->update(ctx, parentRange) : UpdateResult{};
+  UpdateResult rc = m_children[m_idxC] ? m_children[m_idxC]->update(ctx, parentRange) : UpdateResult{};
+
+  ctx.events.ScaleWeights(ra.eventRange.begin, ra.eventRange.end, m_weights.x);
+  ctx.events.ScaleWeights(rb.eventRange.begin, rb.eventRange.end, m_weights.y);
+  ctx.events.ScaleWeights(rc.eventRange.begin, rc.eventRange.end, m_weights.z);
+
+  return blendTriangle(ctx, ra, rb, rc, SampledEventRange{ ra.eventRange.begin, rc.eventRange.end });
+}
+
+UpdateResult Blend2DNode::blendTriangle(const UpdateContext& ctx,
+                                        const UpdateResult& a, const UpdateResult& b,
+                                        const UpdateResult& c, SampledEventRange merged) {
   const float wab = m_weights.x + m_weights.y;
   TaskIndex blendAB = (wab > 1e-6f)
-    ? ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, A.taskIdx, B.taskIdx, m_weights.y / wab)
-    : A.taskIdx;
-  TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, blendAB, C.taskIdx, m_weights.z);
+    ? ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, a.taskIdx, b.taskIdx, m_weights.y / wab)
+    : a.taskIdx;
+  TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, blendAB, c.taskIdx, m_weights.z);
 
-  glm::vec3 rootDelta = m_weights.x * A.rootMotion + m_weights.y * B.rootMotion + m_weights.z * C.rootMotion;
-
+  glm::vec3 rootDelta = m_weights.x * a.rootMotion + m_weights.y * b.rootMotion + m_weights.z * c.rootMotion;
 #ifdef FORGE_DEBUG
   if (ctx.debugger) ctx.debugger->Record(this, "Blend2D", rootDelta, 1.0f);
 #endif
-  return UpdateResult{ idx, rootDelta, {} };
+  return UpdateResult{ idx, rootDelta, merged };
+}
+
+SyncTrackTimeRange Blend2DNode::computeSyncRange2D(const UpdateContext& ctx) {
+  SyncTrackTimeRange range;
+
+  ClipNode* A = m_children[m_idxA];
+  ClipNode* B = m_children[m_idxB];
+  ClipNode* C = m_children[m_idxC];
+  const AnimationClip* ca = A ? A->m_clip.get() : nullptr;
+  const AnimationClip* cb = B ? B->m_clip.get() : nullptr;
+  const AnimationClip* cc = C ? C->m_clip.get() : nullptr;
+  if (!ca || !cb || !cc) return range;
+  if (ca->syncTrack.empty() || cb->syncTrack.empty()|| cc->syncTrack.empty()) return range;
+  if (!ca->syncTrack.CompatibleWith(cb->syncTrack) ||
+      !ca->syncTrack.CompatibleWith(cc->syncTrack)) return range;
+
+  // Blend the corner tracks pairwise, matching the pose blend weighting
+  const float wab = m_weights.x + m_weights.y;
+  const float abW = (wab > 1e-6f) ? (m_weights.y / wab) : 0.0f;
+  const SyncTrack ab = SyncTrack::Blend(ca->syncTrack, cb->syncTrack, abW);
+  const SyncTrack blended = SyncTrack::Blend(ab, cc->syncTrack, m_weights.z);
+
+  const float durAB = glm::mix(ca->duration, cb->duration, abW);
+  const float blendedDur = glm::mix(durAB, cc->duration, m_weights.z);
+  const float advance = blendedDur > 1e-6f ? ctx.dt / blendedDur : 0.0f;
+
+  m_prevSyncPct = m_syncPct;
+  m_syncPct += advance;
+  const bool wrapped = m_syncPct >= 1.0f;
+  if (wrapped) m_syncPct -= std::floor(m_syncPct);
+  
+  range.startSyncPos = blended.PercentageToSyncPos(m_prevSyncPct);
+  range.endSyncPos = blended.PercentageToSyncPos(m_syncPct);
+  if (wrapped) range.endSyncPos += blended.count();
+  range.valid = true;
+  return range;
 }
 
 void Blend2DNode::locateTriangle() {
@@ -672,6 +898,14 @@ float Blend2DNode::getActiveClipDuration() const {
   return (m_children.empty() || !m_children[m_idxA]) ? 0.0f : m_children[m_idxA]->getActiveClipDuration();
 }
 
+const AnimationClip* Blend2DNode::getActiveClip() const {
+  if (m_children.empty()) return nullptr;
+  int idx = m_idxA;
+  if (m_weights.y >= m_weights.x && m_weights.y >= m_weights.z) idx = m_idxB;
+  else if (m_weights.z >= m_weights.x && m_weights.z >= m_weights.y) idx = m_idxC;
+  return (idx < (int)m_children.size() && m_children[idx]) ? m_children[idx]->getActiveClip() : nullptr;
+}
+
 std::string Blend2DNode::getDebugStateInfo() const {
   if (!m_pDef || m_children.empty()) return "Blend2D(empty)";
     return "Blend2D(" + m_pDef->xParamName + "," + m_pDef->zParamName + " @ "
@@ -695,6 +929,22 @@ UpdateResult ClipSelectorNode::update(const UpdateContext& ctx) {
   return it->second->update(ctx);
 }
 
+UpdateResult ClipSelectorNode::update(const UpdateContext& ctx, SyncTrackTimeRange range) {
+  if (!m_pDef) return {};
+  m_selected = ctx.params.getInt(m_pDef->paramName, 0);
+
+  if (m_selected != m_prevSelected) {
+    auto it = m_byIndex.find(m_selected);
+    if (it != m_byIndex.end() && it->second)
+      it->second->reset();
+    m_prevSelected = m_selected;
+  }
+
+  auto it = m_byIndex.find(m_selected);
+  if (it == m_byIndex.end() || !it->second) return {};
+  return it->second->update(ctx, range);
+}
+
 bool ClipSelectorNode::isFinished() const {
   auto it = m_byIndex.find(m_selected);
   if (it != m_byIndex.end() && it->second)
@@ -712,7 +962,7 @@ bool ClipSelectorNode::isFinished() const {
 float ClipSelectorNode::getActiveClipTime() const {
   auto it = m_byIndex.find(m_selected);
   if (it != m_byIndex.end() && it->second)
-    return it->second->getActiveClipDuration();
+    return it->second->getActiveClipTime();
   return 0.0f;
 }
 
@@ -721,6 +971,11 @@ float ClipSelectorNode::getActiveClipDuration() const {
   if (it != m_byIndex.end() && it->second)
     return it->second->getActiveClipDuration();
   return 0.0f;
+}
+
+const AnimationClip* ClipSelectorNode::getActiveClip() const {
+  auto it = m_byIndex.find(m_selected);
+  return (it != m_byIndex.end() && it->second) ? it->second->getActiveClip() : nullptr;
 }
 
 void ClipSelectorNode::setSkeleton(const std::vector<Bone>* skeleton) {
@@ -937,6 +1192,7 @@ GraphInstance GraphInstance::Create(std::shared_ptr<const GraphDefinition> def) 
   // Each node type needs its m_children/m_stateNodes populated from indices in its Definition.
   for (int i = 0; i < N; i++) {
     IAnimNodeDefinition* nodeDef = def->m_nodeDefs[i].get();
+    nodeDef->debugNodeIdx = i;
     AnimGraphNode* node = inst.m_nodes[i];
     TypeID tid = def->m_nodeTypeIDs[i]; 
 

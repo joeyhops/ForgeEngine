@@ -56,12 +56,13 @@ void Animator::updatePrePhysics(float dt) {
   }
 
   m_taskSystem.Reset();
+  m_sampledEvents.Clear();
 #ifdef FORGE_DEBUG
   m_debugger.BeginFrame();
 #endif
 
   UpdateContext ctx{
-    dt, m_params, m_taskSystem, &m_skeleton
+    dt, m_params, m_taskSystem, m_sampledEvents, &m_skeleton
 #ifdef FORGE_DEBUG
     , &m_debugger
 #endif
@@ -117,7 +118,8 @@ void Animator::scrubTo(float t) {
   }
   root->setActiveTime(t);
   m_taskSystem.Reset();
-  UpdateContext ctx{ 0.0f, m_params, m_taskSystem, &m_skeleton
+  m_sampledEvents.Clear();
+  UpdateContext ctx{ 0.0f, m_params, m_taskSystem, m_sampledEvents, &m_skeleton
 #ifdef FORGE_DEBUG
     , &m_debugger
 #endif
@@ -135,7 +137,7 @@ std::string Animator::getCurrentStateName() const {
   AnimGraphNode* root = m_graphInstance.GetRootNode();
   if (!root) return "";
   auto* sm = dynamic_cast<StateMachineNode*>(root);
-  return sm->getCurrentState();
+  return sm ? sm->getCurrentState() : std::string{};
 }
 
 std::string Animator::getStateInfo() const {
@@ -265,6 +267,7 @@ void Animator::setPreviewClip(std::shared_ptr<AnimationClip> clip, bool loop) {
 
   // clipFile intentionally empty, we wire it directly below
   def->m_nodeDefs.push_back(std::move(clipDef));
+  def->m_nodeTypeIDs.push_back(forge::fnv1a(forge::ClipNode::Definition::kTypeName));
   def->m_rootNodeIndex = 0;
 
   auto inst = GraphInstance::Create(def);

@@ -32,11 +32,13 @@ public:
   forge::AnimationClip* clip() { return m_clip.get(); }
   forge::Animator& animator() { return m_animator; }
   std::vector<forge::AnimEvent>& events() { return m_editedEvents; }
+  std::vector<forge::SyncEvent>& editedSync() { return m_editedSync; }
   const std::vector<forge::Bone>& skeleton() { return m_skeleton; }
   float modelUnitScale() const { return m_modelUnitScale; }
   void setModelUnitScale(float s) { m_modelUnitScale = s; saveConfig(); }
   float scrubTime() const { return m_scrubTime; }
   int& selectedEvent() { return m_selectedEvent; }
+  int& selectedSync() { return m_selectedSync; }
   const std::vector<std::string>& knownBones() const { return m_knownBones; }
   const std::vector<std::string>& knownComboKeys() const { return m_knownComboKeys; }
   bool isLoaded() const { return m_clip != nullptr; }
@@ -115,6 +117,9 @@ private:
   std::vector<forge::AnimEvent> m_editedEvents; // Working copy
   int m_selectedEvent = -1;
 
+  std::vector<forge::SyncEvent> m_editedSync; // working copy of clip->syncTrack.events
+  int m_selectedSync = -1;
+
   // Playback
   float m_scrubTime = 0.0f;
   bool m_playing = false;
@@ -164,6 +169,11 @@ private:
   std::unique_ptr<TaeEditorUI> m_ui;
   char m_charPathBuff[1024] = {};
   char m_clipPathBuff[1024] = {};
+
+  // Camera input state
+  double m_prevMouseX = 0.0;
+  double m_prevMouseY = 0.0;
+  bool m_orbiting = false;
 
   void renderSkinnedModel();
   void renderWeapon();

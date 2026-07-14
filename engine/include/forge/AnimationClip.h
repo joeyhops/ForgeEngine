@@ -2,6 +2,7 @@
 #include <forge/Bone.h>
 #include <forge/HitboxTypes.h>
 #include <forge/TypeSystem.h>
+#include <forge/SyncTrack.h>
 
 #include <string>
 #include <vector>
@@ -80,6 +81,9 @@ public:
   //TAE events - must be kept sorted by start time
   //Animator assumes sorted order when scanning boundaries each frame
   std::vector<AnimEvent> events;
+
+  // Sync markers sorted by percentage
+  SyncTrack syncTrack;
 
   // Sample all bones at time t, returns local transform per bone
   // boneCount is the total number of bones in model skeleton

@@ -18,6 +18,7 @@
 #include <forge/HitboxTypes.h>
 #include <forge/map/MapScene.h>
 #include <forge/map/EntityAssembler.h>
+#include <forge/AnimEventReader.h>
 
 #include <stb_truetype.h>
 
@@ -40,13 +41,13 @@ private:
   enum class GameState { Playing, DeathSequence, YouDied, Respawning };
   std::string m_initialMap = "bonfire";
 
-  void setupRootMotionAnimEvents();
   void setupLevel(const std::string& levelName = "level_01");
   void setupScripts();
   void registerEntityFactories();
   void handleInput(float dt);
   void applyMovement(float dt);
   void spawnWeaponPickup(const glm::vec3& pos, const std::string& weaponId, bool respawns);
+  void parseRootMotionPayload(const std::string& payloard);
 
   void renderScene();
   void renderDebugOverlays();
@@ -207,4 +208,6 @@ private:
 
   forge::CombatComponent::AttackPhase m_prevPlayerPhase = forge::CombatComponent::AttackPhase::None;
   forge::CombatComponent::AttackPhase m_prevEnemyPhase = forge::CombatComponent::AttackPhase::None;
+
+  forge::AnimEventReader m_playerEvents;
 };

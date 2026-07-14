@@ -200,6 +200,7 @@ void TaeEditorApp::loadClipFromPath(const std::string& clipPath,
  
   m_animator.setPreviewClip(m_clip, false);
  
+  m_editedSync = m_clip->syncTrack.events;
   m_editedEvents  = m_clip->events;
   m_selectedEvent = -1;
   m_scrubTime     = 0.0f;
@@ -260,6 +261,7 @@ void TaeEditorApp::loadMovesetAction(const std::string& charPath,
  
   m_animator.setPreviewClip(clip, false);
 
+  m_editedSync = m_clip->syncTrack.events;
   m_editedEvents  = m_clip->events;
   m_selectedEvent = -1;
   m_scrubTime     = 0.0f;
@@ -526,6 +528,11 @@ void TaeEditorApp::saveToSidecar() {
               return a.startTime < b.startTime;
             });
  
+  m_clip->syncTrack.events = m_editedSync;
+  std::sort(m_clip->syncTrack.events.begin(), m_clip->syncTrack.events.end(),
+            [](const forge::SyncEvent& a, const forge::SyncEvent& b){ return a.percentage < b.percentage; });
+  m_clip->syncTrack.rehash();
+
   std::string absPath = forge::AssetManager::resolvePath(m_sidecarPath);
   forge::TAESerialization::save(absPath, *m_clip);
   LOG_INFO("[TaeEditor] Saved: {}", absPath);
@@ -599,23 +606,40 @@ void TaeEditorApp::OrbitCamera::handleMouse(float dx, float dy, float scroll) {
 }
  
 void TaeEditorApp::handleCameraInput() {
-  if (getDebugUI().isCapturingMouse()) return;
- 
   GLFWwindow* win = getWindow();
-  static double prevX = 0.0, prevY = 0.0;
+  const bool uiCapturing = getDebugUI().isCapturingMouse();
+
   double cx, cy;
   glfwGetCursorPos(win, &cx, &cy);
-  float dx = static_cast<float>(cx - prevX);
-  float dy = static_cast<float>(cy - prevY);
-  prevX = cx;
-  prevY = cy;
- 
-  float scroll = s_scrollDelta;
+  const float dx = static_cast<float>(cx - m_prevMouseX);
+  const float dy = static_cast<float>(cy - m_prevMouseY);
+  m_prevMouseX = cx;
+  m_prevMouseY = cy;
+
+  const float scroll = s_scrollDelta;
   s_scrollDelta = 0.0f;
- 
-  if (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS)
-    m_camera.handleMouse(dx, dy, scroll);
-  else if (std::abs(scroll) > 0.001f)
+
+  // Left or Middle button drives orbit
+  const bool dragBtn =
+    glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS ||
+    glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
+
+  // Begin an orbit session only if the drag STARTS over the viewport (ImGui
+  // not capturing). Once started, keep orbiting until release event if the
+  // cursor drifts over a panel - so a viewport drag is never interrupted,
+  // and a widget interaction (WantCaptureMouse true) never spuriously starts
+  // one
+  if (!m_orbiting && dragBtn && !uiCapturing)
+    m_orbiting = true;
+  if (!dragBtn)
+    m_orbiting = false;
+
+  if (m_orbiting)
+    m_camera.handleMouse(dx, dy, 0.0f);
+
+  // Zoom: over the viewport, or while already orbiting (so scrolling a panel
+  // still scrolls the panel)
+  if (std::abs(scroll) > 0.001f && (!uiCapturing || m_orbiting))
     m_camera.handleMouse(0.0f, 0.0f, scroll);
 }
  

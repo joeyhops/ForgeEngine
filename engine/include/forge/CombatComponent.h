@@ -3,6 +3,7 @@
 #include <forge/AttackData.h>
 #include <forge/WeaponDef.h>
 #include <forge/HitboxTypes.h>
+#include <forge/AnimEventReader.h>
 
 #include <glm/glm.hpp>
 
@@ -181,6 +182,7 @@ private:
   std::string m_ownerName;
   Animator* m_animator = nullptr;
   AnimParamTable* m_paramTable = nullptr;
+  AnimEventReader m_events;
 
   // Stats
   float m_hp, m_maxHp;

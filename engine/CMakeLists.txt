@@ -52,6 +52,8 @@ add_library(forge_engine STATIC
   src/renderer/AnimGraph.cpp
   src/renderer/ThirdPersonCamera.cpp
   src/renderer/TaskSystem.cpp
+  src/renderer/SyncTrack.cpp
+  src/renderer/SampledEventsBuffer.cpp
   src/renderer/RootMotionDebugger.cpp
   src/scene/Transform.cpp
   src/scripting/LuaState.cpp

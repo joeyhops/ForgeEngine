@@ -2,6 +2,7 @@
 #include <forge/AnimationClip.h>
 #include <forge/AnimGraph.h>
 #include <forge/TaskSystem.h>
+#include <forge/SampledEventsBuffer.h>
 #ifdef FORGE_DEBUG
 #include <forge/RootMotionDebugger.h>
 #endif
@@ -78,6 +79,8 @@ public:
 
   GraphInstance* getGraphInstance() { return &m_graphInstance; }
   const GraphInstance* getGraphInstance() const { return &m_graphInstance; }
+
+  const SampledEventsBuffer& sampledEvents() const { return m_sampledEvents; }
 private:
   void computeBoneMatrices();
   
@@ -100,6 +103,8 @@ private:
 
   glm::vec3 m_rootMotionDelta = glm::vec3(0.0f);
   bool m_rootMotionActive = false;
+
+  SampledEventsBuffer m_sampledEvents;
 };
 
 }

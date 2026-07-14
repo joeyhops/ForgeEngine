@@ -1,5 +1,5 @@
 {
-  "animDir": "anim/manny/dodge",
+  "animDir": "anim/manny/run",
   "charPath": "models/bone_exp1.glb",
   "modelUnitScale": 1.0,
   "weaponId": "longsword"

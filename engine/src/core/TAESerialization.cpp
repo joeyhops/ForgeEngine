@@ -1,9 +1,12 @@
 #include <forge/TAESerialization.h>
 #include <forge/HitboxTypes.h>
+#include <forge/SyncTrack.h>
 #include <forge/Logger.h>
 
 #include <nlohmann/json.hpp>
+
 #include <fstream>
+#include <algorithm>
 
 namespace forge {
 
@@ -64,7 +67,8 @@ static std::string eventTypeToString(AnimEventType t) {
 // Load (full)
 std::vector<AnimEvent> TAESerialization::load(const std::string& absPath,
                                               std::string& outRootBone,
-                                              bool& outExtractY)
+                                              bool& outExtractY,
+                                              SyncTrack& outSyncTrack)
 {
   std::vector<AnimEvent> result;
 
@@ -113,15 +117,37 @@ std::vector<AnimEvent> TAESerialization::load(const std::string& absPath,
     result.push_back(e);
   }
 
+  outSyncTrack.events.clear();
+  if (j.contains("syncEvents") && j["syncEvents"].is_array()) {
+    for (const auto& se : j["syncEvents"]) {
+      SyncEvent s;
+      s.percentage = se.value("percentage", 0.0f);
+      s.name = se.value("name", std::string{});
+      outSyncTrack.events.push_back(std::move(s));
+    }
+    std::sort(outSyncTrack.events.begin(), outSyncTrack.events.end(),
+              [](const SyncEvent& a, const SyncEvent& b) { return a.percentage < b.percentage; });
+    outSyncTrack.rehash();
+    LOG_INFO("[TAE] Loaded {} sync events from '{}'", outSyncTrack.events.size(), absPath);
+  }
+
   LOG_INFO("[TAE] Loaded {} events from '{}'", result.size(), absPath);
   return result;
+}
+
+std::vector<AnimEvent> TAESerialization::load(const std::string& absPath,
+                                              std::string& outRootBone,
+                                              bool& outExtractY) {
+  SyncTrack ignored;
+  return load(absPath, outRootBone, outExtractY, ignored);
 }
 
 // load (convenience)
 std::vector<AnimEvent> TAESerialization::load(const std::string& absPath) {
   std::string rootBone;
   bool extractY = false;
-  return load(absPath, rootBone, extractY);
+  SyncTrack ignored;
+  return load(absPath, rootBone, extractY, ignored);
 }
 
 void TAESerialization::save(const std::string& absPath, const AnimationClip& clip) {
@@ -152,6 +178,13 @@ void TAESerialization::save(const std::string& absPath, const AnimationClip& cli
     eventsArr.push_back(ev);
   }
   j["events"] = eventsArr;
+
+  if (!clip.syncTrack.events.empty()) {
+    nlohmann::json syncArr = nlohmann::json::array();
+    for (const auto& s : clip.syncTrack.events)
+      syncArr.push_back({ {"name", s.name}, {"percentage", s.percentage} });
+    j["syncEvents"] = syncArr;
+  }
 
   std::ofstream f(absPath);
   if (!f.is_open()) {

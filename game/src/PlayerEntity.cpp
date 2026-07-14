@@ -71,12 +71,6 @@ void PlayerEntity::setup(forge::PhysicsWorld& physics,
     }
   };
 
-  EventBus::subscribe<AnimEventActivated>([this](const AnimEventActivated& e) {
-    if (e.ownerName != "player") return;
-    if (e.type == AnimEventType::LockInput) inputLocked = true;
-    if (e.type == AnimEventType::UnlockInput) inputLocked = false;
-  });
-
   combat.registerCombatant(this->combat.get());
   this->combat->setGhostObject(controller->getGhostObject());
 

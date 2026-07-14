@@ -57,83 +57,6 @@ void CombatComponent::writeTriggerForAttack(const std::string& attackName) {
 // EventBus::clear() should be called on scene change to release all handlers
 
 void CombatComponent::subscribeToTAEEvents() {
-  EventBus::subscribe<AnimEventActivated>([this](const AnimEventActivated& e){
-    if (e.ownerName != m_ownerName) return; // Only reacts to own events
-      switch(e.type) {
-        case AnimEventType::SpawnHitbox:
-          m_hitboxActive = true;
-          m_hitLanded = false;
-          m_localCapsules = e.capsules;
-          LOG_TRACE("[Combat] {} TAE Hitbox ACTIVE ({} capsule segs)",
-                    m_ownerName, m_localCapsules.size());
-          break;
-        case AnimEventType::ComboWindow:
-          m_inComboWindow = true;
-          m_comboWindowAction = e.payload;
-          LOG_TRACE("[Combat] {} ComboWindow OPEN for '{}'", m_ownerName, e.payload);
-          break;
-        case AnimEventType::ParryWindow:
-          m_inReceptiveWindow = true;
-          m_receptiveWindowType = ReceptiveHitWindowType::Parry;
-          LOG_TRACE("[Combat] {} ParryWindow OPEN", m_ownerName);
-          break;
-        case AnimEventType::DeflectWindow:
-          m_inReceptiveWindow = true;
-          m_receptiveWindowType = ReceptiveHitWindowType::Deflect;
-          LOG_TRACE("[Combat] {} DeflectWindow OPEN", m_ownerName);
-          break;
-        case AnimEventType::PerilousMark:
-          m_activeHitPerilous = true;
-          LOG_TRACE("[Combat] {} PerilousMark ACTIVE", m_ownerName);
-          break;
-        default:
-          break;
-      }
-    });
-
-  EventBus::subscribe<AnimEventDeactivated>([this](const AnimEventDeactivated& e) {
-    if (e.ownerName != m_ownerName) return;
-      switch(e.type) {
-        case AnimEventType::SpawnHitbox:
-          m_hitboxActive = false;
-          m_localCapsules.clear();
-          m_worldCapsules.clear();
-          LOG_TRACE("[Combat] {} SpawnHitbox CLOSED", m_ownerName);
-          break;
-        case AnimEventType::ComboWindow: {
-          // Fire buffered combo if input in window detected
-          std::string buffered = m_comboBuffer;
-          if (!buffered.empty())
-            startCombo(buffered);
-          m_comboBuffer.clear();
-          m_comboWindowAction.clear();
-          m_inComboWindow = false;
-          LOG_TRACE("[Combat] {} ComboWindow CLOSED (buffer: {})", m_ownerName,
-                    buffered.empty() ? "none" : buffered);
-          break;
-        }
-        case AnimEventType::ParryWindow:
-        case AnimEventType::DeflectWindow:
-          m_inReceptiveWindow = false;
-          m_receptiveWindowType = ReceptiveHitWindowType::None;
-          LOG_TRACE("[Combat] {} receptive window CLOSED", m_ownerName);
-          break;
-        case AnimEventType::PerilousMark:
-          m_activeHitPerilous = false;
-          LOG_TRACE("[Combat] {} PerilousMark CLEARED", m_ownerName);
-          break;
-        default:
-          break;
-      }
-  });
-
-  EventBus::subscribe<AnimEventActivated>([this](const AnimEventActivated& e) {
-    if (e.ownerName != m_ownerName) return;
-    if (e.type != forge::AnimEventType::RecoveryBegin) return;
-    if (!m_fsm.isIn(CombatState::Attacking)) return;
-    m_fsm.transition(CombatState::Recovering);
-    LOG_TRACE("[Combat] {} RecoveryBegin -> Recovering", m_ownerName);
-  });
 
 }
 
@@ -242,6 +165,48 @@ void CombatComponent::setupFSM() {
 
 // Update
 void CombatComponent::update(float dt) {
+  if (m_animator) m_events.refresh(m_animator->sampledEvents());
+
+  // Hitbox: level state. Capsules come from the sampled event itself
+  bool hitboxNow = false;
+  for (const auto& e : m_animator->sampledEvents().FilteredRange(
+        [](const SampledEvent& e){ return e.type == AnimEventType::SpawnHitbox
+                                        && e.weight >= 0.5f
+                                        && HasFlag(e.flags, SampledEvent::Flags::FromActiveBranch); })) {
+    hitboxNow = true;
+    m_localCapsules = e.capsules;
+    break;
+  }
+  if (hitboxNow && !m_hitboxActive) m_hitLanded = false; // reset on open edge
+  m_hitboxActive = hitboxNow;
+  if (!hitboxNow) { m_localCapsules.clear(); m_worldCapsules.clear(); }
+
+  // Receptive/Perilous windows: pure level state
+  m_inReceptiveWindow = m_events.active(AnimEventType::ParryWindow)
+                      || m_events.active(AnimEventType::DeflectWindow);
+  m_receptiveWindowType = m_events.active(AnimEventType::ParryWindow) ? ReceptiveHitWindowType::Parry
+                        : m_events.active(AnimEventType::DeflectWindow) ? ReceptiveHitWindowType::Deflect
+                        : ReceptiveHitWindowType::None;
+  m_activeHitPerilous = m_events.active(AnimEventType::PerilousMark);
+
+  // Combo window
+  for (const auto& e : m_animator->sampledEvents().FilteredRange(
+          [](const SampledEvent& e) { return e.type == AnimEventType::ComboWindow && e.weight >= 0.5f; })) {
+    m_inComboWindow = true;
+    m_comboWindowAction = e.payload;
+    break;
+  }
+  if (m_events.closedType(AnimEventType::ComboWindow)) {
+    if (!m_comboBuffer.empty()) startCombo(m_comboBuffer);
+    m_comboBuffer.clear();
+    m_comboWindowAction.clear();
+    m_inComboWindow = false;
+  }
+
+  // RecoveryBegin: one-shot -> present exactly the crossing frame
+  if (m_events.activeType(AnimEventType::RecoveryBegin) && m_fsm.isIn(CombatState::Attacking))
+    m_fsm.transition(CombatState::Recovering);
+
   if (!isAlive()) return;
   m_fsm.update(dt);
   if (m_hitFlash) {

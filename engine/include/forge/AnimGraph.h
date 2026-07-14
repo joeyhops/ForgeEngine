@@ -4,6 +4,8 @@
 #include <forge/TypeSystem.h>
 #include <forge/AssetManager.h>
 #include <forge/TaskSystem.h>
+#include <forge/SyncTrack.h>
+#include <forge/SampledEventsBuffer.h>
 
 #include <glm/glm.hpp>
 
@@ -66,6 +68,7 @@ struct UpdateContext {
   float dt;
   AnimParamTable& params;
   TaskSystem& taskSystem;
+  SampledEventsBuffer& events;
   const std::vector<Bone>* skeleton;
 #ifdef FORGE_DEBUG
   RootMotionDebugger* debugger = nullptr;
@@ -75,6 +78,7 @@ struct UpdateContext {
 struct IAnimNodeDefinition : public IReflectedType {
   FORGE_REFLECT_TYPE(IAnimNodeDefinition)
 
+  int16_t debugNodeIdx;
   TypeInfo const* GetTypeInfo() const override;
 
   virtual ~IAnimNodeDefinition() = default;
@@ -94,11 +98,22 @@ public:
   virtual ~AnimGraphNode() = default;
 
   virtual UpdateResult update(const UpdateContext& ctx) = 0;
+  // Synchronized update, a parent blend hands down a SyncTrackTimeRange;
+  // the node advances to range.endSyncPos (resolved into its local time)
+  // rather than dt.
+  // Default: ignore the range and advance on dt
+  virtual UpdateResult update(const UpdateContext& ctx, SyncTrackTimeRange /*range*/) {
+    return update(ctx);
+  }
   virtual bool isFinished() const { return false; }
 
   virtual float getActiveClipTime() const { return 0.0f; }
   virtual float getActiveClipDuration() const { return 0.0f; }
 
+  // the clip currently driving the subtrees pose or nullptr for a node with
+  // no clip clock. Lead ClipNodes return its clip; a blend returns its dominant
+  // child's; a state machine returns the active state's.
+  virtual const AnimationClip* getActiveClip() const { return nullptr; }
   // propagate the skeleton to leaf ClipNodes
   // Called once when the graph attaches to an animator
   virtual void setSkeleton(const std::vector<Bone>* skeleton) { (void)skeleton; }
@@ -144,6 +159,7 @@ public:
   // Restart from time 0
   void reset();
   UpdateResult update(const UpdateContext& ctx) override;
+  UpdateResult update(const UpdateContext& ctx, SyncTrackTimeRange range) override;
   bool isFinished() const override;
   void setActiveTime(float t) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override { m_skeleton = skeleton; }
@@ -153,6 +169,7 @@ public:
   std::string getDebugStateInfo() const override;
   float getActiveClipTime() const override { return m_time; }
   float getActiveClipDuration() const override { return m_clip ? m_clip->duration : 0.0f; }
+  const AnimationClip* getActiveClip() const override;
 
   const Definition* m_pDef = nullptr; // Points to GraphDefinition::m_nodeDefs[i]
   std::shared_ptr<AnimationClip> m_clip; // Resolved at GraphInstance::Create() time
@@ -160,12 +177,11 @@ public:
   // Per-character state
   float m_time = 0.0f;
   float m_prevTime = 0.0f;
-  uint64_t m_activeEventMask = 0; // replaces unordered_set<int>; bit i = event i active
   
   // Injected not owned
   const std::vector<Bone>* m_skeleton = nullptr;
 private:
-  void tickTAEEvents(float prevTime, float curTime);
+  SampledEventRange tickTAEEvents(const UpdateContext& ctx, float prevTime, float curTime);
   void deactivateAllEvents();
 };
 
@@ -190,11 +206,13 @@ public:
   Blend1DNode() = default;
 
   UpdateResult update(const UpdateContext& ctx) override;
+  UpdateResult update(const UpdateContext& ctx, SyncTrackTimeRange range) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
   void setActiveTime(float t) override;
   std::string getDebugStateInfo() const override;
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
+  const AnimationClip* getActiveClip() const override;
 
   const Definition* m_pDef = nullptr;
   std::vector<AnimGraphNode*> m_children; // raw ptrs into GraphInstance Buffer
@@ -204,8 +222,14 @@ public:
   int m_lowerIdx = 0; // Index of lower bracketing entry
   float m_localAlpha = 0.0f; 
   glm::vec3 m_rootDelta = glm::vec3(0.0f);
+  float m_syncPct = 0.0f; // normalized pos of the blended virtual clip
+  float m_prevSyncPct = 0.0f; // previous frame, for the advance range
 private:
   void resolveBracket();
+  SyncTrackTimeRange computeSyncRange(const UpdateContext& ctx,
+                                      AnimGraphNode* lower, AnimGraphNode* upper,
+                                      float alpha);
+  static const AnimationClip* clipOf(AnimGraphNode* n);
   void swapClipByKey(const std::string& key, std::shared_ptr<AnimationClip> clip) override;
 };
 
@@ -249,10 +273,12 @@ public:
   // Must be called once after all addClip() calls, before first update()
   void build();
   UpdateResult update(const UpdateContext& ctx) override;
+  UpdateResult update(const UpdateContext& ctx, SyncTrackTimeRange range) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
   void setActiveTime(float t) override;
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
+  const AnimationClip* getActiveClip() const override;
   std::string getDebugStateInfo() const override;
 
   const Definition* m_pDef = nullptr;
@@ -269,10 +295,16 @@ public:
   glm::vec3 m_weights { 1.0f, 0.0f, 0.0f };
   glm::vec2 m_currentParam { 0.0f, 0.0f };
   glm::vec3 m_rootDelta = glm::vec3(0.0f);
+  float m_syncPct = 0.0f; // normalized pos of the blended virtual clip
+  float m_prevSyncPct = 0.0f; // previous frame, for the advance range
 private:
   void swapClipByKey(const std::string& key,
                      std::shared_ptr<AnimationClip> clip) override;
   void locateTriangle();
+  SyncTrackTimeRange computeSyncRange2D(const UpdateContext& ctx);
+  UpdateResult blendTriangle(const UpdateContext& ctx,
+                             const UpdateResult& a, const UpdateResult& b,
+                             const UpdateResult& c, SampledEventRange merged);
 };
 
 // ClipSelectorNode
@@ -301,11 +333,13 @@ public:
   ClipSelectorNode() = default;
 
   UpdateResult update(const UpdateContext& ctx) override;
+  UpdateResult update(const UpdateContext& ctx, SyncTrackTimeRange range) override;
   bool isFinished() const override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
   void setActiveTime(float t) override;
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
+  const AnimationClip* getActiveClip() const override;
   std::string getDebugStateInfo() const override;
 
   const Definition* m_pDef = nullptr;
@@ -371,11 +405,13 @@ public:
   StateMachineNode() = default;
 
   UpdateResult update(const UpdateContext& ctx) override;
+  UpdateResult update(const UpdateContext& ctx, SyncTrackTimeRange range) override;
   bool isFinished() const override;
   void setActiveTime(float t) override;
   void setSkeleton(const std::vector<Bone>* skeleton) override;
   float getActiveClipTime() const override;
   float getActiveClipDuration() const override;
+  const AnimationClip* getActiveClip() const override;
   std::string getDebugStateInfo() const override;
   const std::string& getCurrentState() const { return m_currentState; }
 
@@ -393,6 +429,7 @@ private:
   int findStateIndex(const std::string& name) const;
   void transitionTo(const std::string& toState, float blendTime, AnimParamTable& params);
   bool evaluateConditions(const StateMachineNode::TransitionDef& td, AnimParamTable& params) const;
+  UpdateResult updateInternal(const UpdateContext& ctx, const SyncTrackTimeRange* range);
 };
 
 struct GraphDefinition {

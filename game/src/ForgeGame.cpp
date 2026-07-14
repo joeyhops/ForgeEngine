@@ -61,8 +61,6 @@ void ForgeGame::onInit() {
   m_enemy.setup(getPhysics(), getLua(), getCombat(), getDebugUI());
   m_enemy.combat->setBodyCapsule(0.3f, 0.75f);
 
-  setupRootMotionAnimEvents();
-
   registerEntityFactories();
 
   setupLevel(m_initialMap);
@@ -385,61 +383,6 @@ std::vector<forge::MapRenderObject> ForgeGame::buildRenderObjects(const forge::E
     objects.push_back(ro);
   }
   return objects;
-}
-
-void ForgeGame::setupRootMotionAnimEvents() {
-  forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
-    if (e.ownerName != "player") return;
-    if (e.type != forge::AnimEventType::RootMotionBegin) return;
-
-    this->m_rmOverride = true;
-    this->m_rmScale = 1.0f;
-    this->m_rmAxes = { true, false, true };
-
-    // Parse payload: "scale;axes;maxVel"
-    if (!e.payload.empty()) {
-      std::istringstream ss(e.payload);
-      std::string token;
-      int idx = 0;
-      while (std::getline(ss, token, ';')) {
-        if (idx == 0 && !token.empty()) this->m_rmScale = std::stof(token);
-        if (idx == 1 && !token.empty()) {
-          this->m_rmAxes.x = token.find('x') != std::string::npos;
-          this->m_rmAxes.y = token.find('y') != std::string::npos;
-          this->m_rmAxes.z = token.find('z') != std::string::npos;
-        }
-        idx++;
-      }
-    }
-    LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{}", this->m_rmScale,
-             this->m_rmAxes.x ? "x" : "",this->m_rmAxes.y ? "y" : "",this->m_rmAxes.z ? "z" : "");
-  });
-
-  forge::EventBus::subscribe<forge::AnimEventDeactivated>([this](const forge::AnimEventDeactivated& e) {
-    if (e.ownerName != "player") return;
-    if (e.type != forge::AnimEventType::RootMotionEnd) return;
-    this->m_rmOverride = false;
-    this->m_rmScale = 1.0f;
-    this->m_rmAxes = { true, false, true };
-    LOG_INFO("[RM] RootMotionEnd");
-  });
-
-  forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
-    if (e.ownerName != "player") return;
-    if (e.type != forge::AnimEventType::RootMotionScale) return;
-    if (!e.payload.empty()) this->m_rmScale = std::stof(e.payload);
-  });
-
-  forge::EventBus::subscribe<forge::AnimEventActivated>([this](const forge::AnimEventActivated& e) {
-    if (e.ownerName != "player") return;
-    if (e.type == forge::AnimEventType::SetKinematic) {
-      m_kinematicMode = true;
-      m_player.controller->setGravity(0.0f);
-    } else if (e.type == forge::AnimEventType::RestorePhysics) {
-      m_kinematicMode = false;
-      m_player.controller->setGravity(-20.0f);
-    } 
-  });
 }
 
 void ForgeGame::setupLevel(const std::string& levelName) {
@@ -794,6 +737,49 @@ void ForgeGame::onUpdate(float dt) {
   handleInput(dt);
 
   m_player.animator->updatePrePhysics(dt);
+  m_playerEvents.refresh(m_player.animator->sampledEvents());
+
+  // Root Motion
+  // RootMotionBegin: window; parse payload on window open edge, latch override until End
+  if (m_playerEvents.openedType(forge::AnimEventType::RootMotionBegin)) {
+    for (const auto& e : m_player.animator->sampledEvents().FilteredRange(
+            [](const forge::SampledEvent& e){ return e.type == forge::AnimEventType::RootMotionBegin; })) {
+      m_rmOverride = true;
+      m_rmScale = 1.0f;
+      m_rmAxes = { true, false, true };
+      parseRootMotionPayload(e.payload);
+      break;
+    }
+  }
+
+  // RootMotionScale: mid-window one-shot updates the scale.
+  for (const auto& e : m_player.animator->sampledEvents().FilteredRange(
+        [](const forge::SampledEvent& e){ return e.type == forge::AnimEventType::RootMotionScale; })) {
+    if (!e.payload.empty())
+      m_rmScale = std::stof(e.payload);
+    break;
+  }
+
+  // RootMotionEnd: one-shot clears the latch (mirrors the old Deactivated handler)
+  if (m_playerEvents.activeType(forge::AnimEventType::RootMotionEnd)) {
+    m_rmOverride = false;
+    m_rmScale = 1.0f;
+    m_rmAxes = { true, false, true };
+  }
+
+  // Kinematic toggles (one-shots)
+  if (m_playerEvents.activeType(forge::AnimEventType::SetKinematic)) {
+    m_kinematicMode = true;
+    m_player.controller->setGravity(0.0f);
+  }
+  if (m_playerEvents.activeType(forge::AnimEventType::RestorePhysics)) {
+    m_kinematicMode = true;
+    m_player.controller->setGravity(0.0f);
+  }
+
+  if (m_playerEvents.activeType(forge::AnimEventType::LockInput)) m_player.inputLocked = true;
+  if (m_playerEvents.activeType(forge::AnimEventType::UnlockInput)) m_player.inputLocked = false;
+
   if (m_enemy.active)
     m_enemy.animator->updatePrePhysics(dt);
 
@@ -1525,5 +1511,24 @@ void ForgeGame::spawnWeaponPickup(const glm::vec3& pos, const std::string& weapo
   m_weaponPickups.push_back(std::move(pickup));
   LOG_INFO("[Level] Spawned '{}' pickup at ({:.1f},{:.1f},{:.1f})",
            weaponId, pos.x, pos.y, pos.z);
+}
+
+void ForgeGame::parseRootMotionPayload(const std::string& payload) {
+  if (!payload.empty()) {
+    std::istringstream ss(payload);
+    std::string token;
+    int idx = 0;
+    while (std::getline(ss, token, ';')) {
+      if (idx == 0 && !token.empty()) this->m_rmScale = std::stof(token);
+      if (idx == 1 && !token.empty()) {
+        this->m_rmAxes.x = token.find('x') != std::string::npos;
+        this->m_rmAxes.y = token.find('y') != std::string::npos;
+        this->m_rmAxes.z = token.find('z') != std::string::npos;
+      }
+      idx++;
+    }
+  }
+  LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{}", this->m_rmScale,
+             this->m_rmAxes.x ? "x" : "",this->m_rmAxes.y ? "y" : "",this->m_rmAxes.z ? "z" : "");
 }
 

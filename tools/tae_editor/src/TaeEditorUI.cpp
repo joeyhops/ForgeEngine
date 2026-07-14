@@ -1134,13 +1134,44 @@ void TaeEditorUI::drawTimeline() {
     }
   }
 
+
+  ImU32 labelCol = IM_COL32(200, 200, 255, 255);
+
+  // Sync Events Row
+  const float syncRowTop = rulerBottom;
+  const float syncRowBot = syncRowTop + TRACK_H;
+  dl->AddText({ cp.x + 2.0f, syncRowTop + 2.0f }, labelCol, "Sync");
+  dl->AddRectFilled({ cp.x + LABEL_W, syncRowTop }, { cp.x + LABEL_W + trackW, syncRowBot },
+                    IM_COL32(30, 34, 44, 120));
+
+  auto& sync = m_app.editedSync();
+  for (int i = 0; i < (int)sync.size(); ++i) {
+    forge::SyncEvent& s = sync[i];
+    float x = timeToX(s.percentage * clip->duration);
+    ImU32 col = (m_app.selectedSync() == i) ? IM_COL32(255, 255, 255, 255)
+      : IM_COL32(120, 200, 255, 230);
+    dl->AddLine({ x, syncRowTop }, { x, syncRowBot }, col, 2.0f);
+    dl->AddText({ x + 3.0f, syncRowTop + 2.0f }, col, s.name.c_str());
+
+    // Drag to reposition (percentage <- xToTime / duration)
+    ImGui::SetCursorScreenPos({ x - GRAB_W, syncRowTop });
+    ImGui::InvisibleButton((std::string("##sync") + std::to_string(i)).c_str(),
+                           { 2.0f * GRAB_W, TRACK_H });
+    if (ImGui::IsItemClicked()) { m_app.selectedSync() = i; m_app.setScrubTime(s.percentage * clip->duration); }
+    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+      float t = xToTime(x + ImGui::GetIO().MouseDelta.x);
+      s.percentage = std::clamp(t / clip->duration, 0.0f, 1.0f);
+    }
+  }
+
+
   // Event tracks
   for (int i = 0; i < (int)events.size(); i++) {
     forge::AnimEvent& ev = events[i];
-    float rowTop = rulerBottom + i * TRACK_H;
+    float rowTop = syncRowBot + i * TRACK_H;
 
     // Label
-    ImU32 labelCol = (selIdx == i) ? IM_COL32(200, 200, 255, 255)
+    labelCol = (selIdx == i) ? IM_COL32(200, 200, 255, 255)
                                    : IM_COL32(180, 180, 180, 200);
     dl->AddText({ cp.x + 2.0f, rowTop + 2.0f }, labelCol, eventTypeName(ev.type));
 
@@ -1201,10 +1232,10 @@ void TaeEditorUI::drawTimeline() {
 
   // Scrub line
   float scrubX      = timeToX(m_app.scrubTime());
-  float trackBottom = rulerBottom + (float)events.size() * TRACK_H;
-  dl->AddLine({ scrubX, rulerBottom }, { scrubX, trackBottom },
+  float trackBottom = syncRowBot + (float)events.size() * TRACK_H;
+  dl->AddLine({ scrubX, syncRowTop }, { scrubX, trackBottom },
               IM_COL32(255, 210, 50, 230), 1.5f);
-  dl->AddCircleFilled({ scrubX, rulerBottom + TICK_RADIUS }, TICK_RADIUS,
+  dl->AddCircleFilled({ scrubX, syncRowTop + TICK_RADIUS }, TICK_RADIUS,
                       IM_COL32(255, 210, 50, 255));
 
   // Ruler click/drag
@@ -1430,6 +1461,95 @@ void TaeEditorUI::drawEventList() {
     ev.capsules.push_back({ {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.08f });
     events.push_back(ev);
     selIdx = (int)events.size() - 1;
+  }
+
+  // Sync Events Table
+  ImGui::SeparatorText("Sync Events");
+
+  auto& sync = m_app.editedSync();
+  int& syncSel = m_app.selectedSync();
+
+  // Preset names offered as convenience; free-text is alays allowed because a sync name
+  // is just an FNV-1a hash key (SyncTrack::rehash), so any string is valid
+  static const char* k_syncPresets[] = {
+    "LeftFootDown", "RightFootDown", "WindupEnd", "ImpactFrame", "RecoveryStart"
+  };
+
+  ImGuiTableFlags sflags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
+                          | ImGuiTableFlags_SizingFixedFit;
+
+  if (ImGui::BeginTable("##synctable", 4, sflags)) {
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Preset", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+    ImGui::TableSetupColumn("%", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+    ImGui::TableSetupColumn("##sdel", ImGuiTableColumnFlags_WidthFixed, 20.0f);
+    ImGui::TableHeadersRow();
+
+    forge::AnimationClip* clip = m_app.clip();
+    const float dur = (clip && clip->duration > 1e-6f) ? clip->duration : 1.0f;
+
+    for (int i = 0; i < (int)sync.size(); i++) {
+      forge::SyncEvent& s = sync[i];
+      ImGui::PushID(i);
+      ImGui::TableNextRow();
+      if (syncSel == i)
+        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(55, 75, 115, 160));
+
+      // Name - free-text, authoratative, same buffer idiom as event payload
+      ImGui::TableSetColumnIndex(0);
+      ImGui::SetNextItemWidth(-1.0f);
+      char nameBuff[64] = {};
+      strncpy(nameBuff, s.name.c_str(), sizeof(nameBuff) - 1);
+      if (ImGui::InputText("##sname", nameBuff, sizeof(nameBuff))) s.name = nameBuff;
+      if (ImGui::IsItemActivated()) syncSel = i;
+
+      // Preset - selecting one overwrites the name Mirrors the event Type combo
+      ImGui::TableSetColumnIndex(1);
+      ImGui::SetNextItemWidth(-1.0f);
+      if (ImGui::BeginCombo("##spreset", "-")) {
+        for (const char* p : k_syncPresets)
+          if (ImGui::Selectable(p, s.name == p)) { s.name = p; syncSel = i; }
+        ImGui::EndCombo();
+      }
+
+      //Percentage - DragFloat in [0,1], same 0.001 step as event times
+      ImGui::TableSetColumnIndex(2);
+      ImGui::SetNextItemWidth(-1.0f);
+      if (ImGui::DragFloat("##spct", &s.percentage, 0.001f, 0.0f, 1.0f, "%.3f")) {
+        s.percentage = std::clamp(s.percentage, 0.0f, 1.0f);
+        syncSel = i;
+        m_app.setScrubTime(s.percentage * dur);
+      }
+
+      // Delete - erase, fix selection, break
+      ImGui::TableSetColumnIndex(3);
+      if (ImGui::SmallButton("x")) {
+        sync.erase(sync.begin() + i);
+        if (syncSel >= (int)sync.size()) syncSel = (int)sync.size() - 1;
+        ImGui::PopID();
+        break;
+      }
+
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
+  }
+
+  if (ImGui::Button("Add Sync")) {
+    auto& sync = m_app.editedSync();
+    const float dur = m_app.clip() ? m_app.clip()->duration : 1.0f;
+    const float pct = (dur > 1e-6f) ? std::clamp(m_app.scrubTime() / dur, 0.0f, 1.0f) : 0.0f;
+    sync.push_back(forge::SyncEvent{ pct, "NewSync", 0 }); // id recomputed by rehash() on save
+
+    m_app.selectedSync() = (int)sync.size() - 1;
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Delete Sync") && m_app.selectedSync() >= 0) {
+    auto& sync = m_app.editedSync();
+    if (m_app.selectedSync() < (int)sync.size()) {
+      sync.erase(sync.begin() + m_app.selectedSync());
+      m_app.selectedSync() = -1;
+    }
   }
   ImGui::SameLine();
   if (ImGui::Button("Save Sidecar"))

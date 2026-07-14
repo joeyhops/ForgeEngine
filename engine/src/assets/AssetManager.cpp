@@ -799,6 +799,13 @@ std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
   LOG_INFO("[Assets] Animation '{}' — {:.2f}s  {} tracks  ({} tps)",
            clip->name, clip->duration, clip->tracks.size(), (int)ticksPerSec);
 
+  float maxKey = 0.0f;
+  for (const auto& tr : clip->tracks)
+    if (!tr.keyframes.empty()) maxKey = std::max(maxKey, tr.keyframes.back().time);
+  LOG_INFO("[Assets] '{}' - duration={:.4f} lastKey={:.4f} gap={:.4f} ({} frames)",
+           clip->name, clip->duration, maxKey, clip->duration - maxKey,
+            (clip->duration - maxKey) * ticksPerSec);
+  
   fs::path clipFsPath(path);
   std::string sidecarStem = taeKey.empty() ? clipFsPath.stem().string() : taeKey;
   std::string sidecarRel = (clipFsPath.parent_path()
@@ -811,7 +818,7 @@ std::shared_ptr<AnimationClip> AssetManager::loadAnimationClip(
   if (fs::exists(sidecarAbs)) {
     std::string rootBone;
     bool extractY = false;
-    clip->events = TAESerialization::load(sidecarAbs, rootBone, extractY);
+    clip->events = TAESerialization::load(sidecarAbs, rootBone, extractY, clip->syncTrack);
     if (!rootBone.empty()) {
       clip->useRootMotion = true;
       clip->rootBoneName = rootBone;
