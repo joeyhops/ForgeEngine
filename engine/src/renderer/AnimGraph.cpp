@@ -52,10 +52,6 @@ UpdateResult ClipNode::update(const UpdateContext& ctx) {
   m_prevTime = m_time;
   m_time += ctx.dt;
 
-  if (m_clip && m_pDef && m_pDef->actionKey == "walk")
-    LOG_INFO("[clk] ({}) t={:.4f}/{:.4f}  ({:.1f}%)", m_clip->name, m_time, m_clip->duration,
-             100.0f * m_time / m_clip->duration);
-
   if (m_pDef->loop && m_clip && m_time >= m_clip->duration) {
     m_time = fmodf(m_time, m_clip->duration);
     m_prevTime = 0.0f;
@@ -78,7 +74,6 @@ UpdateResult ClipNode::update(const UpdateContext& ctx) {
 #ifdef FORGE_DEBUG
   if (ctx.debugger) ctx.debugger->Record(this, "ClipNode", rootDelta, 1.0f);
 #endif
-
 
   return UpdateResult{ idx, rootDelta, evRange };
 }

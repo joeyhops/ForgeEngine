@@ -241,8 +241,6 @@ glm::vec3 AnimationClip::sampleRootDelta(float tPrev, float tNow) const {
   glm::vec3 delta;
   if (tNow >= tPrev) {
     delta = track.sample(tNow).position - track.sample(tPrev).position;
-    if (glm::length(delta) > 0.001f)
-      LOG_INFO("[RM] delta: ({:.3f},{:.3f},{:.3f})", delta.x, delta.y, delta.z);
     return delta;
   }
 
@@ -252,8 +250,6 @@ glm::vec3 AnimationClip::sampleRootDelta(float tPrev, float tNow) const {
   glm::vec3 toEnd = track.sample(endT).position - track.sample(tPrev).position;
   glm::vec3 fromStart = track.sample(tNow).position - track.sample(0.0f).position;
   delta = toEnd + fromStart;
-  if (glm::length(delta) > 0.001f)
-    LOG_INFO("[RM] delta: ({:.3f},{:.3f},{:.3f})", delta.x, delta.y, delta.z);
 
   return delta;
 }
