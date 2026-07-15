@@ -100,7 +100,7 @@ void TaeEditorApp::onUpdate(float dt) {
   if (m_playing && m_clip) {
     m_scrubTime += dt;
     if (m_scrubTime >= m_clip->duration) {
-      m_scrubTime = 0.0f;
+      m_scrubTime = std::fmodf(m_scrubTime, m_clip->duration); 
     }
     m_animator.scrubTo(m_scrubTime);
   }
