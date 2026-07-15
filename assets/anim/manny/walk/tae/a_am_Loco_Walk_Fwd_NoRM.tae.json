@@ -1,0 +1,24 @@
+{
+  "clip": "Unreal Take",
+  "events": [],
+  "extractRootY": false,
+  "rootBone": "root",
+  "syncEvents": [
+    {
+      "name": "RightFootDown",
+      "percentage": 0.17900000512599945
+    },
+    {
+      "name": "LeftFootDown",
+      "percentage": 0.400238960981369
+    },
+    {
+      "name": "RightFootDown",
+      "percentage": 0.64277184009552
+    },
+    {
+      "name": "LeftFootDown",
+      "percentage": 0.8673835396766663
+    }
+  ]
+}

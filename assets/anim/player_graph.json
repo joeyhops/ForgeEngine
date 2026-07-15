@@ -194,7 +194,7 @@
         {
             "index": 10,
             "type": "ClipNode::Definition",
-            "clipFile": "anim/manny/walk/am_Loco_Walk_Fwd_NoRM.glb",
+            "clipFile": "anim/manny/walk/a_am_Loco_Walk_Fwd_NoRM.glb",
             "clipName": "walk",
             "taeKey": "",
             "actionKey": "walk",
@@ -205,7 +205,7 @@
         {
             "index": 11,
             "type": "ClipNode::Definition",
-            "clipFile": "anim/manny/run/am_Loco_Run_Fwd_NoRM.glb",
+            "clipFile": "anim/manny/run/a_am_Loco_Run_Fwd_NoRM_not_clipped.glb",
             "clipName": "sprint",
             "taeKey": "",
             "actionKey": "sprint",
