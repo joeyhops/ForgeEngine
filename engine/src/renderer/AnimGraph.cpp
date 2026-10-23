@@ -90,7 +90,7 @@ UpdateResult ClipNode::update(const UpdateContext& ctx, SyncTrackTimeRange range
   m_time = endPct * dur;
 
   // detect loop wrap: parents sync clock wrapped so endSyncPos < startSyncPos
-  const bool wrapped = range.endSyncPos < range.startSyncPos;
+  const bool wrapped = m_time < m_prevTime; 
   if (wrapped) m_prevTime = 0.0f;
 
   SampledEventRange evRange = tickTAEEvents(ctx, m_prevTime, m_time);
@@ -268,14 +268,14 @@ UpdateResult Blend1DNode::update(const UpdateContext& ctx) {
   UpdateResult a = lower ? lower->update(ctx, range) : UpdateResult{};
   UpdateResult b = upper ? upper->update(ctx, range) : UpdateResult{};
 
+  // Scale each childs sampled events by its contribution as recursion unwinds
+  ctx.events.ScaleWeights(a.eventRange.begin, a.eventRange.end, 1.0f - m_localAlpha);
+  ctx.events.ScaleWeights(b.eventRange.begin, b.eventRange.end, m_localAlpha);
+
   // Endpoint passthrough (was the alpha<=0/alpha>=1 early outs in evaluate())
   // no blendtask just return the contributing childs result
   if (!upper || m_localAlpha <= 0.0f) return a;
   if (!lower || m_localAlpha >= 1.0f) return b;
-
-  // Scale each childs sampled events by its contribution as recursion unwinds
-  ctx.events.ScaleWeights(a.eventRange.begin, a.eventRange.end, 1.0f - m_localAlpha);
-  ctx.events.ScaleWeights(b.eventRange.begin, b.eventRange.end, m_localAlpha);
 
   TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, a.taskIdx, b.taskIdx, m_localAlpha);
   glm::vec3 rootDelta = glm::mix(a.rootMotion, b.rootMotion, m_localAlpha);
@@ -322,11 +322,11 @@ UpdateResult Blend1DNode::update(const UpdateContext& ctx, SyncTrackTimeRange pa
   UpdateResult a = lower ? lower->update(ctx, parentRange) : UpdateResult{};
   UpdateResult b = upper ? upper->update(ctx, parentRange) : UpdateResult{};
 
-  if (!upper || m_localAlpha <= 0.0f) return a;
-  if (!lower || m_localAlpha >= 1.0f) return b;
-
   ctx.events.ScaleWeights(a.eventRange.begin, a.eventRange.end, 1.0f - m_localAlpha);
   ctx.events.ScaleWeights(b.eventRange.begin, b.eventRange.end, m_localAlpha);
+
+  if (!upper || m_localAlpha <= 0.0f) return a;
+  if (!lower || m_localAlpha >= 1.0f) return b;
 
   TaskIndex idx = ctx.taskSystem.RegisterTask<BlendTask>(TaskPhase::PrePhysics, a.taskIdx,
                                                          b.taskIdx, m_localAlpha);

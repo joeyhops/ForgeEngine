@@ -773,8 +773,8 @@ void ForgeGame::onUpdate(float dt) {
     m_player.controller->setGravity(0.0f);
   }
   if (m_playerEvents.activeType(forge::AnimEventType::RestorePhysics)) {
-    m_kinematicMode = true;
-    m_player.controller->setGravity(0.0f);
+    m_kinematicMode = false;
+    m_player.controller->setGravity(-20.0f);
   }
 
   if (m_playerEvents.activeType(forge::AnimEventType::LockInput)) m_player.inputLocked = true;

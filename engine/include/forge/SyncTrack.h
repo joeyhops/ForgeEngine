@@ -48,8 +48,11 @@ struct SyncTrack {
 // on a given frame and hands the same range to each child, which resolves it into
 // the childs own time.
 //
-// startSyncPos may exceed endSyncPos across a loop wrap; nodes handle the wrap
-// explicitly
+// The range is kept MONOTONICALLY INCREASING even across a loop wrap: a parent
+// that wraps adds count() to endSyncPos (so endSyncPos > startSyncPos always).
+// Children fold endSyncPos into thier own track; a wrap is then detected as the
+// folded local time landing behind the previous frame's not as 
+// endSyncPos < startSyncPos
 struct SyncTrackTimeRange {
   float startSyncPos = 0.0f;
   float endSyncPos = 0.0f;
