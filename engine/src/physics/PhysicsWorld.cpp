@@ -33,7 +33,8 @@ PhysicsWorld::PhysicsWorld() {
 
   m_world->setGravity(btVector3(0.0f, -9.81f, 0.0f));
 
-  m_world->getPairCache()->setInternalGhostPairCallback(new btGhostPairCallback());
+  m_ghostPairCallback = std::make_unique<btGhostPairCallback>();
+  m_world->getPairCache()->setInternalGhostPairCallback(m_ghostPairCallback.get());
 
   LOG_INFO("[Physics] World initialized");
 }

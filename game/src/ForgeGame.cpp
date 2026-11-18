@@ -17,6 +17,7 @@
 #include <forge/Renderer.h>
 #include <forge/Material.h>
 #include <forge/map/MapScene.h>
+#include <forge/RootMotionPayload.h>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -755,8 +756,11 @@ void ForgeGame::onUpdate(float dt) {
   // RootMotionScale: mid-window one-shot updates the scale.
   for (const auto& e : m_player.animator->sampledEvents().FilteredRange(
         [](const forge::SampledEvent& e){ return e.type == forge::AnimEventType::RootMotionScale; })) {
-    if (!e.payload.empty())
-      m_rmScale = std::stof(e.payload);
+    if (!e.payload.empty()) {
+      float scale = 0.0f;
+      if (forge::ParseFloatStrict(e.payload, scale)) m_rmScale = scale;
+      else LOG_WARN("[RM] Malformed RootMotionScale payload '{}' - ignored", e.payload);
+    }
     break;
   }
 
@@ -1514,21 +1518,15 @@ void ForgeGame::spawnWeaponPickup(const glm::vec3& pos, const std::string& weapo
 }
 
 void ForgeGame::parseRootMotionPayload(const std::string& payload) {
-  if (!payload.empty()) {
-    std::istringstream ss(payload);
-    std::string token;
-    int idx = 0;
-    while (std::getline(ss, token, ';')) {
-      if (idx == 0 && !token.empty()) this->m_rmScale = std::stof(token);
-      if (idx == 1 && !token.empty()) {
-        this->m_rmAxes.x = token.find('x') != std::string::npos;
-        this->m_rmAxes.y = token.find('y') != std::string::npos;
-        this->m_rmAxes.z = token.find('z') != std::string::npos;
-      }
-      idx++;
-    }
-  }
-  LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{}", this->m_rmScale,
-             this->m_rmAxes.x ? "x" : "",this->m_rmAxes.y ? "y" : "",this->m_rmAxes.z ? "z" : "");
+  forge::RootMotionParams params;
+  if (!forge::ParseRootMotionPayload(payload, params))
+    LOG_WARN("[RM] Malformed RootMotionBegin payload '{}' - bad tokens use defaults", payload);
+
+  m_rmScale = params.scale;
+  m_rmAxes = params.axes;
+
+  LOG_INFO("[RM] RootMotionBegin scale={:.2f} axes={}{}{} maxVel={}", m_rmScale,
+           m_rmAxes.x ? "x" : "", m_rmAxes.y ? "y" : "", m_rmAxes.z ? "z" : "",
+           params.maxVelocity ? std::to_string(*params.maxVelocity) : std::string("none"));
 }
 

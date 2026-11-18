@@ -12,6 +12,7 @@ class btDiscreteDynamicsWorld;
 class btRigidBody;
 class btCollisionShape;
 class btDispatcher;
+class btGhostPairCallback;
 
 class btActionInterface;
 class btCollisionObject;
@@ -67,6 +68,7 @@ public:
 private:
   // Order matters, must be destroyed in reverse order of creation
   // Unique_ptr handles that automatically (destroyed bottom-up in class)
+  std::unique_ptr<btGhostPairCallback> m_ghostPairCallback;
   std::unique_ptr<btDefaultCollisionConfiguration> m_config;
   std::unique_ptr<btCollisionDispatcher> m_dispatcher;
   std::unique_ptr<btBroadphaseInterface> m_broadphase;

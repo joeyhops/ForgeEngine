@@ -72,11 +72,9 @@ TEST_CASE("GraphInstance refuses a definition with an unregistered node type",
   CHECK(LogCapture::contains(spdlog::level::err, "no runtime type"));
 }
 
-// kTypeName is static, so reading it through IAnimNodeDefinition* always yields
-// the base name, the registry lookup misses and no node destructor runs.
-// use_count() makes the leak observable without any tooling
+// regression test for A1
 TEST_CASE("GraphInstance destruction releases the clips its nodes hold",
-          "[component][anim][instance][!shouldfail][bug:A1]") {
+          "[component][anim][instance][bug:A1]") {
   auto clip = ClipBuilder().build();
   {
     GraphBuilder b;
@@ -89,10 +87,9 @@ TEST_CASE("GraphInstance destruction releases the clips its nodes hold",
   CHECK(clip.use_count() == 1);
 }
 
-// Defaulted move-assign frees the old buffer without destructing its nodes,
-// this still leaks after the destructor itself is fixed
+// regression test for A1
 TEST_CASE("GraphInstance move-assignment releases the overwritten nodes' clips",
-          "[component][anim][instance][!shouldfail][bug:A1]") {
+          "[component][anim][instance][bug:A1]") {
   auto clip = ClipBuilder().build();
   GraphBuilder b;
   const auto c = b.clip("a");

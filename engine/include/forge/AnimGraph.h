@@ -455,11 +455,14 @@ struct GraphInstance {
   const std::vector<ClipNode*>& FindClipsByActionKey(const std::string& key) const;
 
   GraphInstance() = default;
-  GraphInstance(GraphInstance&&) = default;
-  GraphInstance& operator=(GraphInstance&&) = default;
+  GraphInstance(GraphInstance&& other) noexcept;
+  GraphInstance& operator=(GraphInstance&& other) noexcept;
   GraphInstance(const GraphInstance&) = delete;
   GraphInstance& operator=(const GraphInstance&) = delete;
   ~GraphInstance();
+
+private:
+  void destroyNodes();
 };
 
 }

@@ -153,7 +153,7 @@
             "inherits": "macos-debug",
             "configurePreset": "ci-linux",
             "environment": {
-                "ASAN_OPTIONS": "detect_leaks=0:abort_on_error=1:strict_string_checks=1",
+                "ASAN_OPTIONS": "abort_on_error=1:strict_string_checks=1",
                 "UBSAN_OPTIONS": "print_stacktrace=1"
             }
         }

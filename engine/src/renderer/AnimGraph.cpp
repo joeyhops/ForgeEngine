@@ -1143,14 +1143,44 @@ static NodeRuntimeRegistrar<Blend2DNode::Definition, Blend2DNode> s_blend2DReg;
 static NodeRuntimeRegistrar<ClipSelectorNode::Definition, ClipSelectorNode> s_clipSelReg;
 static NodeRuntimeRegistrar<StateMachineNode::Definition, StateMachineNode> s_smReg;
 
-GraphInstance::~GraphInstance() {
-  auto& reg = GetNodeRegistry();
-  for (int i = 0; i < (int)m_nodes.size(); ++i) {
-    if (!m_nodes[i]) continue;
-    TypeID tid = forge::fnv1a(m_pDefinition->m_nodeDefs[i]->kTypeName);
-    auto it = reg.find(tid);
-    if (it != reg.end()) it->second.pfnDestruct(m_nodes[i]);
+void GraphInstance::destroyNodes() {
+  if (m_pDefinition) {
+    auto& reg = GetNodeRegistry();
+    const auto& typeIDs = m_pDefinition->m_nodeTypeIDs;
+    for (int i = (int)m_nodes.size() - 1; i >= 0; --i) {
+      if (!m_nodes[i] || i >= (int)typeIDs.size()) continue;
+      auto it = reg.find(typeIDs[i]);
+      if (it != reg.end()) it->second.pfnDestruct(m_nodes[i]);
+    }
   }
+  m_nodes.clear();
+  m_clipsByActionKey.clear();
+}
+
+GraphInstance::~GraphInstance() {
+  destroyNodes();
+}
+
+GraphInstance::GraphInstance(GraphInstance&& other) noexcept 
+  : m_pDefinition(std::move(other.m_pDefinition))
+  , m_nodeBuffer(std::move(other.m_nodeBuffer))
+  , m_nodes(std::move(other.m_nodes))
+  , m_clipsByActionKey(std::move(other.m_clipsByActionKey)) {
+  other.m_nodes.clear();
+}
+
+GraphInstance& GraphInstance::operator=(GraphInstance&& other) noexcept {
+  if (this != &other) {
+    // old nodes persist in old buffer pointing to old definition
+    // destruct them before either is replaced
+    destroyNodes();
+    m_pDefinition = std::move(other.m_pDefinition);
+    m_nodeBuffer = std::move(other.m_nodeBuffer);
+    m_nodes = std::move(other.m_nodes);
+    m_clipsByActionKey = std::move(other.m_clipsByActionKey);
+    other.m_nodes.clear();
+  }
+  return *this;
 }
 
 GraphInstance GraphInstance::Create(std::shared_ptr<const GraphDefinition> def) {
