@@ -33,6 +33,7 @@ add_library(forge_engine STATIC
   src/core/Application.cpp
   src/core/Logger.cpp
   src/core/LevelLoader.cpp
+  src/core/RootMotionPayload.cpp
   src/core/TAESerialization.cpp
   src/core/TypeSystem.cpp
   src/map/GeometryGenerator.cpp
@@ -73,12 +74,6 @@ add_library(forge_engine STATIC
 
 add_dependencies(forge_engine forge-reflect)
 
-target_include_directories(forge_engine PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${LUA_INCLUDE_DIR}
-    ${BULLET_INCLUDE_DIRS}
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
 
 find_package(glfw3 CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
@@ -92,6 +87,13 @@ find_package(assimp CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 
 find_package(spdlog CONFIG REQUIRED)
+
+target_include_directories(forge_engine PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${LUA_INCLUDE_DIR}
+    ${BULLET_INCLUDE_DIRS}
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 
 option(FORGE_AUDIO_FMOD "Enable FMOD Studio Audio Backend" ON)
 if(FORGE_AUDIO_FMOD)
@@ -121,3 +123,5 @@ target_link_libraries(forge_engine PUBLIC
   $<$<BOOL:${FORGE_AUDIO_FMOD}>:FMOD::Core>
   $<$<BOOL:${FORGE_AUDIO_FMOD}>:FMOD::Studio>
 )
+
+forge_enable_warnings(forge_engine)

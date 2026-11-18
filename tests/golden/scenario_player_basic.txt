@@ -1,0 +1,43 @@
+# scenario: player_graph + longsword (sword2), dt = 1/60
+# frame  what     detail
+0000  step     idle
+0000  state    Locomotion
+0030  rm       idle (0.000, 0.000, 0.000)
+0030  step     walk
+0090  rm       walk (0.000, 0.000, 0.000)
+0090  step     sprint
+0150  rm       sprint (0.000, 0.000, 0.000)
+0150  step     attack_r1
+0150  state    Attacking
+0170  open     RootMotionBegin
+0172  open     SpawnHitbox
+0176  close    RootMotionBegin
+0188  open     ComboWindow
+0191  close    SpawnHitbox
+0194  close    ComboWindow
+0207  open     RootMotionEnd
+0213  close    RootMotionEnd
+0220  state    Locomotion
+0240  rm       attack_r1 (0.003, 0.000, 1.257)
+0240  step     dodge_forward
+0240  state    Dodging
+0247  open     RootMotionBegin
+0248  close    RootMotionBegin
+0283  open     RootMotionEnd
+0284  close    RootMotionEnd
+0286  state    Locomotion
+0315  rm       dodge_forward (0.000, 0.000, 2.870)
+0315  step     lock_on_strafe
+0375  rm       lock_on_strafe (0.000, 0.000, 0.000)
+0375  step     lock_off
+0395  rm       lock_off (0.000, 0.000, 0.000)
+0395  step     hit_reaction
+0395  state    HitReaction
+0442  state    Locomotion
+0455  rm       hit_reaction (0.000, 0.000, 0.000)
+0455  step     death
+0455  state    Dead
+0545  rm       death (0.000, 0.000, 0.000)
+0545  step     revive
+0545  state    Locomotion
+0605  rm       revive (0.000, 0.000, 0.000)

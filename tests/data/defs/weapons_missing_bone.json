@@ -1,0 +1,6 @@
+{
+  "weapons": [
+    { "id": "broken", "attacks": { "r1": { "damage": 10.0 } } },
+    { "id": "fine", "boneAttach": "weapon_r", "attacks": { "r1": { "damage": 10.0 } } }
+  ]
+}

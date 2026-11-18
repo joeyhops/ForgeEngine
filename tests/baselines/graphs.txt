@@ -1,0 +1,4 @@
+# Content baseline for graphs.txt
+# Each line is a KNOWN content problem accepted for now - i.e. a TODO.
+# The test fails if a new problem appears OR a listed one disappears.
+# Regenerate with FORGE_TEST_BLESS=1, then review git diff.

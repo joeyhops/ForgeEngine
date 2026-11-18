@@ -1,0 +1,84 @@
+# Linux build + forge_tests under ASan/UBSan. FMOD is off (not redistributable),
+# LFS is off ([lfs] tests SKIP)
+
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (clang-18, ASan+UBSan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      # Must match ci/vcpkg.json's builtin-baseline (your local vcpkg checkout)
+      VCPKG_COMMIT: fe64a3a4ed27f531f10835a15d22fd0c9ad7af7e
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-cache,readwrite
+      CC: clang-18
+      CXX: clang++-18
+
+    steps:
+      - name: Checkout (no LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build pkg-config autoconf automake libtool \
+            clang-18 llvm-18-dev libclang-18-dev \
+            libgl1-mesa-dev libglu1-mesa-dev xorg-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
+
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('ci/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-
+
+      - name: Bootstrap vcpkg at the pinned commit
+        run: |
+          git clone https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout "$VCPKG_COMMIT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          mkdir -p vcpkg-cache
+
+      - name: Configure (vcpkg installs ci/vcpkg.json here)
+        run: cmake --preset ci-linux
+
+      # Saved straight after configure, even if later steps fail, so a red test
+      # run never throws away a 40 minute dependency build
+      - name: Save vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('ci/vcpkg.json') }}
+
+      - name: Build
+        run: cmake --build --preset ci-linux
+
+      - name: Test
+        run: ctest --preset ci-linux
+
+      - name: Upload golden diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-actual
+          path: out/build/ci-linux/tests/golden_actual/
+          if-no-files-found: ignore

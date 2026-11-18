@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "rootNodeIndex": 1,
+  "nodes": [
+    { "type": "MysteryNode::Definition" },
+    { "type": "ClipNode::Definition", "actionKey": "idle" }
+  ]
+}

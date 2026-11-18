@@ -1,0 +1,15 @@
+{
+  "weapons": [
+    {
+      "id": "test_blade",
+      "mesh": "models/weapons/long_sword.glb",
+      "boneAttach": "weapon_h_r",
+      "movesetId": "test_moveset",
+      "meshOffset": { "pos": [0.0, 0.1, 0.0], "rot": [0.0, 0.0, 0.0] },
+      "attacks": {
+        "r1": { "damage": 120.0, "poiseDamage": 30.0, "staminaCost": 25.0, "damageType": "slash" },
+        "r2": { "damage": 200.0 }
+      }
+    }
+  ]
+}

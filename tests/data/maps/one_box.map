@@ -1,0 +1,24 @@
+// Game: ForgeEngine
+// Format: Quake2
+// Brush 0 copied verbatim from assets/levels/test.map, plus a point entity
+// entity 0
+{
+"classname" "worldspawn"
+// brush 0
+{
+( -576 -64 -83 ) ( -576 -63 -83 ) ( -576 -64 -82 ) __TB_empty 0 -3 0 1 1
+( -576 -64 -83 ) ( -576 -64 -82 ) ( -575 -64 -83 ) __TB_empty 0 -3 0 1 1
+( -576 -64 -83 ) ( -575 -64 -83 ) ( -576 -63 -83 ) __TB_empty 0 0 0 1 1
+( -448 64 -51 ) ( -448 65 -51 ) ( -447 64 -51 ) __TB_empty 0 0 0 1 1
+( -448 64 -51 ) ( -447 64 -51 ) ( -448 64 -50 ) __TB_empty 0 -3 0 1 1
+( -448 64 -51 ) ( -448 64 -50 ) ( -448 65 -51 ) __TB_empty 0 -3 0 1 1
+}
+}
+// entity 1
+{
+"classname" "enemy_spawn"
+"origin" "-706.5 184.5 -39"
+"weaponId" "dagger"
+"respawns" "0"
+"angle" "90"
+}

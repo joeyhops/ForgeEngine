@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "rootNodeIndex": 0,
+  "nodes": [
+    { "type": "ClipNode::Definition", "actionKey": "idle", "loop": true }
+  ]
+}

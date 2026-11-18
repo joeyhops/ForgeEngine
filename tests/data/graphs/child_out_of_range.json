@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "rootNodeIndex": 0,
+  "nodes": [
+    { "type": "Blend1DNode::Definition", "paramName": "speed",
+      "thresholds": [0.0, 1.0], "childNodeIndices": [1, 7] },
+    { "type": "ClipNode::Definition", "actionKey": "idle" }
+  ]
+}

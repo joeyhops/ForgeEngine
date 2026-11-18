@@ -93,6 +93,69 @@
                 "lhs": "${hostSystemName}",
                 "rhs": "Darwin"
             }
+        },
+        {
+            "name": "macos-asan",
+            "displayName": "macOS Debug + ASan/UBSan",
+            "inherits": "macos-debug",
+            "cacheVariables": {
+                "FORGE_SANITIZE": "address,undefined"
+            }
+        },
+        {
+            "name": "linux-asan",
+            "displayName": "Linux Debug + ASan/UBSan",
+            "inherits": "linux-debug",
+            "cacheVariables": {
+                "FORGE_SANITIZE": "address,undefined"
+            }
+        },
+        {
+            "name": "ci-linux",
+            "displayName": "CI: Linux, clang-18, ASan/UBSan, no FMOD, CI manifest",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang-18",
+                "CMAKE_CXX_COMPILER": "clang++-18",
+                "VCPKG_TARGET_TRIPLET": "x64-linux",
+                "VCPKG_MANIFEST_DIR": "${sourceDir}/ci",
+                "FORGE_AUDIO_FMOD": "OFF",
+                "FORGE_SANITIZE": "address,undefined",
+                "LLVM_DIR": "/usr/lib/llvm-18/lib/cmake/llvm"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "macos-debug", "configurePreset": "macos-debug" },
+        { "name": "macos-asan", "configurePreset": "macos-asan" },
+        { "name": "linux-debug", "configurePreset": "linux-debug" },
+        { "name": "ci-linux", "configurePreset": "ci-linux" }
+    ],
+    "testPresets": [
+        {
+            "name": "macos-debug",
+            "configurePreset": "macos-debug",
+            "output": { "outputOnFailure": true },
+            "execution": { "noTestsAction": "error" }
+        },
+        { "name": "macos-asan", "inherits": "macos-debug", "configurePreset": "macos-asan" },
+        { "name": "linux-debug", "inherits": "macos-debug", "configurePreset": "linux-debug" },
+        {
+            "name": "ci-linux",
+            "inherits": "macos-debug",
+            "configurePreset": "ci-linux",
+            "environment": {
+                "ASAN_OPTIONS": "detect_leaks=0:abort_on_error=1:strict_string_checks=1",
+                "UBSAN_OPTIONS": "print_stacktrace=1"
+            }
         }
     ]
 }

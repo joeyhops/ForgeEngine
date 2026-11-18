@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "forge-engine-ci",
+  "version-string": "0.1.0",
+  "builtin-baseline": "fe64a3a4ed27f531f10835a15d22fd0c9ad7af7e",
+  "dependencies": [
+    "assimp",
+    "bullet3",
+    "catch2",
+    "glew",
+    "glfw3",
+    "glm",
+    { "name": "imgui", "features": [ "glfw-binding", "opengl3-binding" ] },
+    "lua",
+    "nlohmann-json",
+    "sol2",
+    "spdlog"
+  ]
+}

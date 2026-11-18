@@ -4,11 +4,8 @@ add_executable(tae_editor
   src/TaeEditorUI.cpp
 )
 
-target_link_libraries(tae_editor PRIVATE
-$<$<PLATFORM_ID:Linux>:-Wl,--whole-archive>
-forge_engine
-$<$<PLATFORM_ID:Linux>:-Wl,--no-whole-archive>
-)
+forge_link_engine(tae_editor)
+forge_enable_warnings(tae_editor)
 
 if (UNIX)
   set_target_properties(tae_editor PROPERTIES

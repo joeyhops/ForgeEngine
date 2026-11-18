@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "rootNodeIndex": 0,
+  "nodes": [
+    {
+      "type": "StateMachineNode::Definition",
+      "initialState": "Loco",
+      "states": [
+        { "name": "Loco",   "nodeIndex": 1 },
+        { "name": "Attack", "nodeIndex": 4 },
+        { "name": "Dodge",  "nodeIndex": 5 },
+        { "name": "Strafe", "nodeIndex": 8 }
+      ],
+      "transitions": [
+        {
+          "fromState": "Loco", "toState": "Attack", "blendTime": 0.1, "requireAll": false,
+          "conditions": [
+            { "type": "TriggerConsumed", "param": "attackR1" },
+            { "type": "BoolTrue", "param": "forceAttack" }
+          ]
+        },
+        {
+          "fromState": "Attack", "toState": "Loco", "blendTime": 0.25,
+          "conditions": [ { "type": "SourceNodeFinished" } ]
+        },
+        {
+          "fromState": "", "toState": "Loco",
+          "conditions": [ { "type": "BoolFalse", "param": "alive" } ]
+        }
+      ]
+    },
+    { "type": "Blend1DNode::Definition", "paramName": "moveSpeed",
+      "thresholds": [0.0, 1.0], "childNodeIndices": [2, 3] },
+    { "type": "ClipNode::Definition", "actionKey": "idle" },
+    { "type": "ClipNode::Definition", "actionKey": "walk" },
+    { "type": "ClipNode::Definition", "actionKey": "r1", "loop": false },
+    { "type": "ClipSelectorNode::Definition", "paramName": "dodgeDir", "ownerName": "player",
+      "entries": [ { "selectorIndex": 0, "nodeIndex": 6 }, { "selectorIndex": 1, "nodeIndex": 7 } ] },
+    { "type": "ClipNode::Definition", "actionKey": "roll_f", "loop": false },
+    { "type": "ClipNode::Definition", "actionKey": "roll_b", "loop": false },
+    { "type": "Blend2DNode::Definition", "xParamName": "moveX", "zParamName": "moveZ",
+      "clips": [
+        { "x": 0.0, "z": 0.0, "nodeIndex": 9 },
+        { "x": 1.0, "z": 0.0, "nodeIndex": 10 },
+        { "x": 0.0, "z": 1.0, "nodeIndex": 11 }
+      ] },
+    { "type": "ClipNode::Definition", "actionKey": "strafe_c" },
+    { "type": "ClipNode::Definition", "actionKey": "strafe_r" },
+    { "type": "ClipNode::Definition", "actionKey": "strafe_f" }
+  ]
+}

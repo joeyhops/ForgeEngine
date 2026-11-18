@@ -1,0 +1,5 @@
+{
+  "movesets": [
+    { "id": "test_moveset", "clips": { "r1": "anim/test/r1.glb", "idle": "anim/test/idle.glb" } }
+  ]
+}
