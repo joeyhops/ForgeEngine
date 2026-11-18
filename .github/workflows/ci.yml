@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   linux:
-    name: Linux (clang-18, ASan+UBSan)
+    name: Linux (clang-21, ASan+UBSan)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -23,8 +23,8 @@ jobs:
       # Must match ci/vcpkg.json's builtin-baseline (your local vcpkg checkout)
       VCPKG_COMMIT: fe64a3a4ed27f531f10835a15d22fd0c9ad7af7e
       VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-cache,readwrite
-      CC: clang-18
-      CXX: clang++-18
+      CC: clang-21
+      CXX: clang++-21
 
     steps:
       - name: Checkout (no LFS)
@@ -37,18 +37,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build pkg-config autoconf automake libtool \
-            clang-18 llvm-18-dev libclang-18-dev \
             libgl1-mesa-dev libglu1-mesa-dev xorg-dev \
             libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
+
+      - name: LLVM toolchain (apt.llvm.org)
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y --no-install-recommends llvm-21-dev libclang-21-dev
 
       - name: Restore vcpkg binary cache
         id: vcpkg-cache
         uses: actions/cache/restore@v4
         with:
           path: vcpkg-cache
-          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('ci/vcpkg.json') }}
+          key: vcpkg-${{ runner.os }}-clang21-${{ env.VCPKG_COMMIT }}-${{ hashFiles('ci/vcpkg.json') }}
           restore-keys: |
-            vcpkg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-
+            vcpkg-${{ runner.os }}-clang21-${{ env.VCPKG_COMMIT }}-
 
       - name: Bootstrap vcpkg at the pinned commit
         run: |
@@ -67,7 +73,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: vcpkg-cache
-          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('ci/vcpkg.json') }}
+          key: vcpkg-${{ runner.os }}-clang21-${{ env.VCPKG_COMMIT }}-${{ hashFiles('ci/vcpkg.json') }}
 
       - name: Build
         run: cmake --build --preset ci-linux

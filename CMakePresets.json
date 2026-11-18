@@ -118,13 +118,13 @@
             "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_C_COMPILER": "clang-18",
-                "CMAKE_CXX_COMPILER": "clang++-18",
+                "CMAKE_C_COMPILER": "clang-21",
+                "CMAKE_CXX_COMPILER": "clang++-21",
                 "VCPKG_TARGET_TRIPLET": "x64-linux",
                 "VCPKG_MANIFEST_DIR": "${sourceDir}/ci",
                 "FORGE_AUDIO_FMOD": "OFF",
                 "FORGE_SANITIZE": "address,undefined",
-                "LLVM_DIR": "/usr/lib/llvm-18/lib/cmake/llvm"
+                "LLVM_DIR": "/usr/lib/llvm-21/lib/cmake/llvm"
             },
             "condition": {
                 "type": "equals",
