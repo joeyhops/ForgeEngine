@@ -52,14 +52,25 @@ std::vector<std::string> findAssetFiles(const std::string& subdir, const std::st
   const fs::path root = assetDir() / subdir;
   if (!fs::exists(root)) return out;
 
+  auto isHidden = [](const fs::path& p) {
+    const std::string name = p.filename().string();
+    return !name.empty() && name[0] == '.';
+  };
   auto consider = [&](const fs::directory_entry& e) {
     if (e.is_regular_file() && endsWith(e.path().filename().string(), suffix))
       out.push_back(assetRelative(e.path()));
   };
   if (recursive) {
-    for (const auto& e : fs::recursive_directory_iterator(root)) consider(e);
+    for (auto it = fs::recursive_directory_iterator(root); it != fs::recursive_directory_iterator(); ++it) {
+      if (isHidden(it->path())) {
+        if (it->is_directory()) it.disable_recursion_pending();
+        continue;
+      }
+      consider(*it);
+    }
   } else {
-    for (const auto& e : fs::directory_iterator(root)) consider(e);
+    for (const auto& e : fs::directory_iterator(root))
+      if (!isHidden(e.path())) consider(e);
   }
   // Directory iteration order is filesystem dependent
   std::sort(out.begin(), out.end());

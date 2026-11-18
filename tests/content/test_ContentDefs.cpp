@@ -7,5 +7,6 @@ using namespace forge::test;
 
 TEST_CASE("Content: weapon and moveset definitions resolve (against baseline)",
           "[content][defs]") {
+  REQUIRE_FALSE(findAssetFiles("data/movesets", ".json", false).empty());
   checkBaseline("defs.txt", lintDefs());
 }
